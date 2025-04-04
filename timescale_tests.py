@@ -2,7 +2,7 @@ from typing import Optional
 import psycopg2
 from psycopg2.extensions import connection
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 def connect_to_timescale_db() -> Optional[connection]:
     """
@@ -19,15 +19,19 @@ def connect_to_timescale_db() -> Optional[connection]:
     load_dotenv()
     
     try:
-        # Create a connection using the service URL from env file
+        # Use os.getenv() instead of os.environ[] for safer access
         connection_url = os.getenv("TIMESCALE_SERVICE_URL")
-        conn = psycopg2.connect(connection_url)
-        cursor = conn.cursor() #use cursor to execute queries and interact with db
+        if not connection_url:
+            print("Error: TIMESCALE_SERVICE_URL not found in environment variables")
+            return None
+            
+        conn = psycopg2.connect(dsn=connection_url)
+        cursor = conn.cursor() # use cursor to execute queries and interact with db
         
         # Test the connection
-        with conn.cursor() as cur:
-            cur.execute("SELECT version();")
-            version = cur.fetchone()
+        with cursor:
+            cursor.execute("SELECT version();")
+            version = cursor.fetchone()
             print(f"Successfully connected to TimescaleDB!")
             print(f"Server version: {version[0]}")
             
@@ -42,6 +46,7 @@ def connect_to_timescale_db() -> Optional[connection]:
 # Example usage
 if __name__ == "__main__":
     db_connection = connect_to_timescale_db()
+
     if db_connection:
         # Don't forget to close the connection when done
         db_connection.close()
