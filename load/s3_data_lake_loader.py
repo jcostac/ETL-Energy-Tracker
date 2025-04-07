@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
 
-from config import DATA_LAKE_BASE_PATH
+from configs.config import DATA_LAKE_BASE_PATH
 from load.data_lake_loader import DataLakeLoader
 
 class S3DataLakeLoader(DataLakeLoader):

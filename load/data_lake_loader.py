@@ -15,7 +15,7 @@ from datetime import datetime
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
 
-from config import DATA_LAKE_BASE_PATH
+from configs.config import DATA_LAKE_BASE_PATH
 
 
 class DataLakeLoader(ABC):
