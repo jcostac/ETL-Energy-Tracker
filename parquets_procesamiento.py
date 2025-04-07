@@ -74,14 +74,16 @@ def process_and_save_parquet(
 
 def process_parquet_files(
     raw_path: Union[str, Path],
-    processed_path: Union[str, Path]
+    processed_path: Union[str, Path],
+    remove: bool = False
 ) -> list[Path]:
     """
     Processes all parquet files in a directory and organizes them according to the specified structure.
     
     Args:
-        raw_data_path (Union[str, Path]): Directory containing csv files to process
-        processed_data_path (Union[str, Path]): Directory to save processed parquet files
+        raw_path (Union[str, Path]): Directory containing csv files to process
+        processed_path (Union[str, Path]): Directory to save processed parquet files
+        remove (bool): Whether to remove the raw file after processing
     
     Returns:
         list[Path]: List of files that were not processed
@@ -124,6 +126,12 @@ def process_parquet_files(
                     month=month,
                     processed_path=processed_path
                 )
+
+                #Remove raw file after processing (optional)
+                if remove:
+                    os.remove(file)
+                    print(f"Processed and deleted {file}")
+
             else:
                 raise ValueError(f"Warning: Could not process {file} - missing datetime column")
             
