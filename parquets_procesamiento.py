@@ -42,14 +42,15 @@ def process_and_save_parquet(
 ) -> None:
     """
     Processes a DataFrame and saves it as a parquet file in the appropriate directory structure.
+    If a parquet file already exists, the new data will be appended to it.
     
     Args:
-        df (pd.DataFrame): Input DataFrame to be saved
+        df (pd.DataFrame): Input DataFrame to be saved as a parquet file
         data_type (DataType): Type of data ('volumenes', 'precios', or 'ingresos')
         mercado (str): Market identifier
         year (int): Year for file organization
         month (int): Month for file organization
-        base_path (Union[str, Path]): Base directory path
+        processed_path (Union[str, Path]): Base directory path
     
     Raises:
         ValueError: If data_type is not one of the allowed values
@@ -68,9 +69,40 @@ def process_and_save_parquet(
     # Full path for the parquet file
     processed_file_path = processed_dir / filename
     
-    # Save DataFrame as parquet
-    df.to_parquet(processed_file_path)
-    print(f"Saved {filename} to {processed_dir}")
+    try:
+        if processed_file_path.exists():
+            # Read existing parquet file
+            existing_df = pd.read_parquet(processed_file_path)
+            
+            # Ensure datetime column is in datetime format for both DataFrames
+            if 'datetime' in df.columns and 'datetime' in existing_df.columns:
+
+                #convert to datetime if not already
+                df['datetime'] = pd.to_datetime(df['datetime'])
+                existing_df['datetime'] = pd.to_datetime(existing_df['datetime'])
+                
+                # Concatenate the DataFrames
+                combined_df = pd.concat([existing_df, df], ignore_index=True)
+                
+                # Drop duplicates based on datetime column (or other relevant columns)
+                combined_df = combined_df.drop_duplicates(subset=['datetime'], keep='last')
+                
+                # Sort by datetime
+                combined_df = combined_df.sort_values('datetime')
+                
+                # Save the combined DataFrame
+                combined_df.to_parquet(processed_file_path)
+                print(f"Updated existing file {filename} in {processed_dir}")
+            else:
+                raise ValueError("Both DataFrames must contain 'datetime' column for proper merging")
+        else:
+            # If file doesn't exist, save as new
+            df.to_parquet(processed_file_path)
+            print(f"Created new file {filename} in {processed_dir}")
+            
+    except Exception as e:
+        print(f"Error processing file {filename}: {str(e)}")
+        raise
 
 def process_parquet_files(
     raw_path: Union[str, Path],
