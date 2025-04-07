@@ -1,0 +1,15 @@
+My parquet folder structure should be as follows:
+
+processed_data/
+  year=2025/
+    month=04/
+      volumenes_{mercado}.parquet  # April 2025 data for {mercado} --> input paramter based on download from a particular energy market 
+    month=05/
+      volumenes_{mercado}.parquet  # May 2025 data "" ""
+
+
+The function that processes parquets should take a df as input, and the month as input to calssify the parquet in a particular folñder. 
+
+Parquets can be volumenes, precios, or ingresos a the moment.   
+
+We are gonna process from a raw parquet folder where we will dump all dfs as csvs. 
