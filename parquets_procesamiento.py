@@ -110,7 +110,7 @@ def process_parquet_files(
     remove: bool = False
 ) -> list[Path]:
     """
-    Processes all parquet files in a directory and organizes them according to the specified structure.
+    Processes all csv files in the raw directory and saves them as parquet files in the processed directory.
     
     Args:
         raw_path (Union[str, Path]): Directory containing csv files to process
