@@ -8,44 +8,8 @@ import pretty_errors
 class TransformadorESIOS:
     def __init__(self):
         self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
-        self.indicator_id_map, self.market_id_map = self.get_market_id_mapping() #returns a tuple of two dictionaries
         self.indicators_to_filter_by_country = [600,612,613,614,615,616,617,618,1782]
         
-
-    def get_market_id_mapping(self) -> dict[str, str]:
-        """
-        Obtiene el mapping de los IDs de los mercados de ESIOS.
-        Returns:
-            dict: 1. indicator_id_map: Un diccionario con los nombres de los mercados y sus respectivos IDs de ESIOS.
-                        i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
-                  2. market_id_map: Un diccionario con los IDs de los mercados de ESIOS y sus IDs de mercado en la BBDD.
-                        i.e {600: 1, 612: 2, 613: 3, 614: 4}
-        """
-        #get all market ids with indicator_esios_precios != 0
-        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
-                                               where_clause='indicador_esios_precios != 0')
-        
-        #get idnicator map with mercado as key and indicator as value i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
-        indicator_map = dict(zip(df_mercados['mercado'], df_mercados['indicador']))
-        market_id_map = dict(zip(df_mercados['indicador'], df_mercados['id']))
-
-        
-        #convert indicator value to str to avoid type errors
-        indicator_id_map = {str(key): str(value) for key, value in indicator_map.items()}
-        market_id_map = {str(key): str(value) for key, value in market_id_map.items()}
-
-        return indicator_id_map, market_id_map
-    
-    def get_indicator_id(self, mercado: str):
-        """
-        Obtiene el ID del indicador de ESIOS para un mercado específico.
-
-        Args:
-            indicator_id (int): El ID del indicador de ESIOS."""
-        try: 
-            return self.indicator_id_map[mercado]
-        except KeyError:
-            raise ValueError(f"Mercado no encontrado en el mapping: {mercado}")
 
     def transform_price_data(self, data: dict) -> pd.DataFrame:
         

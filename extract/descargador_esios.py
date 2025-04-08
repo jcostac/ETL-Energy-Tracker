@@ -21,8 +21,55 @@ class DescargadorESIOS:
     def __init__(self):
         self.esios_token = os.getenv('ESIOS_TOKEN')
         self.download_window = 93
+        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        self.indicator_id_map, self.market_id_map = self.get_market_id_mapping() #returns a tuple of two dictionaries
         self.madrid_tz = pytz.timezone('Europe/Madrid')
 
+    def get_market_id_mapping(self) -> tuple[dict[str, str], dict[str, str]]:
+        """
+        Obtiene el mapping de los IDs de los mercados de ESIOS.
+        Returns:
+            dict: 1. indicator_id_map: Un diccionario con los nombres de los mercados y sus respectivos IDs de ESIOS.
+                        i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
+                  2. market_id_map: Un diccionario con los IDs de los mercados de ESIOS y sus IDs de mercado en la BBDD.
+                        i.e {600: 1, 612: 2, 613: 3, 614: 4}
+        """
+    
+        #get all market ids with indicator_esios_precios != 0
+        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
+                                            where_clause='indicador_esios_precios != 0')
+      
+        
+        #get idnicator map with mercado as key and indicator as value i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
+        indicator_map = dict(zip(df_mercados['mercado'], df_mercados['indicador']))
+        market_id_map = dict(zip(df_mercados['indicador'], df_mercados['id']))
+
+        
+        #convert indicator value to str to avoid type errors
+        indicator_id_map = {str(key): str(value) for key, value in indicator_map.items()}
+        market_id_map = {str(key): str(value) for key, value in market_id_map.items()}
+
+        return indicator_id_map, market_id_map
+    
+    def get_indicator_id(self, mercado: str) -> str:
+        """
+        Obtiene el ID del indicador de ESIOS para un mercado específico.
+
+        Args:
+            indicator_id (int): El ID del indicador de ESIOS.
+            
+        Returns:
+            str: El ID del indicador de ESIOS para el mercado especificado.
+
+        Raises:
+            ValueError: Si el mercado no se encuentra en el mapping.
+        """
+
+        try: 
+            return self.indicator_id_map[mercado]
+        except KeyError:
+            raise ValueError(f"Mercado no encontrado en el mapping: {mercado}")
+        
     def get_esios_data(self, indicator_id: str, fecha_inicio_carga: str = None, fecha_fin_carga: str = None):
         """
         Descarga los datos de ESIOS para un indicador específico en un rango de fechas.
@@ -57,8 +104,8 @@ class DescargadorESIOS:
                     # Map each hour to its corresponding 15-min format
                     minute_map = {0: '00', 1: '15', 2: '30', 3: '45'}
                     change_date_data['hora'] = change_date_data.apply(
-                        lambda row: f"{int(row['hora']):02d}:{minute_map[row.name % 4]}", 
-                        axis=1
+                        lambda row: f"{int(row['hora']):02d}:{minute_map[row.name % 4]}:00", 
+                        axis=1 #change data to format 00:00:00, 00:15:00, 00:30:00, 00:45:00
                     )
                     
                     # Remove change date from before DataFrame and append modified change date data
@@ -88,7 +135,7 @@ class DescargadorESIOS:
         # For markets without granularity changes, use original logic
         return self._make_esios_request(indicator_id, fecha_inicio_carga, fecha_fin_carga)
 
-    def _make_esios_request(self, indicator_id: str, fecha_inicio_carga: str, fecha_fin_carga: str) -> dict:
+    def _make_esios_request(self, indicator_id: str, fecha_inicio_carga: str, fecha_fin_carga: str) -> pd.DataFrame:
         """
         Internal method that handles the actual API call and data processing.
 
@@ -107,11 +154,15 @@ class DescargadorESIOS:
 
         #check if fecha inicio < fecha fin, and if time range is valid
         if fecha_inicio_carga and fecha_fin_carga:
-            if fecha_inicio_carga > fecha_fin_carga:
+            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
+            fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+
+            #if fecha inicio > fecha fin, raise error
+            if fecha_inicio_carga_dt > fecha_fin_carga_dt:
                 raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
             
             #if there are more than 93 days between fecha inicio y fecha fin, raise error
-            elif (fecha_fin_carga - fecha_inicio_carga).days > self.download_window: #93 days is the max allowed or ESIOS can return errors
+            elif (fecha_fin_carga_dt - fecha_inicio_carga_dt).days > self.download_window: #93 days is the max allowed or ESIOS can return errors
                 raise ValueError("El rango de fechas no puede ser mayor que tres meses")
 
             #if fecha inicio y fecha fin are valid, print message
@@ -119,11 +170,15 @@ class DescargadorESIOS:
                 print(f"Descargando datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
 
         #if no fecha inicio y fecha fin, set default values
-        elif fecha_inicio_carga and fecha_fin_carga == None:
+        elif fecha_inicio_carga is None and fecha_fin_carga is None:
+
+            #get datetitme range for 93 days ago to 92 days from now
             fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window) # 93 days ago
-            fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') #string format
             fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window) + timedelta(days=1) # 92 days from now
-            fecha_fin_carga = fecha_fin_carga_dt.strftime('%Y-%m-%d') #string format
+            
+            #convert to string format
+            fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') 
+            fecha_fin_carga = fecha_fin_carga_dt.strftime('%Y-%m-%d')
             print(f"No se han proporcionado fechas de carga, se descargarán datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
 
         else:
@@ -183,7 +238,9 @@ class DescargadorESIOS:
                 return {} #return empty dict if data structure is invalid
             
             #return dict data if no errors
-            return data
+            #convert data to dataframe
+            df_data = pd.DataFrame(data)
+            return df_data
 
         except requests.exceptions.ConnectTimeout:
             raise ConnectionError(f"Tiempo de conexión agotado al intentar conectar con la API de ESIOS. Verifique su conexión a Internet.")
@@ -804,7 +861,7 @@ class RR(DescargadorESIOS):
 
 def test_usage_download():
     diario = Diario()
-    diario_data = diario._make_esios_request(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
+    diario_data = diario.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
     print(diario_data)
     breakpoint()
 
@@ -813,6 +870,7 @@ def test_usage_download():
     intra_data = intra.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16', intra_lst=[1,2,3,4,5,6,7])
     print(intra_data)
     breakpoint()
+
 
     sec = Secundaria()
     #downloading data for both secondary markets between regulatory change
@@ -931,6 +989,6 @@ def main():
     
 if __name__ == "__main__":
     #main()
-    #test_usage_download()
-    test_usage_save()
+    test_usage_download()
+    #test_usage_save()
 
