@@ -555,174 +555,6 @@ def DateUtilsETL_example_usage():
     - Spring forward (March): 01:59:59 -> 03:00:00 (2:00 doesn't exist)
     - Fall back (October): 02:59:59 -> 02:00:00 (2:00-2:59 exists twice)
     """
-    # Create a sample DataFrame with regular datetimes
-    regular_df = pd.DataFrame({
-        'naive': ["2024-02-15 12:00:00"],  # Normal datetime
-        'local': ["2024-02-15T12:00:00.000+01:00"],  # Local time with offset
-        'utc': ["2024-02-15T11:00:00Z"]  # UTC time
-    })
-    
-    # Create a DataFrame with DST transition examples
-    dst_df_naive = pd.DataFrame({
-        # Spring forward - 2:00 doesn't exist (clock jumps from 1:59 to 3:00)
-        'spring_dst': [
-            # Before spring transition (15-min intervals)
-            "2024-03-31 01:30:00",
-            "2024-03-31 01:45:00",
-            # Non-existent time during spring transition
-            "2024-03-31 02:00:00",
-            "2024-03-31 02:15:00",
-            "2024-03-31 02:30:00",
-            "2024-03-31 02:45:00",
-            # After spring transition (15-min intervals)
-            "2024-03-31 03:00:00",
-            "2024-03-31 03:15:00",
-            # Additional times to match fall_dst length
-            "2024-03-31 03:30:00",
-            "2024-03-31 03:45:00",
-            "2024-03-31 04:00:00",
-            "2024-03-31 04:15:00"
-        ],
-        # Fall back - 2:00 exists twice (clock repeats 2:00-2:59)
-        'fall_dst': [
-            # Before fall transition (15-min intervals)
-            "2024-10-27 01:30:00",
-            "2024-10-27 01:45:00",
-            # First occurrence of 2:00-2:59 (15-min intervals)
-            "2024-10-27 02:00:00",
-            "2024-10-27 02:15:00",
-            "2024-10-27 02:30:00",
-            "2024-10-27 02:45:00",
-            # Second occurrence of 2:00-2:59 (15-min intervals)
-            "2024-10-27 02:00:00",  # Ambiguous time
-            "2024-10-27 02:15:00",  # Ambiguous time
-            "2024-10-27 02:30:00",  # Ambiguous time
-            "2024-10-27 02:45:00",  # Ambiguous time
-            # After fall transition (15-min intervals)
-            "2024-10-27 03:00:00",
-            "2024-10-27 03:15:00"
-                            ]
-    })
-    
-    # Create a DataFrame with DST transition examples with timezone information
-    dst_df_local = pd.DataFrame({
-        # Spring forward transition with timezone information
-        'spring_dst': [
-            # Before spring transition (15-min intervals)
-            "2024-03-31T01:30:00+01:00",
-            "2024-03-31T01:45:00+01:00",
-            # After spring transition (15-min intervals) - note the timezone change to +02:00
-            "2024-03-31T03:00:00+02:00",
-            "2024-03-31T03:15:00+02:00",
-            "2024-03-31T03:30:00+02:00",
-            "2024-03-31T03:45:00+02:00",
-            "2024-03-31T04:00:00+02:00",
-            "2024-03-31T04:15:00+02:00",
-            # Additional times to match fall_dst length
-            "2024-03-31T04:30:00+02:00",
-            "2024-03-31T04:45:00+02:00",
-            "2024-03-31T05:00:00+02:00",
-            "2024-03-31T05:15:00+02:00"
-        ],
-        # Fall back transition with timezone information
-        'fall_dst': [
-            # Before fall transition (15-min intervals)
-            "2024-10-27T01:30:00+02:00",
-            "2024-10-27T01:45:00+02:00",
-            # First occurrence of 2:00-2:59 (15-min intervals) - still on summer time
-            "2024-10-27T02:00:00+02:00",
-            "2024-10-27T02:15:00+02:00",
-            "2024-10-27T02:30:00+02:00",
-            "2024-10-27T02:45:00+02:00",
-            # Second occurrence of 2:00-2:59 (15-min intervals) - now on standard time
-            "2024-10-27T02:00:00+01:00",
-            "2024-10-27T02:15:00+01:00",
-            "2024-10-27T02:30:00+01:00",
-            "2024-10-27T02:45:00+01:00",
-            # After fall transition (15-min intervals)
-            "2024-10-27T03:00:00+01:00",
-            "2024-10-27T03:15:00+01:00"
-        ]
-    })
-    
-    print("\n===== DST Transition Handling Naive =====")
-    
-    # Handle spring transition for naive to local conversion
-    print("\nHandling spring DST transition (2:00 AM doesn't exist) - naive to LOCAL:")
-    try:
-        result_df_1= DateUtilsETL.convert_naive_to_local_v2(dst_df_naive['spring_dst'], 'Europe/Madrid')
-        print("Success! Converted to:")
-        print(result_df_1)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    
-    # Handle spring transition for local to naive conversion
-    print("\nHandling spring DST transition (2:00 AM doesn't exist) - local to NAIVE:")
-    try:
-        result_df_2 = DateUtilsETL.convert_local_to_naive(result_df_1['datetime'])
-        print("Success! Converted to:")
-        print(result_df_2)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    
-    # Handle fall transition for naive to local conversion
-    print("\nHandling fall DST transition (2-3 AM exists twice) - naive to local :")
-    try:
-        result_df_1 = DateUtilsETL.convert_naive_to_local_v2(dst_df_naive['fall_dst'], 'Europe/Madrid')
-        print("Success! Converted to:")
-        print(result_df_1)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    
-    # Handle fall transition for local to naive conversion
-    print("\nHandling fall DST transition (2-3 AM exists twice) - local to NAIVE:")
-    try:
-        result_df_2 = DateUtilsETL.convert_local_to_naive(result_df_1['datetime'])
-        print("Success! Converted to:")
-        print(result_df_2)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-
-
-
-    print("\n===== DST Transition Handling Local =====")
-
-    # Handle spring transition for local to UTC conversion
-    print("\nHandling spring DST transition (2:00 AM doesn't exist) - local to UTC:")
-    try:
-        result_df_1 = DateUtilsETL.convert_local_to_utc(dst_df_local['spring_dst'])
-        print("Success! Converted to:")
-        print(result_df_1)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    
-    # Handle spring transition for local to naive conversion
-    print("\nHandling spring DST transition (2:00 AM doesn't exist) - local to naive:")
-    try:
-        result_df_2 = DateUtilsETL.convert_local_to_naive(result_df_1['datetime'])
-        print("Success! Converted to:")
-        print(result_df_2)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-    
-    # Handle fall transition for local to UTC conversion
-    print("\nHandling fall DST transition (2-3 AM exists twice) - local to UTC:")
-    try:
-        result_df_1 = DateUtilsETL.convert_local_to_utc(dst_df_local['fall_dst'])
-        print("Success! Converted to:")
-        print(result_df_1)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-
-    # Handle fall transition for local to naive conversion
-    print("\nHandling fall DST transition (2-3 AM exists twice) - local to naive:")
-    try:
-        result_df_2 = DateUtilsETL.convert_local_to_naive(result_df_1['datetime'])
-        print("Success! Converted to:")
-        print(result_df_2)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-
 
     print("\n===== Naive DateTime Conversion Tests =====")# Example usage
     naive_series = pd.Series([
@@ -742,6 +574,17 @@ def DateUtilsETL_example_usage():
     print("\nLocal to Naive Conversion:")
     print(result)
 
+    result_local= DateUtilsETL.convert_naive_to_local(result['datetime'], 'Europe/Madrid')
+    result_utc= DateUtilsETL.convert_local_to_utc(result_local['datetime'])
+    print("\nNaive to Local to UTC Conversion:")
+    print(result_utc)
+
+    result_utc= DateUtilsETL.convert_utc_to_local(result_utc['datetime'], 'Europe/Madrid')
+    result_naive= DateUtilsETL.convert_local_to_naive(result_utc['datetime'])
+    print("\nUTC to Local to Naive Conversion:")
+    print(result_naive)
+    
+    
 
 if __name__ == "__main__":
     #TimeUtils_example_usage() 
