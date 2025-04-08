@@ -124,7 +124,6 @@ class DescargadorESIOS:
                 
                 if dfs:
                     final_df = pd.concat(dfs, ignore_index=True)
-                    final_df.sort_values(['fecha', 'hora'], inplace=True)
                     return final_df
                 
                 return pd.DataFrame()
@@ -210,7 +209,7 @@ class DescargadorESIOS:
             print(f"Realizando solicitud API para indicador {indicator_id} desde {fecha_inicio_carga} hasta {fecha_fin_carga}")
             
             # Request timeout handling (10 seconds connection, 30 seconds read)
-            response = requests.get(url, headers=headers, params=params, timeout=(10, 30))
+            response = requests.get(url, headers=headers, params=params, timeout=(20, 40))
             
             # Check HTTP status code
             if response.status_code != 200:
@@ -237,9 +236,9 @@ class DescargadorESIOS:
             if not self.validate_data_structure(data):
                 return {} #return empty dict if data structure is invalid
             
-            #return dict data if no errors
-            #convert data to dataframe
-            df_data = pd.DataFrame(data)
+            #if no errors, procesamos los datos de interés en un dataframe que se ecnuentran en el key values
+            df_data = pd.DataFrame(data['indicator']['values'])
+            
             return df_data
 
         except requests.exceptions.ConnectTimeout:
@@ -532,7 +531,6 @@ class Intra(DescargadorESIOS):
         # Combine all DataFrames
         if dfs:
             final_df = pd.concat(dfs, ignore_index=True)
-            final_df.sort_values(['fecha', 'hora', 'id_mercado'], inplace=True)
             return final_df
         else:
             return pd.DataFrame()
@@ -639,7 +637,6 @@ class Secundaria(DescargadorESIOS):
         # Combine all DataFrames
         if dfs:
             final_df = pd.concat(dfs, ignore_index=True)
-            final_df.sort_values(['fecha', 'hora', 'id_mercado'], inplace=True)
             return final_df
         else:
             return pd.DataFrame()
@@ -784,7 +781,6 @@ class Terciaria(DescargadorESIOS):
         # Combine all DataFrames
         if dfs:
             final_df = pd.concat(dfs, ignore_index=True)
-            final_df.sort_values(['fecha', 'hora', 'id_mercado'], inplace=True)
             return final_df
         else:
             return pd.DataFrame()
@@ -863,32 +859,27 @@ def test_usage_download():
     diario = Diario()
     diario_data = diario.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
     print(diario_data)
-    breakpoint()
 
     intra = Intra() 
     #downloading data for all intras between regulatory change (intra reduction) 
     intra_data = intra.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16', intra_lst=[1,2,3,4,5,6,7])
     print(intra_data)
-    breakpoint()
 
 
     sec = Secundaria()
     #downloading data for both secondary markets between regulatory change
     sec_data = sec.get_prices(fecha_inicio_carga='2024-11-18', fecha_fin_carga='2024-11-22', secundaria_lst=[1,2])
     print(sec_data)
-    breakpoint()
 
     ter = Terciaria()
     #downloading data for all terciarias between regulatory change (precio unificado terciaria)
     ter_data = ter.get_prices(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-22', terciaria_lst=[1,2,3,4,5])
     print(ter_data)
-    breakpoint()
 
     rr = RR()
     #downloading data for all rr (precio unico rr)
     rr_data = rr.get_rr_data(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-22')
     print(rr_data)
-    breakpoint()
 
 def test_usage_save():
     diario = Diario()

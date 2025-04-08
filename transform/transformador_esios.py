@@ -7,10 +7,8 @@ import pretty_errors
 
 class TransformadorESIOS:
     def __init__(self):
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
         self.indicators_to_filter_by_country = [600,612,613,614,615,616,617,618,1782]
         
-
     def transform_price_data(self, data: dict) -> pd.DataFrame:
         
         #extract granularity from json data -> can be "Quince minutos" or "Hora"
