@@ -1,63 +1,27 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import sys
 import os
 import pretty_errors
 from dotenv import load_dotenv
 load_dotenv()
-
-# Add the project root to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-
+import pytz
+from pathlib import Path
+# Get the absolute path to the project root directory
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
-from utilidades.etl_date_utils import OldTimeUtils, TimeUtils
+
 
 class DescargadorESIOS:
 
     def __init__(self):
         self.esios_token = os.getenv('ESIOS_TOKEN')
         self.download_window = 93
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
-        self.indicator_id_map, self.market_id_map = self.get_market_id_mapping()
-        self.indicators_to_filter_by_country = [600,612,613,614,615,616,617,618,1782]
-
-    def get_market_id_mapping(self) -> dict[str, str]:
-        """
-        Obtiene el mapping de los IDs de los mercados de ESIOS.
-        Returns:
-            dict: 1. indicator_id_map: Un diccionario con los nombres de los mercados y sus respectivos IDs de ESIOS.
-                        i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
-                  2. market_id_map: Un diccionario con los IDs de los mercados de ESIOS y sus IDs de mercado en la BBDD.
-                        i.e {600: 1, 612: 2, 613: 3, 614: 4}
-        """
-        #get all market ids with indicator_esios_precios != 0
-        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
-                                               where_clause='indicador_esios_precios != 0')
-        
-        #get idnicator map with mercado as key and indicator as value i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
-        indicator_map = dict(zip(df_mercados['mercado'], df_mercados['indicador']))
-        market_id_map = dict(zip(df_mercados['indicador'], df_mercados['id']))
-
-        
-        #convert indicator value to str to avoid type errors
-        indicator_id_map = {str(key): str(value) for key, value in indicator_map.items()}
-        market_id_map = {str(key): str(value) for key, value in market_id_map.items()}
-
-        return indicator_id_map, market_id_map
-    
-    def get_indicator_id(self, mercado: str):
-        """
-        Obtiene el ID del indicador de ESIOS para un mercado específico.
-
-        Args:
-            indicator_id (int): El ID del indicador de ESIOS."""
-        try: 
-            return self.indicator_id_map[mercado]
-        except KeyError:
-            raise ValueError(f"Mercado no encontrado en el mapping: {mercado}")
+        self.madrid_tz = pytz.timezone('Europe/Madrid')
 
     def get_esios_data(self, indicator_id: str, fecha_inicio_carga: str = None, fecha_fin_carga: str = None):
         """
@@ -124,7 +88,7 @@ class DescargadorESIOS:
         # For markets without granularity changes, use original logic
         return self._make_esios_request(indicator_id, fecha_inicio_carga, fecha_fin_carga)
 
-    def _make_esios_request(self, indicator_id: str, fecha_inicio_carga: str, fecha_fin_carga: str) -> pd.DataFrame:
+    def _make_esios_request(self, indicator_id: str, fecha_inicio_carga: str, fecha_fin_carga: str) -> dict:
         """
         Internal method that handles the actual API call and data processing.
 
@@ -141,13 +105,21 @@ class DescargadorESIOS:
             Exception: If there is an error during the API call or data processing.
         """
 
-        #check if fecha inicio < fecha fin 
+        #check if fecha inicio < fecha fin, and if time range is valid
         if fecha_inicio_carga and fecha_fin_carga:
             if fecha_inicio_carga > fecha_fin_carga:
                 raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
+            
+            #if there are more than 93 days between fecha inicio y fecha fin, raise error
+            elif (fecha_fin_carga - fecha_inicio_carga).days > self.download_window: #93 days is the max allowed or ESIOS can return errors
+                raise ValueError("El rango de fechas no puede ser mayor que tres meses")
 
+            #if fecha inicio y fecha fin are valid, print message
+            else:
+                print(f"Descargando datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
 
-        if fecha_inicio_carga is None and fecha_fin_carga is None:
+        #if no fecha inicio y fecha fin, set default values
+        elif fecha_inicio_carga and fecha_fin_carga == None:
             fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window) # 93 days ago
             fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') #string format
             fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window) + timedelta(days=1) # 92 days from now
@@ -155,89 +127,101 @@ class DescargadorESIOS:
             print(f"No se han proporcionado fechas de carga, se descargarán datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
 
         else:
-            #convert sttring to datetime
-            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-            fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+            raise ValueError("No se han proporcionado fechas de carga completas")
         
 
-        filtered_transition_dates = TimeUtils.get_transition_dates(fecha_inicio_carga_dt, fecha_fin_carga_dt)
+        # Convert string dates to Madrid local datetime
+        start_local = self.madrid_tz.localize(datetime.strptime(fecha_inicio_carga, '%Y-%m-%d'))
+        # For end date, we want the end of the day
+        end_local = self.madrid_tz.localize(datetime.strptime(fecha_fin_carga, '%Y-%m-%d'))
+
+        # Convert to UTC for API request
+        start_utc = start_local.astimezone(pytz.UTC)
+        end_utc = end_local.astimezone(pytz.UTC)
 
         try:
             # Download ESIOS data for each market of interest
             url = f"http://api.esios.ree.es/indicators/{indicator_id}"
             params = {
-                'start_date': f"{fecha_inicio_carga}T21:00:00Z",
-                'end_date': f"{fecha_fin_carga}T23:00:00Z"
+                'start_date': start_utc.strftime('%Y-%m-%dT%H:%M:%SZ'), #convert to string format in UTC
+                'end_date': end_utc.strftime('%Y-%m-%dT%H:%M:%SZ') #convert to string format in UTC
             }
             headers = {
                 'x-api-key': self.esios_token,
                 'Authorization': f'Token token={self.esios_token}'
             }
-            response = requests.get(url, headers=headers, params=params)
-            data = response.json()
+            
+            # Log request information
+            print(f"Realizando solicitud API para indicador {indicator_id} desde {fecha_inicio_carga} hasta {fecha_fin_carga}")
+            
+            # Request timeout handling (10 seconds connection, 30 seconds read)
+            response = requests.get(url, headers=headers, params=params, timeout=(10, 30))
+            
+            # Check HTTP status code
+            if response.status_code != 200:
+                if response.status_code == 401:
+                    raise ValueError(f"Error de autenticación (401): Token ESIOS no válido o expirado")
+                elif response.status_code == 403:
+                    raise ValueError(f"Error de permisos (403): No tiene acceso al indicador {indicator_id}")
+                elif response.status_code == 404:
+                    raise ValueError(f"Indicador no encontrado (404): El indicador {indicator_id} no existe en ESIOS")
+                elif response.status_code == 429:
+                    raise ValueError(f"Demasiadas solicitudes (429): Se ha excedido el límite de solicitudes a la API de ESIOS")
+                elif 500 <= response.status_code < 600:
+                    raise ConnectionError(f"Error del servidor ESIOS ({response.status_code}): Intente nuevamente más tarde")
+                else:
+                    raise ValueError(f"Error HTTP {response.status_code}: {response.text}")
+            
+            # Try to parse JSON response
+            try:
+                data = response.json()
+            except ValueError as e:
+                raise ValueError(f"Error al parsear la respuesta JSON: {e}. Contenido: {response.text[:200]}...")
+            
+            #validate data structure
+            if not self.validate_data_structure(data):
+                return {} #return empty dict if data structure is invalid
+            
+            #return dict data if no errors
+            return data
 
-
-
+        except requests.exceptions.ConnectTimeout:
+            raise ConnectionError(f"Tiempo de conexión agotado al intentar conectar con la API de ESIOS. Verifique su conexión a Internet.")
+        except requests.exceptions.ReadTimeout:
+            raise ConnectionError(f"Tiempo de espera agotado al leer datos de la API de ESIOS. El servidor puede estar sobrecargado.")
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError(f"Error de conexión con la API de ESIOS: {e}. Verifique su conexión a Internet.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Error en la solicitud HTTP a la API de ESIOS: {e}")
         except Exception as e:
-            raise Exception(f"Error al descargar los datos de ESIOS para el indicador {indicator_id}: {e}")
+            raise Exception(f"Error inesperado al descargar los datos de ESIOS para el indicador {indicator_id}: {e}")
 
-
-        #extract granularity from json data -> can be "Quince minutos" or "Hora"
-        granularity = data["indicator"]["tiempo"][0]["name"]
-
-        #Procesamos los datos de interés en un dataframe que se ecnuentran en el key values
-        df_data = pd.DataFrame(data['indicator']['values'])
-
-        if len(df_data)>0: #si no tenemos un df vacío
-
-            if int(indicator_id) in self.indicators_to_filter_by_country:
-                #filter by country if applicable
-                df_data = df_data[df_data['geo_id'] == 3].reset_index() #geo id 3 is Spain
-            
-            # FECHA COLUMN PROCESSING
-            # Extremos la fecha de la columna datetime ie. from 2025-03-25T21:00:00Z to 2025-03-25
-            df_data['fecha'] = df_data.apply(lambda row: datetime.strptime(row['datetime'][:10],'%Y-%m-%d').date(), axis=1)
-
-
-            # HORA COLUMN PROCESSING
-            #extraemos la zona horaria de la columna datetime ie. from "datetime": "2025-03-24T06:00:00.000+01:00" to 1
-            df_data['zona_horaria'] = df_data.apply(lambda row: int(row['datetime'][-4]), axis=1)
-
-            #Procesamos la hora para dejarla en el formato de la BBDD y aplicamos los cambios necesarios para los dias de 23 y 25 horas
-            if granularity == "Quince minutos":
-                # Extract hour and minute from datetime, keeping the HH:MM format
-                df_data['hora_real'] = df_data.apply(lambda row: row['datetime'][11:16], axis=1)
-                # creamos la columna hora con el formato de la BBDD y aplicamos los cambios necesarios para los dias de 23 y 25 horas
-                df_data["hora"] = df_data.apply(TimeUtils.ajuste_quinceminutal_ESIOS, axis=1, special_dates=filtered_transition_dates)
-                
-            elif granularity == "Hora":
-                # Extraemos la hora de la columna datetime ie. from "datetime": "2025-03-24T06:00:00.000+01:00" to 6
-                df_data['hora_real'] = df_data.apply(lambda row: int(row['datetime'][11:13])+1, axis=1)
-                # creamos la columna hora con el formato de la BBDD y aplicamos los cambios necesarios para los dias de 23 y 25 horas
-                df_data["hora"] = df_data.apply(TimeUtils.ajuste_horario_ESIOS, axis=1, special_dates=filtered_transition_dates)
-            
-            else:
-                raise ValueError(f"Granularity not supported. Current granularity: {granularity}")
+    def validate_data_structure(self, data: dict) -> bool:
+        """
+        Validate the structure of the data returned by the ESIOS API.
         
+        Args:
+            data (dict): The data returned from the ESIOS API.
 
-            # MISCELLANEOUS COLUMN PROCESSING
-            #rename value to precio and select columns of interest
-            df_data.rename(columns={'value': 'precio'}, inplace=True)
-            # Select and reorder columns
-            df_data = df_data[['fecha', 'hora', 'precio', 'geo_id', 'zona_horaria']]
-            #add id_mercado to dataframe 
-            df_data['id_mercado'] = self.market_id_map[indicator_id] #ie. if diario -> indicador esiso is 600 -> then id_mercado is 1
-          
+        Returns:
+            bool: True if the data structure is valid, raises ValueError otherwise.
+        """
+        try:
+            # Check if data has the expected structure
+            if 'indicator' not in data or 'values' not in data['indicator']:
+                raise ValueError(f"Formato de respuesta inesperado: {data.keys()}")
+
+            # Check if values list is empty
+            if not data['indicator']['values']:
+                raise ValueError(f"No se encontraron datos para el indicador {self.indicator_id} en el período solicitado")
             
-            #FINAL PROCESSING
-            df_data['fecha'] = pd.to_datetime(df_data['fecha'])
-            df_data = df_data[['fecha', 'hora', 'precio', 'id_mercado']]
-            df_data.sort_values(by=['fecha', 'hora'], inplace=True)
-            df_data = df_data[df_data['fecha'] > pd.to_datetime(fecha_inicio_carga)]
-            df_data = df_data[df_data['fecha'] <= pd.to_datetime(fecha_fin_carga)]
-
-        return df_data
-
+        except Exception as e:
+            raise ValueError(f"Error al validar la estructura de los datos: {e}")
+        
+        
+        # Return True if all checks pass
+        return True
+    
     def save_data(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
         """
         Saves data to the database, handling granularity changes if applicable.
@@ -820,7 +804,7 @@ class RR(DescargadorESIOS):
 
 def test_usage_download():
     diario = Diario()
-    diario_data = diario.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
+    diario_data = diario._make_esios_request(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
     print(diario_data)
     breakpoint()
 
@@ -829,6 +813,7 @@ def test_usage_download():
     intra_data = intra.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16', intra_lst=[1,2,3,4,5,6,7])
     print(intra_data)
     breakpoint()
+
     sec = Secundaria()
     #downloading data for both secondary markets between regulatory change
     sec_data = sec.get_prices(fecha_inicio_carga='2024-11-18', fecha_fin_carga='2024-11-22', secundaria_lst=[1,2])

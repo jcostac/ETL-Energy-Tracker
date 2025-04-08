@@ -1,6 +1,6 @@
-""" Contains deprecated TimeUtils class and methods and
+""" Contains deprecated TimeUtils class/methods and
 current implementation of uitlity datetime conversion methods 
-used in ETL pipeline (DateUtilsETL)"""
+used in ETL pipeline (DateUtilsETL class)"""
 
 __all__ = ['TimeUtils', "DateUtilsETL"] #Export the class
 
@@ -8,6 +8,8 @@ import pandas as pd
 import pytz
 from datetime import datetime
 from typing import Dict, Union, Tuple
+import pretty_errors
+from datetime import timedelta, timezone
 
 
 class TimeUtils:
@@ -317,17 +319,16 @@ class DateUtilsETL:
         if dt_local_series.empty:
             raise ValueError("Datetime column is empty.")
         
-        # Convert the series to datetime
+        # Always convert to datetime with UTC timezone
         dt_utc_converted = pd.to_datetime(dt_local_series, utc=True)
 
         # Get the local timezone from the datetime object
-        local_timezone = dt_utc_converted.tzname()
-    
+        local_timezone = dt_utc_converted.dt.tz.zone
         
         # Create a new DataFrame with the datetime column and timezone column
         result_df = pd.DataFrame({
             'datetime': dt_utc_converted,
-            'local_timezone': local_timezone  # Add timezone column with 'UTC' value
+            'timezone': local_timezone
         })
         
         return result_df
@@ -336,6 +337,7 @@ class DateUtilsETL:
     def convert_utc_to_local(dt_utc_series: pd.Series, tz_name: str) -> pd.DataFrame:
         """
         Converts a UTC datetime object to a local datetime object and adds a corresponding timezone column.
+        Handles potential timezone conversion errors with proper exception handling.
 
         Args:
             dt_utc_series (pd.Series): A Series (single column) containing UTC datetime strings.
@@ -343,7 +345,7 @@ class DateUtilsETL:
 
         Returns:
             pd.DataFrame: A DataFrame with datetime objects converted from the UTC date strings
-                         and a corresponding timezone column.
+                         to the local timezone.
         """
         # Ensure the input is a Series
         if not isinstance(dt_utc_series, pd.Series):
@@ -353,10 +355,13 @@ class DateUtilsETL:
         if dt_utc_series.empty:
             raise ValueError("Datetime column is empty.")
         
-        # Convert the series to datetime
-        dt_local_converted = pd.to_datetime(dt_utc_series, tz=tz_name)
+        # Always convert to datetime with UTC timezone, then convert to target timezone
+        try:
+            dt_local_converted = pd.to_datetime(dt_utc_series, utc=True).dt.tz_convert(tz_name)
+        except Exception as e:
+            raise ValueError(f"Error converting UTC to local timezone: {str(e)}")
 
-        # Create a new DataFrame with the datetime column and timezone column   
+        # Create a new DataFrame with the datetime column
         result_df = pd.DataFrame({
             'datetime': dt_local_converted,
         })
@@ -364,71 +369,40 @@ class DateUtilsETL:
         return result_df
     
     @staticmethod
-    def convet_naive_to_utc(dt_naive: datetime, tz_name: str) -> pd.DataFrame:
+    def convert_local_to_naive(dt_local_series: pd.Series) -> pd.DataFrame:
         """
-        Converts a naive datetime object to a UTC datetime object.
-
-        Args:
-            dt_naive (datetime): A naive datetime object.
-            tz_name (str): The name of the timezone to convert to.
-
-        Returns:
-            pd.DataFrame: A DataFrame with datetime objects converted from the UTC date strings
-                         and a corresponding timezone column.
-        """
-        # Ensure the input is a datetime object
-        if not isinstance(dt_naive, datetime):
-            naive_dt = pd.to_datetime(dt_naive)
-
-        # Get the timezone object
-        local_tz = pytz.timezone(tz_name)
-
-        # Localize the naive datetime to Europe/Madrid timezone
-        local_datetime = local_tz.localize(naive_dt)
-
-        # Convert to UTC
-        utc_datetime = local_datetime.astimezone(pytz.utc)
-
-        #create a new dataframe with the datetime column
-        result_df = pd.DataFrame({
-            'datetime': utc_datetime,
-            'timezone': tz_name
-        })
-
-        return result_df
-
-    @staticmethod
-    def convert_utc_to_naive(dt_utc: pd.Series, tz_name: str) -> pd.DataFrame:
-        """
-        Converts a UTC datetime object to a naive datetime object in the specified timezone.
+        Converts a timezone-aware local datetime object to a naive datetime object.
+        Removes timezone information while preserving the local time.
         
         Args:
-            dt_utc (pd.Series): A Series containing UTC datetime objects or strings.
-            tz_name (str): The name of the timezone to convert to before removing timezone info.
+            dt_local_series (pd.Series): A Series containing timezone-aware datetime objects or strings.
             
         Returns:
-            pd.DataFrame: A DataFrame with naive datetime objects in format 'yyyy-mm-dd hh:mm:ss'
-                         converted from the UTC datetime objects.
+            pd.DataFrame: A DataFrame with naive datetime objects (without timezone information).
         """
         # Ensure the input is a Series
-        if not isinstance(dt_utc, pd.Series):
+        if not isinstance(dt_local_series, pd.Series):
             raise ValueError("Input must be a pandas Series.")
         
         # Check if the Series is empty
-        if dt_utc.empty:
+        if dt_local_series.empty:
             raise ValueError("Datetime column is empty.")
         
-        # Convert the series to datetime with UTC timezone if not already
-        dt_utc_converted = pd.to_datetime(dt_utc, utc=True)
-        
-        # Convert to the specified timezone
-        dt_local = dt_utc_converted.dt.tz_convert(tz_name)
-        
-        # Remove timezone information to create naive datetime
-        dt_naive = dt_local.dt.strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Convert back to datetime objects without timezone
-        dt_naive = pd.to_datetime(dt_naive)
+        try:
+            # Convert to datetime if not already
+            dt_local = pd.to_datetime(dt_local_series)
+            
+            # Create a Series to store naive datetime objects
+            dt_naive = pd.Series(index=dt_local.index, dtype='object')
+            
+            # Process each datetime
+            for idx, dt in dt_local.items():
+                # Convert to naive datetime by removing timezone info
+                naive_dt = dt.replace(tzinfo=None)
+                dt_naive[idx] = naive_dt
+                
+        except Exception as e:
+            raise ValueError(f"Error converting local to naive datetime: {str(e)}")
         
         # Create a new DataFrame with the naive datetime column
         result_df = pd.DataFrame({
@@ -437,6 +411,108 @@ class DateUtilsETL:
         
         return result_df
 
+    @staticmethod
+    def convert_naive_to_local(dt_naive: pd.Series, tz_name: str) -> pd.DataFrame:
+        """
+        Converts naive datetime objects to timezone-aware local datetime objects with proper DST handling.
+        Uses transition dates to determine correct UTC offset for each datetime.
+        
+        Args:
+            dt_naive (pd.Series): Series containing naive datetime objects or strings
+            tz_name (str): Target timezone name (e.g. 'Europe/Madrid')
+            
+        Returns:
+            pd.DataFrame: DataFrame with timezone-aware datetime objects in the specified timezone
+        """
+        # Input validation
+        if not isinstance(dt_naive, pd.Series):
+            raise ValueError("Input must be a pandas Series")
+        if dt_naive.empty:
+            raise ValueError("Input Series is empty")
+        
+        # Convert to datetime if not already
+        dt_series = pd.to_datetime(dt_naive)
+        
+        # Get timezone info
+        tz = pytz.timezone(tz_name)
+        
+        # Get all transition dates for the year range in the data
+        min_year = dt_series.dt.year.min()
+        max_year = dt_series.dt.year.max()
+        
+        # Create datetime objects for the full year range
+        start_date = datetime(min_year - 1, 1, 1)  # Previous year to handle edge cases
+        end_date = datetime(max_year + 1, 12, 31)  # Next year to handle edge cases
+        
+        # Get transition dates using existing method
+        transitions = TimeUtils.get_transition_dates(start_date, end_date)
+        
+        # Convert transitions dict to sorted list of (datetime, is_dst_start) tuples
+        transition_list = []
+        for date, transition_type in transitions.items():
+            # transition_type 2 = spring forward (DST start), 1 = fall back (DST end)
+            dt = datetime.combine(date, datetime.min.time())
+            if transition_type == 2:  # Spring forward
+                transition_list.append((dt.replace(hour=2), True))  # DST starts
+            else:  # Fall back
+                transition_list.append((dt.replace(hour=3), False))  # DST ends
+            
+        transition_list.sort()
+        
+        # Create result series
+        result = pd.Series(index=dt_series.index, dtype='object')
+        
+        # Process each datetime
+        for idx, dt in dt_series.items():
+            # Find the relevant transition period
+            is_dst = False
+            for transition_time, starts_dst in transition_list:
+                if dt < transition_time:
+                    break
+                is_dst = starts_dst
+            
+            # Create timezone-aware datetime
+            try:
+                # Handle spring-forward gap (2:00-3:00)
+                if is_dst and any(t[0].date() == dt.date() and t[1] for t in transition_list):
+                    if dt.hour == 2:
+                        # Shift forward to 3:00 for non-existent hour
+                        dt = dt.replace(hour=3)
+                    
+                # Handle fall-back ambiguity (2:00-3:00 occurs twice)
+                if not is_dst and any(t[0].date() == dt.date() and not t[1] for t in transition_list):
+                    if dt.hour == 2:
+                        # Use first occurrence (still on DST)
+                        is_dst = True
+                    
+                # Create aware datetime with correct UTC offset
+                if is_dst:
+                    offset = timezone(timedelta(hours=2))  # UTC+2 for DST
+                else:
+                    offset = timezone(timedelta(hours=1))  # UTC+1 for standard time
+                    
+                aware_dt = dt.replace(tzinfo=offset)
+                
+                # Convert to target timezone
+                local_dt = aware_dt.astimezone(tz)
+                result[idx] = local_dt
+                
+            except (pytz.NonExistentTimeError, pytz.AmbiguousTimeError) as e:
+                # Handle any remaining edge cases
+                try:
+                    # Try localization with nonexistent='shift_forward' as fallback
+                    naive_dt = dt.replace(tzinfo=None)
+                    local_dt = tz.localize(naive_dt, nonexistent='shift_forward', is_dst=is_dst)
+                    result[idx] = local_dt
+                except Exception as e2:
+                    raise ValueError(f"Could not convert datetime {dt}: {str(e2)}")
+                
+        # Create result DataFrame
+        result_df = pd.DataFrame({
+            'datetime': result
+        })
+        
+        return result_df
 
 def TimeUtils_example_usage():
     """Example usage of TimeUtils class"""
@@ -470,46 +546,201 @@ def TimeUtils_example_usage():
 def DateUtilsETL_example_usage():
     """Example usage of DateUtilsETL class
     
-    Creates a DataFrame with three datetime columns in different formats:
+    Creates a DataFrame with datetime examples including DST transition times:
     - naive: Original datetime string without timezone information
     - local: Datetime string with local timezone (Europe/Madrid)
     - utc: Datetime string converted to UTC timezone
+    
+    Also demonstrates handling of DST transitions for Europe/Madrid timezone:
+    - Spring forward (March): 01:59:59 -> 03:00:00 (2:00 doesn't exist)
+    - Fall back (October): 02:59:59 -> 02:00:00 (2:00-2:59 exists twice)
     """
-    # Create a sample datetime string
-    dt_naive = "2024-03-31 02:00:00"
-    dt_local = "2025-04-07T07:00:00.000+02:00"
-    dt_utc = "2025-04-07T05:00:00Z"
-    
-    # Create local timezone version
-    local_tz = pytz.timezone('Europe/Madrid')
-    dt_local = local_tz.localize(dt_naive)
-    
-    # Create UTC version
-    dt_utc = dt_local.astimezone(pytz.UTC)
-    
-    # Create DataFrame with all three versions as strings
-    example_df = pd.DataFrame({
-        'naive': [dt_naive],
-        'local': [dt_local],
-        'utc': [dt_utc]
+    # Create a sample DataFrame with regular datetimes
+    regular_df = pd.DataFrame({
+        'naive': ["2024-02-15 12:00:00"],  # Normal datetime
+        'local': ["2024-02-15T12:00:00.000+01:00"],  # Local time with offset
+        'utc': ["2024-02-15T11:00:00Z"]  # UTC time
     })
+    
+    # Create a DataFrame with DST transition examples
+    dst_df_naive = pd.DataFrame({
+        # Spring forward - 2:00 doesn't exist (clock jumps from 1:59 to 3:00)
+        'spring_dst': [
+            # Before spring transition (15-min intervals)
+            "2024-03-31 01:30:00",
+            "2024-03-31 01:45:00",
+            # Non-existent time during spring transition
+            "2024-03-31 02:00:00",
+            "2024-03-31 02:15:00",
+            "2024-03-31 02:30:00",
+            "2024-03-31 02:45:00",
+            # After spring transition (15-min intervals)
+            "2024-03-31 03:00:00",
+            "2024-03-31 03:15:00",
+            # Additional times to match fall_dst length
+            "2024-03-31 03:30:00",
+            "2024-03-31 03:45:00",
+            "2024-03-31 04:00:00",
+            "2024-03-31 04:15:00"
+        ],
+        # Fall back - 2:00 exists twice (clock repeats 2:00-2:59)
+        'fall_dst': [
+            # Before fall transition (15-min intervals)
+            "2024-10-27 01:30:00",
+            "2024-10-27 01:45:00",
+            # First occurrence of 2:00-2:59 (15-min intervals)
+            "2024-10-27 02:00:00",
+            "2024-10-27 02:15:00",
+            "2024-10-27 02:30:00",
+            "2024-10-27 02:45:00",
+            # Second occurrence of 2:00-2:59 (15-min intervals)
+            "2024-10-27 02:00:00",  # Ambiguous time
+            "2024-10-27 02:15:00",  # Ambiguous time
+            "2024-10-27 02:30:00",  # Ambiguous time
+            "2024-10-27 02:45:00",  # Ambiguous time
+            # After fall transition (15-min intervals)
+            "2024-10-27 03:00:00",
+            "2024-10-27 03:15:00"
+                            ]
+    })
+    
+    # Create a DataFrame with DST transition examples with timezone information
+    dst_df_local = pd.DataFrame({
+        # Spring forward transition with timezone information
+        'spring_dst': [
+            # Before spring transition (15-min intervals)
+            "2024-03-31T01:30:00+01:00",
+            "2024-03-31T01:45:00+01:00",
+            # After spring transition (15-min intervals) - note the timezone change to +02:00
+            "2024-03-31T03:00:00+02:00",
+            "2024-03-31T03:15:00+02:00",
+            "2024-03-31T03:30:00+02:00",
+            "2024-03-31T03:45:00+02:00",
+            "2024-03-31T04:00:00+02:00",
+            "2024-03-31T04:15:00+02:00",
+            # Additional times to match fall_dst length
+            "2024-03-31T04:30:00+02:00",
+            "2024-03-31T04:45:00+02:00",
+            "2024-03-31T05:00:00+02:00",
+            "2024-03-31T05:15:00+02:00"
+        ],
+        # Fall back transition with timezone information
+        'fall_dst': [
+            # Before fall transition (15-min intervals)
+            "2024-10-27T01:30:00+02:00",
+            "2024-10-27T01:45:00+02:00",
+            # First occurrence of 2:00-2:59 (15-min intervals) - still on summer time
+            "2024-10-27T02:00:00+02:00",
+            "2024-10-27T02:15:00+02:00",
+            "2024-10-27T02:30:00+02:00",
+            "2024-10-27T02:45:00+02:00",
+            # Second occurrence of 2:00-2:59 (15-min intervals) - now on standard time
+            "2024-10-27T02:00:00+01:00",
+            "2024-10-27T02:15:00+01:00",
+            "2024-10-27T02:30:00+01:00",
+            "2024-10-27T02:45:00+01:00",
+            # After fall transition (15-min intervals)
+            "2024-10-27T03:00:00+01:00",
+            "2024-10-27T03:15:00+01:00"
+        ]
+    })
+    
+    print("\n===== DST Transition Handling Naive =====")
+    
+    # Handle spring transition for naive to local conversion
+    print("\nHandling spring DST transition (2:00 AM doesn't exist) - naive to LOCAL:")
+    try:
+        result_df_1= DateUtilsETL.convert_naive_to_local_v2(dst_df_naive['spring_dst'], 'Europe/Madrid')
+        print("Success! Converted to:")
+        print(result_df_1)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+    
+    # Handle spring transition for local to naive conversion
+    print("\nHandling spring DST transition (2:00 AM doesn't exist) - local to NAIVE:")
+    try:
+        result_df_2 = DateUtilsETL.convert_local_to_naive(result_df_1['datetime'])
+        print("Success! Converted to:")
+        print(result_df_2)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+    
+    # Handle fall transition for naive to local conversion
+    print("\nHandling fall DST transition (2-3 AM exists twice) - naive to local :")
+    try:
+        result_df_1 = DateUtilsETL.convert_naive_to_local_v2(dst_df_naive['fall_dst'], 'Europe/Madrid')
+        print("Success! Converted to:")
+        print(result_df_1)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+    
+    # Handle fall transition for local to naive conversion
+    print("\nHandling fall DST transition (2-3 AM exists twice) - local to NAIVE:")
+    try:
+        result_df_2 = DateUtilsETL.convert_local_to_naive(result_df_1['datetime'])
+        print("Success! Converted to:")
+        print(result_df_2)
+    except Exception as e:
+        print(f"Error: {str(e)}")
 
-    # Convert naive datetime to UTC
-    result_df = DateUtilsETL.convet_naive_to_utc(dt_naive, 'Europe/Madrid')
-    print(f"Result of converting NAIVE datetime to UTC: {result_df}")
-
-    # Convert local datetime to UTC
-    result_df = DateUtilsETL.convert_local_to_utc(dt_local)
-    print(f"Result of converting LOCAL datetime to UTC: {result_df}")
-
-    # Convert UTC datetime to local
-    result_df = DateUtilsETL.convert_utc_to_local(dt_utc, 'Europe/Madrid')
-    print(f"Result of converting UTC datetime to LOCAL: {result_df}")
-
-    result_df = DateUtilsETL.convert_utc_to_naive(dt_utc, 'Europe/Madrid')
-    print(f"Result of converting UTC datetime to NAIVE: {result_df}")
 
 
+    print("\n===== DST Transition Handling Local =====")
+
+    # Handle spring transition for local to UTC conversion
+    print("\nHandling spring DST transition (2:00 AM doesn't exist) - local to UTC:")
+    try:
+        result_df_1 = DateUtilsETL.convert_local_to_utc(dst_df_local['spring_dst'])
+        print("Success! Converted to:")
+        print(result_df_1)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+    
+    # Handle spring transition for local to naive conversion
+    print("\nHandling spring DST transition (2:00 AM doesn't exist) - local to naive:")
+    try:
+        result_df_2 = DateUtilsETL.convert_local_to_naive(result_df_1['datetime'])
+        print("Success! Converted to:")
+        print(result_df_2)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+    
+    # Handle fall transition for local to UTC conversion
+    print("\nHandling fall DST transition (2-3 AM exists twice) - local to UTC:")
+    try:
+        result_df_1 = DateUtilsETL.convert_local_to_utc(dst_df_local['fall_dst'])
+        print("Success! Converted to:")
+        print(result_df_1)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+
+    # Handle fall transition for local to naive conversion
+    print("\nHandling fall DST transition (2-3 AM exists twice) - local to naive:")
+    try:
+        result_df_2 = DateUtilsETL.convert_local_to_naive(result_df_1['datetime'])
+        print("Success! Converted to:")
+        print(result_df_2)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+
+
+    print("\n===== Naive DateTime Conversion Tests =====")# Example usage
+    naive_series = pd.Series([
+    "2025-07-01 12:00:00",  # Regular summer time
+    "2025-03-30 01:59:00",  # Just before spring forward
+    "2025-03-30 02:30:00",  # During spring forward gap
+    "2025-10-26 01:59:00",  # Before fall back
+    "2025-10-26 02:30:00",  # During fall back (ambiguous)
+    "2025-10-26 03:01:00"   # After fall back
+    ])
+
+    result = DateUtilsETL.convert_naive_to_local(naive_series, 'Europe/Madrid')
+    print("\nNaive to Local Conversion:")
+    print(result)
+
+    result = DateUtilsETL.convert_local_to_naive(result['datetime'])
+    print("\nLocal to Naive Conversion:")
+    print(result)
 
 
 if __name__ == "__main__":

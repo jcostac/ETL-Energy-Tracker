@@ -7,7 +7,7 @@ import os
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from descargador_esios import Diario, Intra, Secundaria, Terciaria, RR
+from extract.descargador_esios import Diario, Intra, Secundaria, Terciaria, RR
 
 class ESIOSPreciosExtractor:
     """
@@ -94,7 +94,8 @@ class ESIOSPreciosExtractor:
         
         Args:
             fecha_inicio (str): Start date in YYYY-MM-DD format
-            fecha_fin (str): End date in YYYY-MM-DD format
+            fecha_fin (str): End date in 
+            YYYY-MM-DD format
             terciaria_lst (List[int]): List of tertiary types 
                 [1: up, 2: down, 3: direct up, 4: direct down, 5: programmed single]
             

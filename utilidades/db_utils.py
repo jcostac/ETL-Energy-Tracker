@@ -12,11 +12,9 @@ import os
 from pathlib import Path
 import pretty_errors
 import sqlalchemy
-
-# Get the absolute path to the scripts directory
-SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
-sys.path.append(str(SCRIPTS_DIR))
-
+# Get the absolute path to the project root directory
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT))
 from configs.config import DB_URL
 
 class DatabaseUtils:
