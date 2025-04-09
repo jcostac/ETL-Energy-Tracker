@@ -335,8 +335,6 @@ class Diario(DescargadorESIOS):
 
         super().save_data(df_data, dev, table_name)
 
-    def get_db_prices(self, fecha_inicio: str, fecha_fin: str):
-        return super().get_db_data(fecha_inicio, fecha_fin, indicator_ids= [self.indicator_id], is_quinceminutal=False)
 
 class Intra(DescargadorESIOS):
 

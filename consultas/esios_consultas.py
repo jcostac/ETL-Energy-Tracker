@@ -7,7 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
-from configs.esios_config import DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
+from configs.esios_config import ESIOSConfig, DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
 from utilidades.db_utils import DatabaseUtils
 
 class ConsultasESIOS:
@@ -21,7 +21,7 @@ class ConsultasESIOS:
     def consulta_precios(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
                     indicator_ids: Optional[list[int]] = None, is_quinceminutal: bool = False):
         """
-        Obtiene los datos de la base de datos.
+        TODO: Obtiene los datos del parquet procesado (actualmente se obtiene de la base de datos)
         
         Args:
             fecha_inicio_carga (Optional[str]): Fecha inicial en formato YYYY-MM-DD
@@ -102,7 +102,7 @@ class ConsultasIntra(ConsultasESIOS):
     
     def consulta_precios(self, fecha_inicio: str, fecha_fin: str, intra_lst: list[int]):
         """
-        Consulta los precios del mercado intradiario para un rango de fechas.
+        Consulta los precios de las diferentes sesiones del mercado intradiario para un rango de fechas.
         
         Args:
             fecha_inicio (str): Fecha inicial en formato YYYY-MM-DD
@@ -118,7 +118,7 @@ class ConsultasIntra(ConsultasESIOS):
             raise ValueError(f"Invalid intraday sessions: {invalid_intra_nums}. Valid sessions are 1-7")
         
         # Get indicator IDs for requested intraday sessions
-        indicator_ids = [self.intra_config.get_indicator_id(self.intra_name_map[intra_num]) for intra_num in intra_lst]
+        indicator_ids = [ESIOSConfig().get_indicator_id(self.intra_name_map[intra_num]) for intra_num in intra_lst]
         
         # Query database with granularity consideration
         return super().consulta_precios(fecha_inicio, fecha_fin, indicator_ids=indicator_ids, is_quinceminutal=True)
@@ -162,11 +162,11 @@ class ConsultasSecundaria(ConsultasESIOS):
         indicator_ids = []
         if fecha_inicio_dt < self.precio_dual_fecha:
             # Before change: only use bajar indicator
-            indicator_ids.append(self.secundaria_config.get_indicator_id("Secundaria a bajar"))
+            indicator_ids.append(ESIOSConfig().get_indicator_id("Secundaria a bajar"))
         else:
             # After change: use requested indicators
             for sec_id in secundaria_lst:
-                indicator_ids.append(self.secundaria_config.get_indicator_id(self.secundaria_name_map[sec_id]))
+                indicator_ids.append(ESIOSConfig().get_indicator_id(self.secundaria_name_map[sec_id]))
 
         return super().consulta_precios(fecha_inicio, fecha_fin, indicator_ids=indicator_ids, is_quinceminutal=True)
 
@@ -208,16 +208,17 @@ class ConsultasTerciaria(ConsultasESIOS):
         fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
         
         indicator_ids = []
+
         
         # Always include unaffected markets
         for ter_num in [ter_num for ter_num in terciaria_lst if ter_num in [3, 4]]:
-            indicator_ids.append(self.terciaria_config.get_indicator_id(self.terciaria_name_map[ter_num]))
+            indicator_ids.append(ESIOSConfig().get_indicator_id(self.terciaria_name_map[ter_num]))
 
         # Handle affected markets based on date
         if fecha_inicio_dt < self.precio_unico_fecha:
             # Before change: use dual prices
             for ter_num in [ter_num for ter_num in terciaria_lst if ter_num in [1, 2]]:
-                indicator_ids.append(self.terciaria_config.get_indicator_id(self.terciaria_name_map[ter_num]))
+                indicator_ids.append(ESIOSConfig().get_indicator_id(self.terciaria_name_map[ter_num]))
         else:
             # After change: use single price
             if any(ter_num in terciaria_lst for ter_num in [1, 2, 5]):
