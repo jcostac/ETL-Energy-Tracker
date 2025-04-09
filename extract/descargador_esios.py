@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
+from configs.esios_config import DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
 
 
 class DescargadorESIOS:
@@ -21,54 +22,7 @@ class DescargadorESIOS:
     def __init__(self):
         self.esios_token = os.getenv('ESIOS_TOKEN')
         self.download_window = 93
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
-        self.indicator_id_map, self.market_id_map = self.get_market_id_mapping() #returns a tuple of two dictionaries
         self.madrid_tz = pytz.timezone('Europe/Madrid')
-
-    def get_market_id_mapping(self) -> tuple[dict[str, str], dict[str, str]]:
-        """
-        Obtiene el mapping de los IDs de los mercados de ESIOS.
-        Returns:
-            dict: 1. indicator_id_map: Un diccionario con los nombres de los mercados y sus respectivos IDs de ESIOS.
-                        i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
-                  2. market_id_map: Un diccionario con los IDs de los mercados de ESIOS y sus IDs de mercado en la BBDD.
-                        i.e {600: 1, 612: 2, 613: 3, 614: 4}
-        """
-    
-        #get all market ids with indicator_esios_precios != 0
-        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
-                                            where_clause='indicador_esios_precios != 0')
-      
-        
-        #get idnicator map with mercado as key and indicator as value i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
-        indicator_map = dict(zip(df_mercados['mercado'], df_mercados['indicador']))
-        market_id_map = dict(zip(df_mercados['indicador'], df_mercados['id']))
-
-        
-        #convert indicator value to str to avoid type errors
-        indicator_id_map = {str(key): str(value) for key, value in indicator_map.items()}
-        market_id_map = {str(key): str(value) for key, value in market_id_map.items()}
-
-        return indicator_id_map, market_id_map
-    
-    def get_indicator_id(self, mercado: str) -> str:
-        """
-        Obtiene el ID del indicador de ESIOS para un mercado específico.
-
-        Args:
-            indicator_id (int): El ID del indicador de ESIOS.
-            
-        Returns:
-            str: El ID del indicador de ESIOS para el mercado especificado.
-
-        Raises:
-            ValueError: Si el mercado no se encuentra en el mapping.
-        """
-
-        try: 
-            return self.indicator_id_map[mercado]
-        except KeyError:
-            raise ValueError(f"Mercado no encontrado en el mapping: {mercado}")
         
     def get_esios_data(self, indicator_id: str, fecha_inicio_carga: str = None, fecha_fin_carga: str = None):
         """
@@ -100,20 +54,7 @@ class DescargadorESIOS:
                 )
                 
                 if not df_before.empty:
-                    # Extract  data on change date and modify hour format to 15-min format
-                    change_date_data = df_before[df_before['fecha'] == pd.Timestamp(change_date)].copy()
-
-                    # Map each hour to its corresponding 15-min format
-                    minute_map = {0: '00', 1: '15', 2: '30', 3: '45'}
-                    change_date_data['hora'] = change_date_data.apply(
-                        lambda row: f"{int(row['hora']):02d}:{minute_map[row.name % 4]}:00", 
-                        axis=1 #change data to format 00:00:00, 00:15:00, 00:30:00, 00:45:00
-                    )
-                    
-                    # Remove change date from before DataFrame and append modified change date data
-                    df_before = df_before[df_before['fecha'] < pd.Timestamp(change_date)]
                     dfs.append(df_before)
-                    dfs.append(change_date_data)
                 
                 # Get 15-min data after change date
                 df_after = self._make_esios_request(
@@ -276,7 +217,7 @@ class DescargadorESIOS:
                 # Extract indicator name and ID for logging
                 indicator_name = data['indicator'].get('name', 'Unknown')
                 indicator_id = data['indicator'].get('id', 'Unknown')
-                print(f"No se encontraron datos para el indicador {indicator_id} ({indicator_name}) en el período solicitado")
+                print(f"No se encontraron datos para el indicador {indicator_id}, {indicator_name},  en el período solicitado")
                 return False
             
         except Exception as e:
@@ -367,52 +308,14 @@ class DescargadorESIOS:
             print(f"Guardando datos en {table_name}")
             DatabaseUtils.write_table(self.bbdd_engine, df_data, table_name)
 
-    def get_db_data(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
-                    indicator_ids: Optional[list[int]] = None, is_quinceminutal: bool = False):
-        """
-        Obtiene los datos de la base de datos.
-        
-        Args:
-            fecha_inicio_carga: Fecha inicial en formato YYYY-MM-DD
-            fecha_fin_carga: Fecha final en formato YYYY-MM-DD
-            indicator_ids: Lista de IDs de indicadores ESIOS para filtrar
-            is_quinceminutal: Si True, obtiene datos de Precios_quinceminutales, si False, de Precios_horarios
-            
-        Returns:
-            pd.DataFrame: DataFrame con los datos de la base de datos
-        """
-        #cehck if fecha inicio carga is older than fecha fin carga
-        if fecha_inicio_carga and fecha_fin_carga:
-            if fecha_inicio_carga > fecha_fin_carga:
-                raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
-            else:
-                # Construct where clause for dates
-                where_clause = ""
-                where_clause = f'fecha between "{fecha_inicio_carga}" and "{fecha_fin_carga}"'
-                
-        # Add market filter if indicator_ids provided
-        if indicator_ids:
-            mercados_list = ", ".join([str(item) for item in indicator_ids])
-            market_filter = f'id_mercado in ({mercados_list})'
-            where_clause = f'{where_clause} and {market_filter}' if where_clause else market_filter
-
-        # Select appropriate table based on is_quinceminutal parameter
-        table_name = 'Precios_quinceminutales' if is_quinceminutal else 'Precios_horarios'
-
-        # Get data from database
-        df = DatabaseUtils.read_table(
-            self.bbdd_engine, 
-            table_name,
-            where_clause=where_clause
-        )
-
-        return df
-
 class Diario(DescargadorESIOS):
 
     def __init__(self):
         super().__init__() 
-        self.indicator_id = self.get_indicator_id("Diario") # ie. 600
+
+        #get config from esios config file 
+        config = DiarioConfig()
+        self.indicator_id = config.indicator_id
 
     def get_prices(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
         return self.get_esios_data(self.indicator_id, fecha_inicio_carga, fecha_fin_carga)
@@ -439,18 +342,12 @@ class Intra(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
-        self.intra_name_map = {
-            1: "Intra 1",
-            2: "Intra 2",
-            3: "Intra 3",
-            4: "Intra 4",
-            5: "Intra 5",
-            6: "Intra 6",
-            7: "Intra 7"
-        }
 
-        self.intra_reduccion_fecha = datetime.strptime('2024-06-13', '%Y-%m-%d')
-        self.cambio_granularidad_fecha = datetime.strptime('2025-03-19', '%Y-%m-%d')
+        #get config from esios config file 
+        config = IntraConfig()
+        self.intra_name_map = config.intra_name_map
+        self.intra_reduccion_fecha = config.intra_reduccion_fecha
+        self.cambio_granularidad_fecha = config.cambio_granularidad_fecha
         
     def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, intra_lst: list[int]) -> pd.DataFrame:
         """
@@ -567,12 +464,10 @@ class Secundaria(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
-        self.secundaria_name_map = {
-            1: "Secundaria a subir",  # indicator 2130
-            2: "Secundaria a bajar",  # indicator 634
-        }
-        self.precio_dual_fecha = datetime.strptime('2024-11-20', '%Y-%m-%d')
-        self.cambio_granularidad_fecha = datetime.strptime('2022-05-24', '%Y-%m-%d')
+        config = SecundariaConfig()
+        self.secundaria_name_map = config.secundaria_name_map
+        self.precio_dual_fecha = config.precio_dual_fecha
+        self.cambio_granularidad_fecha = config.cambio_granularidad_fecha
         
     def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, secundaria_lst: list[int]) -> pd.DataFrame:
         """
@@ -681,15 +576,12 @@ class Terciaria(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
-        self.terciaria_name_map = {
-            1: "Terciaria a subir",          # 677 -> changes to 2197
-            2: "Terciaria a bajar",          # 676 -> changes to 2197
-            3: "Terciaria directa a subir",  # 10400 (not affected)
-            4: "Terciaria directa a bajar",  # 10401 (not affected)
-            5: "Terciaria programada unico", # 2197 (new indicator after change)
-        }
-        self.precio_unico_fecha = datetime.strptime('2024-12-10', '%Y-%m-%d')
-        self.cambio_granularidad_fecha = datetime.strptime('2022-05-24', '%Y-%m-%d')
+
+        #get config from esios config file 
+        config = TerciariaConfig()
+        self.terciaria_name_map = config.terciaria_name_map
+        self.precio_unico_fecha = config.precio_unico_fecha
+        self.cambio_granularidad_fecha = config.cambio_granularidad_fecha
         
     def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, terciaria_lst: list[int]) -> pd.DataFrame:
         """
@@ -832,8 +724,11 @@ class RR(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
-        self.indicator_id = self.get_indicator_id("RR a subir") #precio unico que se guarda en el indicador de RR a subir
-        self.cambio_granularidad_fecha = datetime.strptime('2022-05-24', '%Y-%m-%d')
+
+        #get config from esios config file 
+        config = RRConfig()
+        self.indicator_id = config.indicator_id
+        self.cambio_granularidad_fecha = config.cambio_granularidad_fecha
 
     def get_rr_data(self, fecha_inicio_carga, fecha_fin_carga):
         """

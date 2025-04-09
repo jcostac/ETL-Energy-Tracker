@@ -514,6 +514,31 @@ class DateUtilsETL:
         
         return result_df
 
+    @staticmethod
+    def convert_hourly_to_15min(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Converts hourly data to 15-minute data by duplicating rows for each 15-minute interval.
+        Hourly data has to be in utc format
+        
+        Args:
+            df (pd.Series): Series containing hourly data
+
+        Returns:
+            pd.DataFrame: DataFrame containing 15-minute data
+        """
+
+        # Extract data on change date and modify hour format to 15-min format
+        change_date_data = df_before[df_before['datetime_utc'].dt.date == change_date.date()].copy()
+
+        # Map each hour to its corresponding 15-min format
+        minute_map = {0: '00', 1: '15', 2: '30', 3: '45'}
+        change_date_data['hora'] = change_date_data.apply(
+            lambda row: f"{row['datetime'].hour:02d}:{minute_map[row.name % 4]}:00", 
+            axis=1  # Change data to format 00:00:00, 00:15:00, 00:30:00, 00:45:00
+        )
+        
+        pass
+    
 def TimeUtils_example_usage():
     """Example usage of TimeUtils class"""
     # Get DST transition dates in 2024

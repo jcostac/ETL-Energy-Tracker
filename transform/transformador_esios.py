@@ -68,6 +68,23 @@ class TransformadorESIOS:
         return df_data
         pass
     
+    def convert_granularity(self, data: dict) -> pd.DataFrame:
+        """
+        Converts the granularity of the data to the desired granularity. Resample from hourly to 15-min data
+        for data before the granulairty change date for a market. 
+        """
+        
+        # Extract data on change date and modify hour format to 15-min format
+        change_date_data = data[data['datetime_utc'].dt.date <= change_date.date()].copy()
+
+        # Map each hour to its corresponding 15-min format
+        minute_map = {0: '00', 1: '15', 2: '30', 3: '45'}
+        change_date_data['hora'] = change_date_data.apply(
+            lambda row: f"{row['datetime'].hour:02d}:{minute_map[row.name % 4]}:00", 
+            axis=1  # Change data to format 00:00:00, 00:15:00, 00:30:00, 00:45:00
+        )
+                    
+        pass
   
 class Diario(TransformadorESIOS):
     def __init__(self):
