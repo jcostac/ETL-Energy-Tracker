@@ -91,6 +91,7 @@ class DescargadorESIOS:
             
             # If date range spans the granularity change
             if fecha_inicio_dt < change_date and fecha_fin_dt > change_date:
+
                 # Get hourly data up to change date (inclusive)
                 df_before = self._make_esios_request(
                     indicator_id,
@@ -99,8 +100,9 @@ class DescargadorESIOS:
                 )
                 
                 if not df_before.empty:
-                    # Extract change date data and modify hour format to 15-min format
+                    # Extract  data on change date and modify hour format to 15-min format
                     change_date_data = df_before[df_before['fecha'] == pd.Timestamp(change_date)].copy()
+
                     # Map each hour to its corresponding 15-min format
                     minute_map = {0: '00', 1: '15', 2: '30', 3: '45'}
                     change_date_data['hora'] = change_date_data.apply(
@@ -145,6 +147,7 @@ class DescargadorESIOS:
 
         Returns:
             pd.DataFrame: A DataFrame containing the requested data from the ESIOS API.
+                     Returns an empty DataFrame if no data is found for the period.
 
         Raises:
             ValueError: If the start date is greater than the end date.
@@ -234,11 +237,11 @@ class DescargadorESIOS:
             
             #validate data structure
             if not self.validate_data_structure(data):
-                return {} #return empty dict if data structure is invalid
+                return pd.DataFrame() #return empty dataframe if no data found
             
             #if no errors, procesamos los datos de interés en un dataframe que se ecnuentran en el key values
             df_data = pd.DataFrame(data['indicator']['values'])
-            
+
             return df_data
 
         except requests.exceptions.ConnectTimeout:
@@ -260,22 +263,26 @@ class DescargadorESIOS:
             data (dict): The data returned from the ESIOS API.
 
         Returns:
-            bool: True if the data structure is valid, raises ValueError otherwise.
+            bool: True if the data structure is valid, False if no data found but structure is valid,
+                  raises ValueError if structure is invalid
         """
         try:
             # Check if data has the expected structure
             if 'indicator' not in data or 'values' not in data['indicator']:
                 raise ValueError(f"Formato de respuesta inesperado: {data.keys()}")
 
-            # Check if values list is empty
+            # If values list is empty, return False instead of raising an error
             if not data['indicator']['values']:
-                raise ValueError(f"No se encontraron datos para el indicador {self.indicator_id} en el período solicitado")
+                # Extract indicator name and ID for logging
+                indicator_name = data['indicator'].get('name', 'Unknown')
+                indicator_id = data['indicator'].get('id', 'Unknown')
+                print(f"No se encontraron datos para el indicador {indicator_id} ({indicator_name}) en el período solicitado")
+                return False
             
         except Exception as e:
             raise ValueError(f"Error al validar la estructura de los datos: {e}")
         
-        
-        # Return True if all checks pass
+        # Return True if all checks pass and data exists
         return True
     
     def save_data(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
@@ -858,7 +865,7 @@ class RR(DescargadorESIOS):
 def test_usage_download():
     diario = Diario()
     diario_data = diario.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
-    print(diario_data)
+    print(diario_data.columns)
 
     intra = Intra() 
     #downloading data for all intras between regulatory change (intra reduction) 
@@ -875,6 +882,12 @@ def test_usage_download():
     #downloading data for all terciarias between regulatory change (precio unificado terciaria)
     ter_data = ter.get_prices(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-22', terciaria_lst=[1,2,3,4,5])
     print(ter_data)
+    breakpoint()
+
+    #downloading data for all terciarias between granularidad change
+    ter_data = ter.get_prices(fecha_inicio_carga='2022-05-20', fecha_fin_carga='2022-05-28', terciaria_lst=[1,2,3,4,5])
+    print(ter_data)
+
 
     rr = RR()
     #downloading data for all rr (precio unico rr)
