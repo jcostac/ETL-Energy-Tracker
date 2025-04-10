@@ -10,8 +10,9 @@ from datetime import datetime
 from typing import Dict, Union, Tuple
 import pretty_errors
 from datetime import timedelta, timezone
+from deprecated import deprecated
 
-
+@deprecated(reason="This class was used in the old ETL pipeline and is now deprecated.")
 class TimeUtils:
     """Utility class for handling time-related operations for ESIOS, OMIE and I90 data. 
 
@@ -296,7 +297,36 @@ class TimeUtils:
             raise ValueError(f"Unsupported granularity conversion: {current_format} to {target_format}")
         
         return df['hora']
+
+def TimeUtils_example_usage():
+    """Example usage of TimeUtils class"""
+    # Get DST transition dates in 2024
+    start_date = datetime(2024, 1, 1)
+    end_date = datetime(2024, 12, 31)
+    transition_dates = TimeUtils.get_transition_dates(start_date, end_date)
+    print(f"DST transition dates in 2024: {transition_dates}")
     
+    # Create sample data
+    data = {'fecha': ['2024-03-31', '2024-03-31', '2024-10-27', '2024-10-27'],
+            'hora': ['02:00', '03:00', '02:00', '03:00']}
+    df = pd.DataFrame(data)
+    
+    # Convert hourly to 15-minute
+    for index, row in df.iterrows():
+        date = datetime.strptime(row['fecha'], '%Y-%m-%d').date()
+        is_special = date in transition_dates
+        tipo_cambio = transition_dates.get(date, None)
+        
+        print(f"Converting {row['fecha']} {row['hora']} - Special: {is_special}, Type: {tipo_cambio}")
+        result = TimeUtils.convert_granularity_i90(
+            pd.DataFrame([row]), 
+            'hora', 
+            '15min',
+            is_special,
+            tipo_cambio
+        )
+        print(result)
+
 class DateUtilsETL:
 
     @staticmethod
@@ -525,7 +555,7 @@ class DateUtilsETL:
 
         Returns:
             pd.DataFrame: DataFrame containing 15-minute data
-        """
+       
 
         # Extract data on change date and modify hour format to 15-min format
         change_date_data = df_before[df_before['datetime_utc'].dt.date == change_date.date()].copy()
@@ -536,38 +566,10 @@ class DateUtilsETL:
             lambda row: f"{row['datetime'].hour:02d}:{minute_map[row.name % 4]}:00", 
             axis=1  # Change data to format 00:00:00, 00:15:00, 00:30:00, 00:45:00
         )
+        """
         
         pass
     
-def TimeUtils_example_usage():
-    """Example usage of TimeUtils class"""
-    # Get DST transition dates in 2024
-    start_date = datetime(2024, 1, 1)
-    end_date = datetime(2024, 12, 31)
-    transition_dates = TimeUtils.get_transition_dates(start_date, end_date)
-    print(f"DST transition dates in 2024: {transition_dates}")
-    
-    # Create sample data
-    data = {'fecha': ['2024-03-31', '2024-03-31', '2024-10-27', '2024-10-27'],
-            'hora': ['02:00', '03:00', '02:00', '03:00']}
-    df = pd.DataFrame(data)
-    
-    # Convert hourly to 15-minute
-    for index, row in df.iterrows():
-        date = datetime.strptime(row['fecha'], '%Y-%m-%d').date()
-        is_special = date in transition_dates
-        tipo_cambio = transition_dates.get(date, None)
-        
-        print(f"Converting {row['fecha']} {row['hora']} - Special: {is_special}, Type: {tipo_cambio}")
-        result = TimeUtils.convert_granularity_i90(
-            pd.DataFrame([row]), 
-            'hora', 
-            '15min',
-            is_special,
-            tipo_cambio
-        )
-        print(result)
-
 def DateUtilsETL_example_usage():
     """Example usage of DateUtilsETL class
     

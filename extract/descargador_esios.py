@@ -15,7 +15,7 @@ sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
 from configs.esios_config import DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
-
+from utilidades.parquet_utils import RawFileUtils
 
 class DescargadorESIOS:
 
@@ -36,7 +36,7 @@ class DescargadorESIOS:
         Returns:
             pd.DataFrame: DataFrame con los datos solicitados.
         """
-        if hasattr(self, 'cambio_granularidad_fecha'):
+        if hasattr(self, 'cambio_granularidad_fecha'): #if the class has a cambio de granularidad, we need to handle it
             change_date = self.cambio_granularidad_fecha
             fecha_inicio_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
             fecha_fin_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
@@ -87,51 +87,18 @@ class DescargadorESIOS:
             fecha_fin_carga (str): The end date for the data request in 'YYYY-MM-DD' format.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the requested data from the ESIOS API.
+            pd.DataFrame: A DataFrame containing the requested data from the ESIOS API with an extra column for "granularidad".
                      Returns an empty DataFrame if no data is found for the period.
 
         Raises:
             ValueError: If the start date is greater than the end date.
-            Exception: If there is an error during the API call or data processing.
+            Exception: If there is an error during the API call or data validation process. 
         """
-
-        #check if fecha inicio < fecha fin, and if time range is valid
-        if fecha_inicio_carga and fecha_fin_carga:
-            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-            fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
-
-            #if fecha inicio > fecha fin, raise error
-            if fecha_inicio_carga_dt > fecha_fin_carga_dt:
-                raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
-            
-            #if there are more than 93 days between fecha inicio y fecha fin, raise error
-            elif (fecha_fin_carga_dt - fecha_inicio_carga_dt).days > self.download_window: #93 days is the max allowed or ESIOS can return errors
-                raise ValueError("El rango de fechas no puede ser mayor que tres meses")
-
-            #if fecha inicio y fecha fin are valid, print message
-            else:
-                print(f"Descargando datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
-
-        #if no fecha inicio y fecha fin, set default values
-        elif fecha_inicio_carga is None and fecha_fin_carga is None:
-
-            #get datetitme range for 93 days ago to 92 days from now
-            fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window) # 93 days ago
-            fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window) + timedelta(days=1) # 92 days from now
-            
-            #convert to string format
-            fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') 
-            fecha_fin_carga = fecha_fin_carga_dt.strftime('%Y-%m-%d')
-            print(f"No se han proporcionado fechas de carga, se descargarán datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
-
-        else:
-            raise ValueError("No se han proporcionado fechas de carga completas")
-        
-
-        # Convert string dates to Madrid local datetime
+        # Convert string dates to Madrid local datetime (tz aware) start of day 00:00:00
         start_local = self.madrid_tz.localize(datetime.strptime(fecha_inicio_carga, '%Y-%m-%d'))
-        # For end date, we want the end of the day
-        end_local = self.madrid_tz.localize(datetime.strptime(fecha_fin_carga, '%Y-%m-%d'))
+
+        # For end date, we want the end of the day (23:55:00 -> max esios time in a day 23:55:00)
+        end_local = self.madrid_tz.localize(datetime.strptime(fecha_fin_carga, '%Y-%m-%d').replace(hour=23, minute=55, second=0))
 
         # Convert to UTC for API request
         start_utc = start_local.astimezone(pytz.UTC)
@@ -176,12 +143,17 @@ class DescargadorESIOS:
             except ValueError as e:
                 raise ValueError(f"Error al parsear la respuesta JSON: {e}. Contenido: {response.text[:200]}...")
             
+            #extract granularity from json data -> can be "Quince minutos" or "Hora"
+            granularidad = data["indicator"]["tiempo"][0]["name"]
+
+            
             #validate data structure
-            if not self.validate_data_structure(data):
+            if not self.validate_data_structure(data, granularidad):
                 return pd.DataFrame() #return empty dataframe if no data found
             
             #if no errors, procesamos los datos de interés en un dataframe que se ecnuentran en el key values
             df_data = pd.DataFrame(data['indicator']['values'])
+            df_data['granularidad'] = granularidad
 
             return df_data
 
@@ -196,7 +168,7 @@ class DescargadorESIOS:
         except Exception as e:
             raise Exception(f"Error inesperado al descargar los datos de ESIOS para el indicador {indicator_id}: {e}")
 
-    def validate_data_structure(self, data: dict) -> bool:
+    def validate_data_structure(self, data: dict, granularidad: str) -> bool:
         """
         Validate the structure of the data returned by the ESIOS API.
         
@@ -220,13 +192,21 @@ class DescargadorESIOS:
                 print(f"No se encontraron datos para el indicador {indicator_id}, {indicator_name},  en el período solicitado")
                 return False
             
+            if granularidad != "Quince minutos" or granularidad != "Hora":
+                raise ValueError(f"Granularidad inesperada: {granularidad}")
+            
         except Exception as e:
             raise ValueError(f"Error al validar la estructura de los datos: {e}")
         
         # Return True if all checks pass and data exists
         return True
     
-    def save_data(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
+    def save_raw_data(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
+
+        #save to raw csv file
+        RawFileUtils.write_raw_csv(df_data, dev, table_name)
+
+    def save_ddbb(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
         """
         Saves data to the database, handling granularity changes if applicable.
         For classes with granularity changes (Intra, Secundaria, Terciaria, RR), data is saved to:

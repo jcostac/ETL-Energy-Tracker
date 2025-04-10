@@ -12,7 +12,7 @@ import sys
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
 
-from configs.config import DATA_LAKE_BASE_PATH
+from configs.storage_config import DATA_LAKE_BASE_PATH
 from load.data_lake_loader import DataLakeLoader
 
 
