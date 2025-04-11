@@ -4,12 +4,14 @@ import sys
 import os
 from pathlib import Path
 import pretty_errors
+from datetime import datetime
+from deprecated import deprecated
 # Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
-from configs.esios_config import ESIOSConfig
+from configs.esios_config import ESIOSConfig, IntraConfig, TerciariaConfig, SecundariaConfig, RRConfig
 from utilidades.parquet_utils import RawFileUtils
 
 
@@ -57,7 +59,8 @@ class ReadOps:
             raise ValueError(f"Indicator ids {indicator_ids} are not valid")
         
         return True
-        
+    
+    @deprecated(action="default", reason="Method used in old ETL pipeline, now deprecated")
     def read_db_data(self, indicator_ids: list[int], table_name: str, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> pd.DataFrame:
         """
         Obtiene los datos de la base de datos.
@@ -119,4 +122,5 @@ class ReadOps:
         
         #validate mercado
         self.validate_mercado(mercado)
-        
+
+
