@@ -18,7 +18,9 @@ from utilidades.db_utils import DatabaseUtils
 from configs.esios_config import DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
 
 class DescargadorESIOS:
-
+    """
+    Clase base para descargar datos de ESIOS.
+    """
     def __init__(self):
         self.esios_token = os.getenv('ESIOS_TOKEN')
         self.download_window = 93
@@ -287,7 +289,7 @@ class DescargadorESIOS:
             print(f"Guardando datos en {table_name}")
             DatabaseUtils.write_table(self.bbdd_engine, df_data, table_name)
 
-class Diario(DescargadorESIOS):
+class DiarioPreciosDL(DescargadorESIOS):
 
     def __init__(self):
         super().__init__() 
@@ -298,23 +300,8 @@ class Diario(DescargadorESIOS):
 
     def get_prices(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
         return self.get_esios_data(self.indicator_id, fecha_inicio_carga, fecha_fin_carga)
-    
-    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
-        """
-        Saves daily market data to the database. Always saves to Precios_horarios
-        regardless of date.
-        
-        Args:
-            df_data (pd.DataFrame): DataFrame containing the daily market data
-        """
-        if dev:
-            table_name = 'Precios_horarios_dev'
-        else:
-            table_name = 'Precios_horarios'
 
-        super().save_data_to_db(df_data, dev, table_name)
-
-class Intra(DescargadorESIOS):
+class IntraPreciosDL(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
@@ -417,28 +404,7 @@ class Intra(DescargadorESIOS):
             print(f"No data found for intras {intra_lst} in the date range {fecha_inicio_carga} to {fecha_fin_carga}")
             return pd.DataFrame()
     
-    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
-        """
-        Saves intraday market data to the database. Handles granularity change on 2025-03-19:
-        - Before 2025-03-19: Saves to Precios_horarios
-        - After 2025-03-19: Saves to Precios_quinceminutales
-        
-        Args:
-            df_data (pd.DataFrame): DataFrame containing the intraday market data
-            dev (bool): If True, save to the development database
-        """
-        super().save_data_to_db(df_data, dev)
-
-    def get_db_data(self, fecha_inicio_carga: str, fecha_fin_carga: str, intra_ids: list[int]):
-        # Example with multiple indicators for Intra markets
-        indicator_ids = []
-        for intra_id in intra_ids:
-            indicator_id = self.get_indicator_id(self.intra_name_map[intra_id])
-            indicator_ids.append(indicator_id)
-
-        return super().get_db_data(fecha_inicio_carga, fecha_fin_carga, indicator_ids=indicator_ids)
-
-class Secundaria(DescargadorESIOS):
+class SecundariaPreciosDL(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
@@ -521,36 +487,7 @@ class Secundaria(DescargadorESIOS):
         else:
             return pd.DataFrame()
 
-    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
-        """
-        Saves secondary regulation data to the database. Handles granularity change on 2022-05-24:
-        - Before 2022-05-24: Saves to Precios_horarios
-        - After 2022-05-24: Saves to Precios_quinceminutales
-        
-        Args:
-            df_data (pd.DataFrame): DataFrame containing the secondary regulation data
-            dev (bool): If True, save to the development database
-        """
-        super().save_data_to_db(df_data, dev)
-
-    def get_db_prices(self, fecha_inicio: str, fecha_fin: str, secundaria_lst: list[int]):
-        """
-        Obtiene los datos de la base de datos, teniendo en cuenta el cambio regulatorio.
-        """
-        fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
-        
-        indicator_ids = []
-        if fecha_inicio_dt < self.precio_dual_fecha:
-            # Before change: only use bajar indicator
-            indicator_ids.append(self.get_indicator_id("Secundaria a bajar"))
-        else:
-            # After change: use requested indicators
-            for sec_id in secundaria_lst:
-                indicator_ids.append(self.get_indicator_id(self.secundaria_name_map[sec_id]))
-
-        return super().get_db_data(fecha_inicio, fecha_fin, indicator_ids=indicator_ids, is_quinceminutal=True)
-
-class Terciaria(DescargadorESIOS):
+class TerciariaPreciosDL(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
@@ -665,44 +602,10 @@ class Terciaria(DescargadorESIOS):
         else:
             return pd.DataFrame()
 
-    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
-        """
-        Saves terciaria data to the database. Handles granularity change on 2022-05-24:
-        - Before 2022-05-24: Saves to Precios_horarios
-        - After 2022-05-24: Saves to Precios_quinceminutales
-        
-        Args:
-            df_data (pd.DataFrame): DataFrame containing the terciaria data
-            dev (bool): If True, save to the development database
-        """
-        super().save_data_to_db(df_data, dev)
-
-    def get_db_prices(self, fecha_inicio: str, fecha_fin: str, terciaria_lst: list[int]):
-        """
-        Obtiene los datos de la base de datos, teniendo en cuenta el cambio regulatorio.
-        """
-        fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
-        
-        indicator_ids = []
-        
-        # Always include unaffected markets
-        for ter_num in [ter_num for ter_num in terciaria_lst if ter_num in [3, 4]]:
-            indicator_ids.append(self.get_indicator_id(self.terciaria_name_map[ter_num]))
-
-        # Handle affected markets based on date
-        if fecha_inicio_dt < self.precio_unico_fecha:
-            # Before change: use dual prices
-            for ter_num in [ter_num for ter_num in terciaria_lst if ter_num in [1, 2]]:
-                indicator_ids.append(self.get_indicator_id(self.terciaria_name_map[ter_num]))
-        else:
-            # After change: use single price
-            if any(ter_num in terciaria_lst for ter_num in [1, 2, 5]):
-                indicator_ids.append(self.get_indicator_id("Terciaria programada unico"))
-
-        return super().get_db_data(fecha_inicio, fecha_fin, indicator_ids=indicator_ids, is_quinceminutal=True)
-
-class RR(DescargadorESIOS):
-
+class RRPreciosDL(DescargadorESIOS):
+    """
+    Clase para descargar datos de ESIOS para RR (precio único).
+    """
     def __init__(self):
         super().__init__()
 
@@ -711,101 +614,15 @@ class RR(DescargadorESIOS):
         self.indicator_id = self.config.indicator_id
         self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha
 
-    def get_rr_data(self, fecha_inicio_carga, fecha_fin_carga):
+    def get_prices(self, fecha_inicio_carga, fecha_fin_carga):
         """
         Descarga los datos de ESIOS para un indicador específico en un rango de fechas. Para RR (precio único) y se guarda en el indicador de RR a subir.
         """
         return self.get_esios_data(self.indicator_id, fecha_inicio_carga, fecha_fin_carga)
-        
-    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
-        """
-        Saves RR (Replacement Reserve) data to the database. Handles granularity change on 2022-05-24:
-        - Before 2022-05-24: Saves to Precios_horarios
-        - After 2022-05-24: Saves to Precios_quinceminutales
-        
-        The table selection can be overridden by providing a table_name parameter.
 
-        Args:
-            df_data (pd.DataFrame): DataFrame containing the RR market data. 
-            table_name (str, optional): Override the default table selection logic and save to this table instead.
-                                      Must be either 'Precios_horarios' or 'Precios_quinceminutales'.
-
-        Note:
-            The granularity change date (2022-05-24) is defined in self.cambio_granularidad_fecha
-        """
-        super().save_data_to_db(df_data, dev)
-
-    def get_db_data(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
-        return super().get_db_data(fecha_inicio_carga, fecha_fin_carga, indicator_ids=[self.indicator_id])
-
-def test_usage_download():
-    diario = Diario()
-    diario_data = diario.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
-    print(f"diario_data: {diario_data}")
-
-    intra = Intra() 
-    #downloading data for all intras between regulatory change (intra reduction) 
-    intra_data = intra.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16', intra_lst=[1,2,3,4,5,6,7])
-    print(f"intra_data: {intra_data}")
-
-
-    sec = Secundaria()
-    #downloading data for both secondary markets between regulatory change
-    sec_data = sec.get_prices(fecha_inicio_carga='2024-11-18', fecha_fin_carga='2024-11-22', secundaria_lst=[1,2])
-    print(f"sec_data: {sec_data}")
-
-    ter = Terciaria()
-    #downloading data for all terciarias between regulatory change (precio unificado terciaria)
-    ter_data = ter.get_prices(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-22', terciaria_lst=[1,2,3,4,5])
-    print(f"ter_data: {ter_data}")
-    breakpoint()
-
-    #downloading data for all terciarias between granularidad change
-    ter_data = ter.get_prices(fecha_inicio_carga='2022-05-20', fecha_fin_carga='2022-05-28', terciaria_lst=[1,2,3,4,5])
-    print(f"ter_data: {ter_data}")
-
-
-    rr = RR()
-    #downloading data for all rr (precio unico rr)
-    rr_data = rr.get_rr_data(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-22')
-    print(f"rr_data: {rr_data}")
-
-def test_usage_save():
-    diario = Diario()
-    diario_data = diario.get_prices(fecha_inicio_carga='2024-07-10', fecha_fin_carga='2024-07-11')
-    diario.save_data(diario_data, dev=True)
-    breakpoint()
-
-    diario_data2 = diario.get_prices(fecha_inicio_carga='2024-07-13', fecha_fin_carga='2024-07-16')
-    diario.save_data(diario_data2, dev=True)
-    breakpoint()
-
-    intra = Intra()
-    intra_data = intra.get_prices(fecha_inicio_carga='2024-07-10', fecha_fin_carga='2024-07-16', intra_lst=[1,2,3,4,5,6,7])
-    intra.save_data(intra_data, dev=True)
-    breakpoint()
-
-    sec = Secundaria()
-    sec_data1= sec.get_prices(fecha_inicio_carga='2024-12-18', fecha_fin_carga='2024-12-22', secundaria_lst=[1,2])
-    sec.save_data(sec_data1, dev=True)
-    breakpoint()
-
-    sec_data2= sec.get_prices(fecha_inicio_carga='2022-05-18', fecha_fin_carga='2022-05-28', secundaria_lst=[1,2])
-    sec.save_data(sec_data2, dev=True)
-    breakpoint()
-
-    ter = Terciaria()
-    ter_data = ter.get_prices(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-22', terciaria_lst=[1,2,3,4,5])
-    ter.save_data(ter_data, dev=True)
-    breakpoint()
-
-    rr = RR()
-    rr_data = rr.get_rr_data(fecha_inicio_carga='2022-05-22', fecha_fin_carga='2022-05-28')
-    rr.save_data(rr_data, dev=True)
-    breakpoint()
 
 if __name__ == "__main__":
     #main()
-    test_usage_download()
+    descargadores = [DiarioPreciosDL(), IntraPreciosDL(), SecundariaPreciosDL(), 
+                     TerciariaPreciosDL(), RRPreciosDL()]
     #test_usage_save()
-
