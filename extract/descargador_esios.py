@@ -16,7 +16,6 @@ sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
 from configs.esios_config import DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
-from utilidades.parquet_utils import RawFileUtils
 
 class DescargadorESIOS:
 
@@ -206,7 +205,7 @@ class DescargadorESIOS:
         return True
 
     @deprecated(action="error", reason="Method used in old ETL pipeline, now deprecated")
-    def save_ddbb(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
+    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
         """
         Saves data to the database, handling granularity changes if applicable.
         For classes with granularity changes (Intra, Secundaria, Terciaria, RR), data is saved to:
@@ -300,7 +299,7 @@ class Diario(DescargadorESIOS):
     def get_prices(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
         return self.get_esios_data(self.indicator_id, fecha_inicio_carga, fecha_fin_carga)
     
-    def save_data(self, df_data: pd.DataFrame, dev: bool):
+    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
         """
         Saves daily market data to the database. Always saves to Precios_horarios
         regardless of date.
@@ -313,7 +312,7 @@ class Diario(DescargadorESIOS):
         else:
             table_name = 'Precios_horarios'
 
-        super().save_data(df_data, dev, table_name)
+        super().save_data_to_db(df_data, dev, table_name)
 
 class Intra(DescargadorESIOS):
 
@@ -418,7 +417,7 @@ class Intra(DescargadorESIOS):
             print(f"No data found for intras {intra_lst} in the date range {fecha_inicio_carga} to {fecha_fin_carga}")
             return pd.DataFrame()
     
-    def save_data(self, df_data: pd.DataFrame, dev: bool):
+    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
         """
         Saves intraday market data to the database. Handles granularity change on 2025-03-19:
         - Before 2025-03-19: Saves to Precios_horarios
@@ -428,7 +427,7 @@ class Intra(DescargadorESIOS):
             df_data (pd.DataFrame): DataFrame containing the intraday market data
             dev (bool): If True, save to the development database
         """
-        super().save_data(df_data, dev)
+        super().save_data_to_db(df_data, dev)
 
     def get_db_data(self, fecha_inicio_carga: str, fecha_fin_carga: str, intra_ids: list[int]):
         # Example with multiple indicators for Intra markets
@@ -522,7 +521,7 @@ class Secundaria(DescargadorESIOS):
         else:
             return pd.DataFrame()
 
-    def save_data(self, df_data: pd.DataFrame, dev: bool):
+    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
         """
         Saves secondary regulation data to the database. Handles granularity change on 2022-05-24:
         - Before 2022-05-24: Saves to Precios_horarios
@@ -532,7 +531,7 @@ class Secundaria(DescargadorESIOS):
             df_data (pd.DataFrame): DataFrame containing the secondary regulation data
             dev (bool): If True, save to the development database
         """
-        super().save_data(df_data, dev)
+        super().save_data_to_db(df_data, dev)
 
     def get_db_prices(self, fecha_inicio: str, fecha_fin: str, secundaria_lst: list[int]):
         """
@@ -666,7 +665,7 @@ class Terciaria(DescargadorESIOS):
         else:
             return pd.DataFrame()
 
-    def save_data(self, df_data: pd.DataFrame, dev: bool):
+    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
         """
         Saves terciaria data to the database. Handles granularity change on 2022-05-24:
         - Before 2022-05-24: Saves to Precios_horarios
@@ -676,7 +675,7 @@ class Terciaria(DescargadorESIOS):
             df_data (pd.DataFrame): DataFrame containing the terciaria data
             dev (bool): If True, save to the development database
         """
-        super().save_data(df_data, dev)
+        super().save_data_to_db(df_data, dev)
 
     def get_db_prices(self, fecha_inicio: str, fecha_fin: str, terciaria_lst: list[int]):
         """
@@ -718,7 +717,7 @@ class RR(DescargadorESIOS):
         """
         return self.get_esios_data(self.indicator_id, fecha_inicio_carga, fecha_fin_carga)
         
-    def save_data(self, df_data: pd.DataFrame, dev: bool):
+    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool):
         """
         Saves RR (Replacement Reserve) data to the database. Handles granularity change on 2022-05-24:
         - Before 2022-05-24: Saves to Precios_horarios
@@ -734,7 +733,7 @@ class RR(DescargadorESIOS):
         Note:
             The granularity change date (2022-05-24) is defined in self.cambio_granularidad_fecha
         """
-        super().save_data(df_data, dev)
+        super().save_data_to_db(df_data, dev)
 
     def get_db_data(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
         return super().get_db_data(fecha_inicio_carga, fecha_fin_carga, indicator_ids=[self.indicator_id])
