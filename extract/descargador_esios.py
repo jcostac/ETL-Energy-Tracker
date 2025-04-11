@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 import pytz
 from pathlib import Path
+from deprecated import deprecated
 # Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -144,9 +145,8 @@ class DescargadorESIOS:
                 raise ValueError(f"Error al parsear la respuesta JSON: {e}. Contenido: {response.text[:200]}...")
             
             #extract granularity from json data -> can be "Quince minutos" or "Hora"
-            granularidad = data["indicator"]["tiempo"][0]["name"]
+            granularidad = data["indicator"]["tiempo"][0]["name"].strip()
 
-            
             #validate data structure
             if not self.validate_data_structure(data, granularidad):
                 return pd.DataFrame() #return empty dataframe if no data found
@@ -184,28 +184,28 @@ class DescargadorESIOS:
             if 'indicator' not in data or 'values' not in data['indicator']:
                 raise ValueError(f"Formato de respuesta inesperado: {data.keys()}")
 
+            else:
+                # Extract indicator name and ID for logging
+                indicator_name = data['indicator'].get('name', self.__class__.__name__)
+
             # If values list is empty, return False instead of raising an error
             if not data['indicator']['values']:
-                # Extract indicator name and ID for logging
-                indicator_name = data['indicator'].get('name', 'Unknown')
-                indicator_id = data['indicator'].get('id', 'Unknown')
-                print(f"No se encontraron datos para el indicador {indicator_id}, {indicator_name},  en el período solicitado")
-                return False
+                print(f"No se encontraron datos para el indicador: {indicator_name},  en el período solicitado")
+                return False #handled as an empty dataframe return in wrapper function get precios
             
-            if granularidad != "Quince minutos" or granularidad != "Hora":
+            #validate granularidad
+            if granularidad != "Quince minutos" and granularidad != "Hora":
                 raise ValueError(f"Granularidad inesperada: {granularidad}")
+            
+            print(f"Validación de datos exitosa para el indicador: {indicator_name}")
             
         except Exception as e:
             raise ValueError(f"Error al validar la estructura de los datos: {e}")
         
         # Return True if all checks pass and data exists
         return True
-    
-    def save_raw_data(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
 
-        #save to raw csv file
-        RawFileUtils.write_raw_csv(df_data, dev, table_name)
-
+    @deprecated(action="error", reason="Method used in old ETL pipeline, now deprecated")
     def save_ddbb(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
         """
         Saves data to the database, handling granularity changes if applicable.
@@ -294,8 +294,8 @@ class Diario(DescargadorESIOS):
         super().__init__() 
 
         #get config from esios config file 
-        config = DiarioConfig()
-        self.indicator_id = config.indicator_id
+        self.config = DiarioConfig()
+        self.indicator_id = self.config.indicator_id
 
     def get_prices(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
         return self.get_esios_data(self.indicator_id, fecha_inicio_carga, fecha_fin_carga)
@@ -315,17 +315,16 @@ class Diario(DescargadorESIOS):
 
         super().save_data(df_data, dev, table_name)
 
-
 class Intra(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
 
         #get config from esios config file 
-        config = IntraConfig()
-        self.intra_name_map = config.intra_name_map
-        self.intra_reduccion_fecha = config.intra_reduccion_fecha
-        self.cambio_granularidad_fecha = config.cambio_granularidad_fecha
+        self.config = IntraConfig()
+        self.intra_name_map = self.config.intra_name_map #map of intra numbers to names
+        self.intra_reduccion_fecha = self.config.intra_reduccion_fecha #date of regulatory change for intras
+        self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha #date of granularidad change for intras
         
     def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, intra_lst: list[int]) -> pd.DataFrame:
         """
@@ -352,13 +351,13 @@ class Intra(DescargadorESIOS):
         
         dfs = [] #list of dataframes to concatenate
 
-        # If date range spans the regulatory change
+        # CASE 1: If date range spans the regulatory change
         if fecha_inicio_dt < self.intra_reduccion_fecha and fecha_fin_dt > self.intra_reduccion_fecha:
             # Split into two periods: before and after regulatory change
             
             # Period 1: Before regulatory change - download all requested intras up to the intra reduction date
             for intra_num in intra_lst:
-                intra_indicator_id = self.get_indicator_id(self.intra_name_map[intra_num])
+                intra_indicator_id = self.config.get_indicator_id(self.intra_name_map[intra_num])
                 df = self.get_esios_data(
                     intra_indicator_id,
                     fecha_inicio_carga,
@@ -369,9 +368,10 @@ class Intra(DescargadorESIOS):
 
             # Period 2: After regulatory change - download only Intras 1-3 after the intra reduction date
             intras_after_change = [intra_num for intra_num in intra_lst if intra_num <= 3]
-            #download all intras after regulatory change
-            for intra_num in intras_after_change:
-                intra_indicator_id = self.get_indicator_id(self.intra_name_map[intra_num])
+
+            #download all valid intras after regulatory change
+            for intra_num in intras_after_change: #only 1-3 are valid after regulatory change
+                intra_indicator_id = self.config.get_indicator_id(self.intra_name_map[intra_num])
                 df = self.get_esios_data(
                     intra_indicator_id,
                     (self.intra_reduccion_fecha).strftime('%Y-%m-%d'),
@@ -380,13 +380,13 @@ class Intra(DescargadorESIOS):
                 if not df.empty:
                     dfs.append(df)
 
-        # If date range entirely after regulatory change
+        # CASE 2: If date range entirely after regulatory change
         elif fecha_inicio_dt >= self.intra_reduccion_fecha:
             intras_after_change = [intra_num for intra_num in intra_lst if intra_num <= 3]
 
             #download all intras after regulatory change
             for intra_num in intras_after_change:
-                intra_indicator_id = self.get_indicator_id(self.intra_name_map[intra_num])
+                intra_indicator_id = self.config.get_indicator_id(self.intra_name_map[intra_num])
                 df = self.get_esios_data(
                     intra_indicator_id,
                     fecha_inicio_carga,
@@ -395,12 +395,12 @@ class Intra(DescargadorESIOS):
                 if not df.empty:
                     dfs.append(df)
 
-        # If date range entirely before regulatory change
+        # CASE 3: If date range entirely before regulatory change
         else:
             #download all intras before regulatory change
             for intra_num in intra_lst:
                 #get indicador id for each intra
-                intra_indicator_id = self.get_indicator_id(self.intra_name_map[intra_num])
+                intra_indicator_id = self.config.get_indicator_id(self.intra_name_map[intra_num])
                 #download data
                 df = self.get_esios_data(
                     intra_indicator_id,
@@ -410,11 +410,12 @@ class Intra(DescargadorESIOS):
                 if not df.empty:
                     dfs.append(df)
 
-        # Combine all DataFrames
+        # Combine all DataFrames if necessary
         if dfs:
             final_df = pd.concat(dfs, ignore_index=True)
             return final_df
         else:
+            print(f"No data found for intras {intra_lst} in the date range {fecha_inicio_carga} to {fecha_fin_carga}")
             return pd.DataFrame()
     
     def save_data(self, df_data: pd.DataFrame, dev: bool):
@@ -442,10 +443,10 @@ class Secundaria(DescargadorESIOS):
 
     def __init__(self):
         super().__init__()
-        config = SecundariaConfig()
-        self.secundaria_name_map = config.secundaria_name_map
-        self.precio_dual_fecha = config.precio_dual_fecha
-        self.cambio_granularidad_fecha = config.cambio_granularidad_fecha
+        self.config = SecundariaConfig()
+        self.secundaria_name_map = self.config.secundaria_name_map
+        self.precio_dual_fecha = self.config.precio_dual_fecha
+        self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha
         
     def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, secundaria_lst: list[int]) -> pd.DataFrame:
         """
@@ -475,7 +476,7 @@ class Secundaria(DescargadorESIOS):
         if fecha_inicio_dt < self.precio_dual_fecha and fecha_fin_dt > self.precio_dual_fecha:
             # Before change: only use bajar indicator (634) for all data
             df = self.get_esios_data(
-                self.get_indicator_id("Secundaria a bajar"),
+                self.config.get_indicator_id("Secundaria a bajar"),
                 fecha_inicio_carga,
                 (self.precio_dual_fecha - timedelta(days=1)).strftime('%Y-%m-%d')  # End on 19th
             )
@@ -485,7 +486,7 @@ class Secundaria(DescargadorESIOS):
             # After change: use both indicators if requested
             for sec_id in secundaria_lst:
                 df = self.get_esios_data(
-                    self.get_indicator_id(self.secundaria_name_map[sec_id]),
+                    self.config.get_indicator_id(self.secundaria_name_map[sec_id]),
                     self.precio_dual_fecha.strftime('%Y-%m-%d'),  # Start from 20th
                     fecha_fin_carga 
                 )
@@ -496,7 +497,7 @@ class Secundaria(DescargadorESIOS):
         elif fecha_inicio_dt >= self.precio_dual_fecha:
             for sec_id in secundaria_lst:
                 df = self.get_esios_data(
-                    self.get_indicator_id(self.secundaria_name_map[sec_id]),
+                    self.config.get_indicator_id(self.secundaria_name_map[sec_id]),
                     fecha_inicio_carga,
                     fecha_fin_carga
                 )
@@ -507,7 +508,7 @@ class Secundaria(DescargadorESIOS):
         else:
             # Only use bajar indicator (634) regardless of what was requested
             df = self.get_esios_data(
-                self.get_indicator_id("Secundaria a bajar"),
+                self.config.get_indicator_id("Secundaria a bajar"),
                 fecha_inicio_carga,
                 fecha_fin_carga
             )
@@ -556,10 +557,10 @@ class Terciaria(DescargadorESIOS):
         super().__init__()
 
         #get config from esios config file 
-        config = TerciariaConfig()
-        self.terciaria_name_map = config.terciaria_name_map
-        self.precio_unico_fecha = config.precio_unico_fecha
-        self.cambio_granularidad_fecha = config.cambio_granularidad_fecha
+        self.config = TerciariaConfig()
+        self.terciaria_name_map = self.config.terciaria_name_map
+        self.precio_unico_fecha = self.config.precio_unico_fecha
+        self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha
         
     def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, terciaria_lst: list[int]) -> pd.DataFrame:
         """
@@ -594,7 +595,7 @@ class Terciaria(DescargadorESIOS):
         # Handle unaffected markets by regulatory change (terciaria directa) -> download normally
         for ter_num in unaffected_markets:
             #get indicator id
-            indicator_id = self.get_indicator_id(self.terciaria_name_map[ter_num])
+            indicator_id = self.config.get_indicator_id(self.terciaria_name_map[ter_num])
             #download data
             df = self.get_esios_data(
                 indicator_id,
@@ -610,7 +611,7 @@ class Terciaria(DescargadorESIOS):
             # Period 1: Before change - use dual prices (676, 677)
             for ter_num in [ter_num for ter_num in affected_markets if ter_num in [1, 2]]:
                 #get indicator id
-                indicator_id = self.get_indicator_id(self.terciaria_name_map[ter_num])
+                indicator_id = self.config.get_indicator_id(self.terciaria_name_map[ter_num])
                 #download data
                 df = self.get_esios_data(
                     indicator_id,
@@ -622,7 +623,8 @@ class Terciaria(DescargadorESIOS):
 
             # Period 2: After change - use single price (2197)
             if any(ter_num in affected_markets for ter_num in [1, 2, 5]):
-                indicator_id = self.get_indicator_id("Terciaria programada unico")
+                indicator_id = self.config.get_indicator_id("Terciaria programada unico")
+                #download data
                 df = self.get_esios_data(
                     indicator_id,
                     (self.precio_unico_fecha).strftime('%Y-%m-%d'),
@@ -634,7 +636,9 @@ class Terciaria(DescargadorESIOS):
         # If entirely after regulatory change
         elif fecha_inicio_dt >= self.precio_unico_fecha:
             if any(ter_num in affected_markets for ter_num in [1, 2, 5]):
-                indicator_id = self.get_indicator_id("Terciaria programada unico")
+                indicator_id = self.config.get_indicator_id("Terciaria programada unico")
+                
+                #download data
                 df = self.get_esios_data(
                     indicator_id,
                     fecha_inicio_carga,
@@ -646,7 +650,7 @@ class Terciaria(DescargadorESIOS):
         # If entirely before regulatory change
         else:
             for ter_num in [ter_num for ter_num in affected_markets if ter_num in [1, 2]]:
-                indicator_id = self.get_indicator_id(self.terciaria_name_map[ter_num])
+                indicator_id = self.config.get_indicator_id(self.terciaria_name_map[ter_num])
                 df = self.get_esios_data(
                     indicator_id,
                     fecha_inicio_carga,
@@ -704,9 +708,9 @@ class RR(DescargadorESIOS):
         super().__init__()
 
         #get config from esios config file 
-        config = RRConfig()
-        self.indicator_id = config.indicator_id
-        self.cambio_granularidad_fecha = config.cambio_granularidad_fecha
+        self.config = RRConfig()
+        self.indicator_id = self.config.indicator_id
+        self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha
 
     def get_rr_data(self, fecha_inicio_carga, fecha_fin_carga):
         """
@@ -738,34 +742,34 @@ class RR(DescargadorESIOS):
 def test_usage_download():
     diario = Diario()
     diario_data = diario.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
-    print(diario_data.columns)
+    print(f"diario_data: {diario_data}")
 
     intra = Intra() 
     #downloading data for all intras between regulatory change (intra reduction) 
     intra_data = intra.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16', intra_lst=[1,2,3,4,5,6,7])
-    print(intra_data)
+    print(f"intra_data: {intra_data}")
 
 
     sec = Secundaria()
     #downloading data for both secondary markets between regulatory change
     sec_data = sec.get_prices(fecha_inicio_carga='2024-11-18', fecha_fin_carga='2024-11-22', secundaria_lst=[1,2])
-    print(sec_data)
+    print(f"sec_data: {sec_data}")
 
     ter = Terciaria()
     #downloading data for all terciarias between regulatory change (precio unificado terciaria)
     ter_data = ter.get_prices(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-22', terciaria_lst=[1,2,3,4,5])
-    print(ter_data)
+    print(f"ter_data: {ter_data}")
     breakpoint()
 
     #downloading data for all terciarias between granularidad change
     ter_data = ter.get_prices(fecha_inicio_carga='2022-05-20', fecha_fin_carga='2022-05-28', terciaria_lst=[1,2,3,4,5])
-    print(ter_data)
+    print(f"ter_data: {ter_data}")
 
 
     rr = RR()
     #downloading data for all rr (precio unico rr)
     rr_data = rr.get_rr_data(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-22')
-    print(rr_data)
+    print(f"rr_data: {rr_data}")
 
 def test_usage_save():
     diario = Diario()
@@ -800,70 +804,7 @@ def test_usage_save():
     rr_data = rr.get_rr_data(fecha_inicio_carga='2022-05-22', fecha_fin_carga='2022-05-28')
     rr.save_data(rr_data, dev=True)
     breakpoint()
-    
-def main():
-    # diario = Diario()
-    # diario_data = diario.get_prices(fecha_inicio_carga='2024-06-10', fecha_fin_carga='2024-06-16')
-    # print(diario_data)
-    # expected_rows = 24 * (datetime.strptime('2024-06-16', '%Y-%m-%d') - datetime.strptime('2024-06-10', '%Y-%m-%d')).days
-    # assert len(diario_data) == expected_rows, f"Diario data should have {expected_rows} rows"
 
-
-    # intra = Intra()
-    # # Before regulatory change - will use all intras 1-7
-    # df1 = intra.get_prices('2024-05-01', '2024-06-01', [1,2,3,4,5,6,7])
-    # # After regulatory change - will only use intras 1-3
-    # df2 = intra.get_prices('2024-07-01', '2024-07-31', [1,2,3,4,5,6,7])
-    # #Spanning regulatory change - will use all before change and only 1-3 after
-    # df3 = intra.get_prices('2024-06-10', '2024-06-16', [1,2,3,4,5,6,7])
-    # #Print unique id_mercado before and after regulatory change
-    # print(df1['id_mercado'].unique())
-    # print(df2['id_mercado'].unique()) 
-    # print(f"after", df3[df3['fecha'] > intra.intra_reduction_date]['id_mercado'].unique())
-    # print(f"before", df3[df3['fecha'] <= intra.intra_reduction_date]['id_mercado'].unique())
-
-    # # sec = Secundaria()
-    # # Before regulatory change - will only use indicator 634
-    # df1 = sec.get_prices('2024-10-01', '2024-11-01', [1, 2])
-    # # After regulatory change - will use both indicators
-    # df2 = sec.get_prices('2024-12-01', '2024-12-31', [1, 2])
-    # # Spanning regulatory change - will use 634 before change and both after
-    # df3 = sec.get_prices('2024-11-01', '2024-12-01', [1, 2])
-    # #print unique id_mercado before and after regulatory change
-    # print(df1['id_mercado'].unique(), df1.head())
-    # print(df2['id_mercado'].unique(), df2.head())
-    # print(df3['id_mercado'].unique(), df3.head()) 
-
-    # # Test Terciaria functionality
-    # ter = Terciaria()
-    # # Test 1: Basic functionality - check if data is returned and has expected columns
-    # ter_data = ter.get_prices(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-20', terciaria_lst=[1,2,3,4,5])
-    # assert isinstance(ter_data, pd.DataFrame), "get_prices should return a DataFrame"
-    # assert all(col in ter_data.columns for col in ['fecha', 'hora', 'precio', 'id_mercado']), "DataFrame missing expected columns"
-    
-    # # Test 2: Date range validation
-    # try:
-    #     ter_data = ter.get_prices(fecha_inicio_carga='2024-12-20', fecha_fin_carga='2024-12-08', terciaria_lst=[1])
-    #     assert False, "Should raise error when start date is after end date"
-    # except ValueError:
-    #     print("✓ Date validation working correctly")
-        
-    # # Test 3: Check terciaria_lst filtering for range spanning regulatory change
-    # test_lst = [1,2]
-    # ter_data = ter.get_prices(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-20', terciaria_lst=test_lst)
-    # print(ter_data.head(68))
-    # assert 5 not in ter_data['id_mercado'].unique(), "Download logic is not working for range spanning regulatory change"
-    # print("All Terciaria tests passed successfully!")
-
-    # rr = RR()
-    # rr_data = rr.get_rr_data(fecha_inicio_carga='2024-12-08', fecha_fin_carga='2024-12-20')
-    # print(rr_data)
-
-    ter = Terciaria()
-    ter_data = ter.get_prices(fecha_inicio_carga='2024-05-20', fecha_fin_carga='2024-05-30', terciaria_lst=[1])
-    ter_data.sort_values(by=['fecha', 'hora', 'id_mercado'], inplace=True)
-    print(ter_data.head(100))
-    
 if __name__ == "__main__":
     #main()
     test_usage_download()

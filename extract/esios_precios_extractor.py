@@ -17,7 +17,7 @@ class ESIOSPreciosExtractor:
     """
     
     def __init__(self):
-        """Initialize market extractors"""
+        """Initialize market extractors and raw file utils"""
         self.diario = Diario()
         self.intra = Intra()
         self.secundaria = Secundaria()
@@ -56,10 +56,6 @@ class ESIOSPreciosExtractor:
             #if fecha inicio > fecha fin, raise error
             if fecha_inicio_carga_dt > fecha_fin_carga_dt:
                 raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
-            
-            #if there are more than 93 days between fecha inicio y fecha fin, raise error
-            elif (fecha_fin_carga_dt - fecha_inicio_carga_dt).days > self.download_window: #93 days is the max allowed or ESIOS can return errors
-                raise ValueError("El rango de fechas no puede ser mayor que tres meses")
 
             #if fecha inicio y fecha fin are valid, print message
             else:
@@ -118,39 +114,65 @@ class ESIOSPreciosExtractor:
 
         return 
 
-    def extract_intra(self, 
-                     fecha_inicio: str, 
-                     fecha_fin: str, 
-                     intra_lst: List[int]) -> pd.DataFrame:
+    def extract_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, intra_lst: Optional[List[int]] = None) -> pd.DataFrame:
         """
         Extract intraday market prices from ESIOS.
         
         Args:
-            fecha_inicio (str): Start date in YYYY-MM-DD format
-            fecha_fin (str): End date in YYYY-MM-DD format
-            intra_lst (List[int]): List of intraday market IDs (1-7)
+            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
+            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None is 92 days from now
+            intra_lst (Optional[List[int]]): List of intraday market IDs (1-7), default None is all available markets
             
         Returns:
             pd.DataFrame: DataFrame with intraday market prices
-        
+            
         Note:
             After 2024-06-13, only Intra 1-3 are available due to regulatory changes
         """
-        return self.intra.get_prices(fecha_inicio_carga=fecha_inicio,
-                                   fecha_fin_carga=fecha_fin,
-                                   intra_lst=intra_lst)
+        
+        # Validate input dates
+        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
 
-    def extract_secundaria(self, 
-                         fecha_inicio: str, 
-                         fecha_fin: str, 
-                         secundaria_lst: List[int]) -> pd.DataFrame:
+        # Set default intra_lst if None
+        if intra_lst is None:
+            intra_lst = list(range(1, 8))  # Default to all markets 1-7
+
+        # Convert to datetime objects
+        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
+        fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+
+        # Download data for each day in the range
+        for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
+            # Extract year and month from date
+            year = day.year
+            month = day.month
+
+            # Get data for the day
+            df = self.intra.get_prices(
+                fecha_inicio_carga=day.strftime('%Y-%m-%d'),
+                fecha_fin_carga=day.strftime('%Y-%m-%d'),
+                intra_lst=intra_lst
+            )
+
+            if not df.empty:
+                self.raw_file_utils.write_raw_csv(
+                    year=year,
+                    month=month,
+                    df=df,
+                    dataset_type='precios',
+                    mercado='intra'
+                )
+
+        return
+
+    def extract_secundaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, secundaria_lst: Optional[List[int]] = None) -> pd.DataFrame:
         """
         Extract secondary regulation prices from ESIOS.
         
         Args:
-            fecha_inicio (str): Start date in YYYY-MM-DD format
-            fecha_fin (str): End date in YYYY-MM-DD format
-            secundaria_lst (List[int]): List of secondary regulation types [1: up, 2: down]
+            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
+            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None is 92 days from now
+            secundaria_lst (Optional[List[int]]): List of secondary regulation types [1: up, 2: down], default None is both
             
         Returns:
             pd.DataFrame: DataFrame with secondary regulation prices
@@ -158,22 +180,50 @@ class ESIOSPreciosExtractor:
         Note:
             After 2024-11-20, prices are split into up/down regulation
         """
-        return self.secundaria.get_prices(fecha_inicio_carga=fecha_inicio,
-                                        fecha_fin_carga=fecha_fin,
-                                        secundaria_lst=secundaria_lst)
+        
+        # Validate input dates
+        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
 
-    def extract_terciaria(self, 
-                         fecha_inicio: str, 
-                         fecha_fin: str, 
-                         terciaria_lst: List[int]) -> pd.DataFrame:
+        # Set default secundaria_lst if None
+        if secundaria_lst is None:
+            secundaria_lst = [1, 2]  # Default to both up and down regulation
+
+        # Convert to datetime objects
+        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
+        fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+
+        # Download data for each day in the range
+        for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
+            # Extract year and month from date
+            year = day.year
+            month = day.month
+
+            # Get data for the day
+            df = self.secundaria.get_prices(
+                fecha_inicio_carga=day.strftime('%Y-%m-%d'),
+                fecha_fin_carga=day.strftime('%Y-%m-%d'),
+                secundaria_lst=secundaria_lst
+            )
+
+            if not df.empty:
+                self.raw_file_utils.write_raw_csv(
+                    year=year,
+                    month=month,
+                    df=df,
+                    dataset_type='precios',
+                    mercado='secundaria'
+                )
+
+        return
+
+    def extract_terciaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, terciaria_lst: Optional[List[int]] = None) -> pd.DataFrame:
         """
         Extract tertiary regulation prices from ESIOS.
         
         Args:
-            fecha_inicio (str): Start date in YYYY-MM-DD format
-            fecha_fin (str): End date in 
-            YYYY-MM-DD format
-            terciaria_lst (List[int]): List of tertiary types 
+            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
+            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None is 92 days from now
+            terciaria_lst (Optional[List[int]]): List of tertiary types, default None is all types
                 [1: up, 2: down, 3: direct up, 4: direct down, 5: programmed single]
             
         Returns:
@@ -182,21 +232,86 @@ class ESIOSPreciosExtractor:
         Note:
             After 2024-12-10, programmed tertiary uses single price (type 5)
         """
-        return self.terciaria.get_prices(fecha_inicio_carga=fecha_inicio,
-                                       fecha_fin_carga=fecha_fin,
-                                       terciaria_lst=terciaria_lst)
+        
+        # Validate input dates
+        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
 
-    def extract_rr(self, fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
+        # Set default terciaria_lst if None
+        if terciaria_lst is None:
+            terciaria_lst = list(range(1, 6))  # Default to all types 1-5
+
+        # Convert to datetime objects
+        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
+        fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+
+        # Download data for each day in the range
+        for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
+            # Extract year and month from date
+            year = day.year
+            month = day.month
+
+            # Get data for the day
+            df = self.terciaria.get_prices(
+                fecha_inicio_carga=day.strftime('%Y-%m-%d'),
+                fecha_fin_carga=day.strftime('%Y-%m-%d'),
+                terciaria_lst=terciaria_lst
+            )
+
+            if not df.empty:
+                self.raw_file_utils.write_raw_csv(
+                    year=year,
+                    month=month,
+                    df=df,
+                    dataset_type='precios',
+                    mercado='terciaria'
+                )
+
+        return
+
+    def extract_rr(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> pd.DataFrame:
         """
         Extract Replacement Reserve (RR) prices from ESIOS.
         
         Args:
-            fecha_inicio (str): Start date in YYYY-MM-DD format
-            fecha_fin (str): End date in YYYY-MM-DD format
+            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
+            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None is 92 days from now
             
         Returns:
             pd.DataFrame: DataFrame with RR prices
+            
+        Note:
+            RR uses a single price for both up and down regulation
         """
-        return self.rr.get_rr_data(fecha_inicio_carga=fecha_inicio,
-                                  fecha_fin_carga=fecha_fin)
+        
+        # Validate input dates
+        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
 
+        # Convert to datetime objects
+        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
+        fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+
+        # Download data for each day in the range
+        for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
+            # Extract year and month from date
+            year = day.year
+            month = day.month
+
+            # Get data for the day
+            df = self.rr.get_rr_data(
+                fecha_inicio_carga=day.strftime('%Y-%m-%d'),
+                fecha_fin_carga=day.strftime('%Y-%m-%d')
+            )
+
+            if not df.empty:
+                self.raw_file_utils.write_raw_csv(
+                    year=year,
+                    month=month,
+                    df=df,
+                    dataset_type='precios',
+                    mercado='rr'
+                )
+
+        return
+
+
+   

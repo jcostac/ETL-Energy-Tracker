@@ -12,7 +12,7 @@ import pretty_errors
 from datetime import timedelta, timezone
 from deprecated import deprecated
 
-@deprecated(reason="This class was used in the old ETL pipeline and is now deprecated.")
+@deprecated(action="error", reason="Class used in an old ETL pipeline, now deprecated.")
 class TimeUtils:
     """Utility class for handling time-related operations for ESIOS, OMIE and I90 data. 
 

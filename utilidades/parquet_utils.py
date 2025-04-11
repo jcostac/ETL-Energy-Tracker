@@ -14,9 +14,7 @@ from datetime import datetime, timedelta
 import shutil
 import sys
 import os
-import pyarrow as pa
-import pyarrow.parquet as pq
-
+from deprecated import deprecated
 # Get the absolute path to the scripts directory
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
@@ -96,13 +94,33 @@ class StorageFileUtils:
     def drop_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
         Drops duplicates from the DataFrame based on the data type and mercado.
+        Args:
+            df (pd.DataFrame): The DataFrame to drop duplicates from
+            dataset_type (str): The type of dataset to drop duplicates from
+            WIP redownload (bool): Whether to redownload the data
+        Returns:
+            pd.DataFrame: The DataFrame with duplicates dropped
         """
-        if dataset_type == 'volumenes_i90':
-            df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
-        elif dataset_type == 'volumenes_i3':
-            df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
-        else:
-            df = df.drop_duplicates(subset=['datetime_utc', 'mercado'], keep='last')
+        #check for entire duplicate rows on the df
+        df_copy = df.copy()
+        df_unique = df_copy.drop_duplicates(keep='last')
+        num_duplicates = len(df_copy) - len(df_unique)
+
+        #uncomment this if you want a full redownload of the data
+        #if redownload == True:
+           #WIP = "This is a work in progress, need to add logic to redownload the data"
+           # return df
+
+        if num_duplicates > 0:
+            print(f"Found {num_duplicates} duplicate rows in the DataFrame")
+
+            #drop duplicates based on the dataset type
+            if dataset_type == 'volumenes_i90':
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
+            elif dataset_type == 'volumenes_i3':
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
+            else:
+                df = df.drop_duplicates(subset=['datetime_utc'], keep='last')
 
         return df
 
@@ -126,6 +144,7 @@ class RawFileUtils(StorageFileUtils):
         super().__init__(use_s3)
         self.raw_path = self.base_path / 'raw'
 
+    @deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
     def write_raw_csv(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
         """
         Processes a DataFrame and saves/appends it as a CSV file in the appropriate directory structure.
@@ -179,6 +198,69 @@ class RawFileUtils(StorageFileUtils):
             else:
                 # Create new file if it doesn't exist
                 df.to_csv(full_file_path, index=False)
+                print(f"Created new file: {filename}")
+                
+        except Exception as e:
+            print(f"Error processing file {filename}: {str(e)}")
+            raise
+
+    def write_raw_parquet(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
+        """
+        Processes a DataFrame and saves/appends it as a Parquet file in the appropriate directory structure.
+        Raw data is saved with proper type conversions and efficient compression.
+        
+        Args:
+            mercado (str): Market name for file organization ('diario', 'intra', 'secundaria', 'terciaria', 'rr')
+            year (int): Year for file organization
+            month (int): Month for file organization
+            df (pd.DataFrame): Input DataFrame to be saved/appended
+            dataset_type (str): Type of data ('volumenes_i90', 'volumenes_i3', 'precios', or 'ingresos')
+        
+        Raises:
+            ValueError: If dataset_type is invalid or DataFrame validation fails
+            FileNotFoundError: If directory structure cannot be created
+        """
+        # Validate dataset type
+        self.validate_dataset_type(dataset_type)
+        
+        try:
+            # Create directory structure
+            file_path = self.create_directory_structure(self.raw_path, mercado, year, month)
+            filename = f"{year}_{month:02d}_{dataset_type}.parquet"  # Using the compressed naming format directly
+            full_file_path = file_path / filename
+            
+            if full_file_path.exists():
+                try:
+                    # Read existing parquet file
+                    existing_df = pd.read_parquet(full_file_path)
+                    
+                    # Concatenate with existing data
+                    combined_df = pd.concat([existing_df, df], ignore_index=True)
+                    
+                    # Drop duplicates using raw string values
+                    combined_df = self.drop_duplicates(combined_df, dataset_type)
+                    
+                    # Save back to parquet with compression
+                    combined_df.to_parquet(
+                        full_file_path,
+                        compression='snappy',
+                        engine = 'pyarrow',
+                        index=False
+                    )
+                    print(f"Successfully updated existing file: {filename}")
+                    
+                except Exception as e:
+                    print(f"Error reading existing file {filename}: {str(e)}")
+                    raise
+                
+            else:
+                # Create new file if it doesn't exist
+                df.to_parquet(
+                    full_file_path,
+                    compression='snappy',
+                    engine = 'pyarrow',
+                    index=False
+                )
                 print(f"Created new file: {filename}")
                 
         except Exception as e:
@@ -240,6 +322,8 @@ class RawFileUtils(StorageFileUtils):
                         print(f"Error removing empty directory {year_dir}: {e}")
         
         print(f"Deletion complete. Removed {deleted_count} directories older than {months} months.")
+
+    
 
 class ProcessedFileUtils(StorageFileUtils):
     """
