@@ -7,7 +7,7 @@ import os
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from extract.descargador_esios import Diario, Intra, Secundaria, Terciaria, RR
+from extract.descargador_esios import DiarioPreciosDL, IntraPreciosDL, SecundariaPreciosDL, TerciariaPreciosDL, RRPreciosDL
 from utilidades.parquet_utils import RawFileUtils
 
 class ESIOSPreciosExtractor:
@@ -18,11 +18,11 @@ class ESIOSPreciosExtractor:
     
     def __init__(self):
         """Initialize market extractors and raw file utils"""
-        self.diario = Diario()
-        self.intra = Intra()
-        self.secundaria = Secundaria()
-        self.terciaria = Terciaria()
-        self.rr = RR()
+        self.diario = DiarioPreciosDL()
+        self.intra = IntraPreciosDL()
+        self.secundaria = SecundariaPreciosDL()
+        self.terciaria = TerciariaPreciosDL()
+        self.rr = RRPreciosDL()
         self.raw_file_utils = RawFileUtils()
 
         # Set the maximum download window (in days)
@@ -78,7 +78,8 @@ class ESIOSPreciosExtractor:
 
         return fecha_inicio_carga, fecha_fin_carga
 
-    def extract_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> pd.DataFrame:
+    def extract_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
+                       dev: bool = False) -> pd.DataFrame:
         """
         Extract daily market prices from ESIOS.
         
@@ -110,11 +111,15 @@ class ESIOSPreciosExtractor:
             df = self.diario.get_prices(fecha_inicio_carga=day.strftime('%Y-%m-%d'), 
                                     fecha_fin_carga=day.strftime('%Y-%m-%d'))
             
-            self.raw_file_utils.write_raw_csv(year=year, month=month, df=df, dataset_type='precios', mercado='diario')
+            if dev == True:
+                self.raw_file_utils.write_raw_csv(year=year, month=month, df=df, dataset_type='precios', mercado='diario')
+            else:
+                self.raw_file_utils.write_raw_parquet(year=year, month=month, df=df, dataset_type='precios', mercado='diario')
 
         return 
 
-    def extract_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, intra_lst: Optional[List[int]] = None) -> pd.DataFrame:
+    def extract_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
+                      intra_lst: Optional[List[int]] = None, dev: bool = False) -> pd.DataFrame:
         """
         Extract intraday market prices from ESIOS.
         
@@ -155,17 +160,14 @@ class ESIOSPreciosExtractor:
             )
 
             if not df.empty:
-                self.raw_file_utils.write_raw_csv(
-                    year=year,
-                    month=month,
-                    df=df,
-                    dataset_type='precios',
-                    mercado='intra'
-                )
-
+                if dev == True:
+                    self.raw_file_utils.write_raw_csv(year=year, month=month, df=df, dataset_type='precios', mercado='intra')
+                else:
+                    self.raw_file_utils.write_raw_parquet(year=year, month=month, df=df, dataset_type='precios', mercado='intra')
         return
 
-    def extract_secundaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, secundaria_lst: Optional[List[int]] = None) -> pd.DataFrame:
+    def extract_secundaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
+                           secundaria_lst: Optional[List[int]] = None, dev: bool = False) -> pd.DataFrame:
         """
         Extract secondary regulation prices from ESIOS.
         
@@ -206,17 +208,15 @@ class ESIOSPreciosExtractor:
             )
 
             if not df.empty:
-                self.raw_file_utils.write_raw_csv(
-                    year=year,
-                    month=month,
-                    df=df,
-                    dataset_type='precios',
-                    mercado='secundaria'
-                )
+                if dev == True:
+                    self.raw_file_utils.write_raw_csv(year=year, month=month, df=df, dataset_type='precios', mercado='secundaria')
+                else:
+                    self.raw_file_utils.write_raw_parquet(year=year, month=month, df=df, dataset_type='precios', mercado='secundaria')
 
         return
 
-    def extract_terciaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, terciaria_lst: Optional[List[int]] = None) -> pd.DataFrame:
+    def extract_terciaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
+                          terciaria_lst: Optional[List[int]] = None, dev: bool = False) -> pd.DataFrame:
         """
         Extract tertiary regulation prices from ESIOS.
         
@@ -258,17 +258,14 @@ class ESIOSPreciosExtractor:
             )
 
             if not df.empty:
-                self.raw_file_utils.write_raw_csv(
-                    year=year,
-                    month=month,
-                    df=df,
-                    dataset_type='precios',
-                    mercado='terciaria'
-                )
+                if dev == True:
+                    self.raw_file_utils.write_raw_csv(year=year, month=month, df=df, dataset_type='precios', mercado='terciaria')
+                else:
+                    self.raw_file_utils.write_raw_parquet(year=year, month=month, df=df, dataset_type='precios', mercado='terciaria')
 
         return
 
-    def extract_rr(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> pd.DataFrame:
+    def extract_rr(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, dev: bool = False) -> pd.DataFrame:
         """
         Extract Replacement Reserve (RR) prices from ESIOS.
         
@@ -303,13 +300,10 @@ class ESIOSPreciosExtractor:
             )
 
             if not df.empty:
-                self.raw_file_utils.write_raw_csv(
-                    year=year,
-                    month=month,
-                    df=df,
-                    dataset_type='precios',
-                    mercado='rr'
-                )
+                if dev == True:
+                    self.raw_file_utils.write_raw_csv(year=year, month=month, df=df, dataset_type='precios', mercado='rr')
+                else:
+                    self.raw_file_utils.write_raw_parquet(year=year, month=month, df=df, dataset_type='precios', mercado='rr')
 
         return
 

@@ -26,57 +26,20 @@ class DescargadorESIOS:
         self.download_window = 93
         self.madrid_tz = pytz.timezone('Europe/Madrid')
         
-    def get_esios_data(self, indicator_id: str, fecha_inicio_carga: str = None, fecha_fin_carga: str = None):
+    def get_esios_data(self, indicator_id: str, fecha_inicio_carga: str = None, fecha_fin_carga: str = None) -> pd.DataFrame:
         """
-        Descarga los datos de ESIOS para un indicador específico en un rango de fechas.
+        Downloads data from ESIOS for a specific indicator within a date range.
         
         Args:
-            indicator_id (str): El ID del indicador para el cual se están solicitando los datos.
-            fecha_inicio_carga (str): La fecha de inicio para la solicitud de datos en formato 'YYYY-MM-DD'.
-            fecha_fin_carga (str): La fecha de fin para la solicitud de datos en formato 'YYYY-MM-DD'.
+            indicator_id (str): The indicator ID for which data is being requested
+            fecha_inicio_carga (str): Start date for data request in 'YYYY-MM-DD' format
+            fecha_fin_carga (str): End date for data request in 'YYYY-MM-DD' format
         
         Returns:
-            pd.DataFrame: DataFrame con los datos solicitados.
+            pd.DataFrame: DataFrame containing the requested data with granularity information
         """
-        if hasattr(self, 'cambio_granularidad_fecha'): #if the class has a cambio de granularidad, we need to handle it
-            change_date = self.cambio_granularidad_fecha
-            fecha_inicio_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-            fecha_fin_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
-            
-            dfs = []
-            
-            # If date range spans the granularity change
-            if fecha_inicio_dt < change_date and fecha_fin_dt > change_date:
-
-                # Get hourly data up to change date (inclusive)
-                df_before = self._make_esios_request(
-                    indicator_id,
-                    fecha_inicio_carga,
-                    change_date.strftime('%Y-%m-%d')
-                )
-                
-                if not df_before.empty:
-                    dfs.append(df_before)
-                
-                # Get 15-min data after change date
-                df_after = self._make_esios_request(
-                    indicator_id,
-                    (change_date).strftime('%Y-%m-%d'),
-                    fecha_fin_carga
-                )
-                if not df_after.empty:
-                    dfs.append(df_after)
-                
-                if dfs:
-                    final_df = pd.concat(dfs, ignore_index=True)
-                    return final_df
-                
-                return pd.DataFrame()
-            
-            # If entirely before or after change date, use original logic
-            return self._make_esios_request(indicator_id, fecha_inicio_carga, fecha_fin_carga)
-        
-        # For markets without granularity changes, use original logic
+        # Direct request to ESIOS API - no need to check granularity dates since 
+        # granularity is included in the response and stored in DataFrame
         return self._make_esios_request(indicator_id, fecha_inicio_carga, fecha_fin_carga)
 
     def _make_esios_request(self, indicator_id: str, fecha_inicio_carga: str, fecha_fin_carga: str) -> pd.DataFrame:
@@ -102,7 +65,7 @@ class DescargadorESIOS:
         # For end date, we want the end of the day (23:55:00 -> max esios time in a day 23:55:00)
         end_local = self.madrid_tz.localize(datetime.strptime(fecha_fin_carga, '%Y-%m-%d').replace(hour=23, minute=55, second=0))
 
-        # Convert to UTC for API request
+        # Convert to end time and start time to UTC for API request
         start_utc = start_local.astimezone(pytz.UTC)
         end_utc = end_local.astimezone(pytz.UTC)
 
@@ -148,6 +111,8 @@ class DescargadorESIOS:
             #extract granularity from json data -> can be "Quince minutos" or "Hora"
             granularidad = data["indicator"]["tiempo"][0]["name"].strip()
 
+
+
             #validate data structure
             if not self.validate_data_structure(data, granularidad):
                 return pd.DataFrame() #return empty dataframe if no data found
@@ -155,6 +120,7 @@ class DescargadorESIOS:
             #if no errors, procesamos los datos de interés en un dataframe que se ecnuentran en el key values
             df_data = pd.DataFrame(data['indicator']['values'])
             df_data['granularidad'] = granularidad
+            df_data["indicador_id"] = indicator_id
 
             return df_data
 
@@ -500,101 +466,65 @@ class TerciariaPreciosDL(DescargadorESIOS):
         
     def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, terciaria_lst: list[int]) -> pd.DataFrame:
         """
-        Descarga los datos de ESIOS para terciaria, manejando el cambio regulatorio del 10/12/2024
-        donde se cambia de precio dual (676 bajar, 677 subir) a precio único (2197).
-
+        Descarga los datos de ESIOS para terciaria para un día específico.
+        Maneja el cambio regulatorio del 10/12/2024 donde se cambia de precio dual (676 bajar, 677 subir) a precio único (2197).
+        
         Args:
-            fecha_inicio_carga (str): La fecha de inicio de la carga en formato YYYY-MM-DD
-            fecha_fin_carga (str): La fecha de fin de la carga en formato YYYY-MM-DD
+            fecha_inicio_carga (str): Fecha de carga en formato YYYY-MM-DD (se asume que es la misma que fecha_fin_carga)
+            fecha_fin_carga (str): Fecha de carga en formato YYYY-MM-DD (se asume que es la misma que fecha_inicio_carga)
             terciaria_lst (list[int]): Lista de tipos de terciaria [1: subir, 2: bajar, 3: directa subir, 
-                                                                   4: directa bajar, 5: programada único]
-
+                                                                  4: directa bajar, 5: programada único]
+        
         Returns:
-            pd.DataFrame: DataFrame con los precios de terciaria
+            pd.DataFrame: DataFrame con los precios de terciaria para el día solicitado
         """
         # Validate input
         invalid_ter_nums = [ter_num for ter_num in terciaria_lst if ter_num not in self.terciaria_name_map]
         if invalid_ter_nums:
             raise ValueError(f"Invalid terciaria types: {invalid_ter_nums}. Valid types are 1-5")
-
-        # Convert dates to datetime for comparison
-        fecha_inicio_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-        fecha_fin_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+        
+        # Ensure we're downloading data for a single day
+        if fecha_inicio_carga != fecha_fin_carga:
+            print(f"Warning: fecha_inicio_carga ({fecha_inicio_carga}) and fecha_fin_carga ({fecha_fin_carga}) differ. " 
+                  f"Using fecha_inicio_carga as the target date.")
+        
+        # Use only the start date for simplicity
+        target_date = fecha_inicio_carga #fecha carga == fecha fin carga only hours will vary between both dates
+        target_date_dt = datetime.strptime(target_date, '%Y-%m-%d')
         
         dfs = []
         
         # Separate affected and unaffected markets
         affected_markets = [id for id in terciaria_lst if id in [1, 2, 5]]
         unaffected_markets = [id for id in terciaria_lst if id in [3, 4]]
-
-        #TERCIARIA DIRECTA
-        # Handle unaffected markets by regulatory change (terciaria directa) -> download normally
+        
+        # CASE 1: Handle unaffected markets (terciaria directa) - always download normally
         for ter_num in unaffected_markets:
-            #get indicator id
             indicator_id = self.config.get_indicator_id(self.terciaria_name_map[ter_num])
-            #download data
-            df = self.get_esios_data(
-                indicator_id,
-                fecha_inicio_carga,
-                fecha_fin_carga
-            )
+            df = self.get_esios_data(indicator_id, target_date, target_date)
             if not df.empty:
                 dfs.append(df)
+        
+        # CASE 2: Handle affected markets (terciaria programada) based on date
+        # If date is on or after the regulatory change
+        if target_date_dt >= self.precio_unico_fecha:
 
-        #TERCIARIA PROGRAMADA
-        # Handle affected markets based on date ranges (terciaria programada)
-        if fecha_inicio_dt < self.precio_unico_fecha and fecha_fin_dt >= self.precio_unico_fecha:
-            # Period 1: Before change - use dual prices (676, 677)
-            for ter_num in [ter_num for ter_num in affected_markets if ter_num in [1, 2]]:
-                #get indicator id
-                indicator_id = self.config.get_indicator_id(self.terciaria_name_map[ter_num])
-                #download data
-                df = self.get_esios_data(
-                    indicator_id,
-                    fecha_inicio_carga,
-                    (self.precio_unico_fecha - timedelta(days=1)).strftime('%Y-%m-%d')
-                )
-                if not df.empty:
-                    dfs.append(df)
-
-            # Period 2: After change - use single price (2197)
+            # Use the new single price indicator, iterate once if any of the affected markets are requested
             if any(ter_num in affected_markets for ter_num in [1, 2, 5]):
                 indicator_id = self.config.get_indicator_id("Terciaria programada unico")
-                #download data
-                df = self.get_esios_data(
-                    indicator_id,
-                    (self.precio_unico_fecha).strftime('%Y-%m-%d'),
-                    fecha_fin_carga
-                )
+                df = self.get_esios_data(indicator_id, target_date, target_date)
                 if not df.empty:
                     dfs.append(df)
-
-        # If entirely after regulatory change
-        elif fecha_inicio_dt >= self.precio_unico_fecha:
-            if any(ter_num in affected_markets for ter_num in [1, 2, 5]):
-                indicator_id = self.config.get_indicator_id("Terciaria programada unico")
-                
-                #download data
-                df = self.get_esios_data(
-                    indicator_id,
-                    fecha_inicio_carga,
-                    fecha_fin_carga
-                )
-                if not df.empty:
-                    dfs.append(df)
-
-        # If entirely before regulatory change
+        
+        # CASE 3: If date is before the regulatory change
         else:
+            # Use the old dual price indicators, iterate over both terciaria subir and terciaria bajar 
             for ter_num in [ter_num for ter_num in affected_markets if ter_num in [1, 2]]:
                 indicator_id = self.config.get_indicator_id(self.terciaria_name_map[ter_num])
-                df = self.get_esios_data(
-                    indicator_id,
-                    fecha_inicio_carga,
-                    fecha_fin_carga
-                )
+                df = self.get_esios_data(indicator_id, target_date, target_date)
                 if not df.empty:
                     dfs.append(df)
-
+        
         # Combine all DataFrames
         if dfs:
             final_df = pd.concat(dfs, ignore_index=True)

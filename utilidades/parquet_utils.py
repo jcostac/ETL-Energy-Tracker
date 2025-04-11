@@ -101,27 +101,22 @@ class StorageFileUtils:
         Returns:
             pd.DataFrame: The DataFrame with duplicates dropped
         """
-        #check for entire duplicate rows on the df
-        df_copy = df.copy()
-        df_unique = df_copy.drop_duplicates(keep='last')
-        num_duplicates = len(df_copy) - len(df_unique)
-
-        #uncomment this if you want a full redownload of the data
-        #if redownload == True:
-           #WIP = "This is a work in progress, need to add logic to redownload the data"
-           # return df
-
-        if num_duplicates > 0:
-            print(f"Found {num_duplicates} duplicate rows in the DataFrame")
-
-            #drop duplicates based on the dataset type
-            if dataset_type == 'volumenes_i90':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
-            elif dataset_type == 'volumenes_i3':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
-            else:
-                df = df.drop_duplicates(subset=['datetime_utc'], keep='last')
-
+         # First remove exact duplicates across all columns
+        df_before = len(df)
+        df = df.drop_duplicates(keep='last')  
+        exact_dups = df_before - len(df)
+        
+        if exact_dups > 0:
+            print(f"Removed {exact_dups} exact duplicate rows")
+        
+        # Then handle subset-based duplicates
+        if dataset_type == 'volumenes_i90':
+            df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
+        elif dataset_type == 'volumenes_i3':
+            df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
+        else:
+            df = df.drop_duplicates(subset=['datetime_utc', 'indicador_id'], keep='last')
+        
         return df
 
     @staticmethod
