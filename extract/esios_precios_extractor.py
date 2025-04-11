@@ -294,7 +294,7 @@ class ESIOSPreciosExtractor:
             month = day.month
 
             # Get data for the day
-            df = self.rr.get_rr_data(
+            df = self.rr.get_prices(
                 fecha_inicio_carga=day.strftime('%Y-%m-%d'),
                 fecha_fin_carga=day.strftime('%Y-%m-%d')
             )

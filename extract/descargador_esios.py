@@ -381,76 +381,61 @@ class SecundariaPreciosDL(DescargadorESIOS):
         
     def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, secundaria_lst: list[int]) -> pd.DataFrame:
         """
-        Descarga los datos de ESIOS para secundaria, manejando el cambio regulatorio del 20/11/2024
-        donde se cambia de precio único (634) a precio dual (634 para bajar, 2130 para subir).
-
+        Downloads ESIOS data for secundaria for a specific day.
+        Handles the regulatory change on 20/11/2024 where it changes from single price (634) 
+        to dual price (634 for down, 2130 for up).
+        
         Args:
-            fecha_inicio_carga (str): La fecha de inicio de la carga en formato YYYY-MM-DD
-            fecha_fin_carga (str): La fecha de fin de la carga en formato YYYY-MM-DD
-            secundaria_lst (list[int]): Lista de tipos de secundaria [1: subir, 2: bajar]
-
+            fecha_inicio_carga (str): Load date in YYYY-MM-DD format (assumed same as fecha_fin_carga)
+            fecha_fin_carga (str): Load date in YYYY-MM-DD format (assumed same as fecha_inicio_carga)
+            secundaria_lst (list[int]): List of secundaria types [1: up, 2: down]
+        
         Returns:
-            pd.DataFrame: DataFrame con los precios de secundaria
+            pd.DataFrame: DataFrame with secundaria prices for the requested day
         """
-        # Validate input
+        # Validate input types
         invalid_ids = [id for id in secundaria_lst if id not in self.secundaria_name_map]
         if invalid_ids:
             raise ValueError(f"Invalid secundaria types: {invalid_ids}. Valid types are 1 (subir) and 2 (bajar)")
-
-        # Convert dates to datetime for comparison
-        fecha_inicio_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-        fecha_fin_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+        
+         # Ensure we're downloading data for a single day
+        if fecha_inicio_carga != fecha_fin_carga:
+            print(f"Warning: fecha_inicio_carga ({fecha_inicio_carga}) and fecha_fin_carga ({fecha_fin_carga}) differ. " 
+                  f"Using fecha_inicio_carga as the target date, only data range of one day will be downloaded.")
+        
+        # Use only the start date for simplicity
+        target_date = fecha_inicio_carga  # Only hours will vary between dates
+        target_date_dt = datetime.strptime(target_date, '%Y-%m-%d')
         
         dfs = []
-
-        # If date range spans the regulatory change
-        if fecha_inicio_dt < self.precio_dual_fecha and fecha_fin_dt > self.precio_dual_fecha:
-            # Before change: only use bajar indicator (634) for all data
-            df = self.get_esios_data(
-                self.config.get_indicator_id("Secundaria a bajar"),
-                fecha_inicio_carga,
-                (self.precio_dual_fecha - timedelta(days=1)).strftime('%Y-%m-%d')  # End on 19th
-            )
-            if not df.empty:
-                dfs.append(df)
-
-            # After change: use both indicators if requested
+        
+        # If date is on or after the regulatory change - use dual pricing
+        if target_date_dt >= self.precio_dual_fecha:
             for sec_id in secundaria_lst:
                 df = self.get_esios_data(
                     self.config.get_indicator_id(self.secundaria_name_map[sec_id]),
-                    self.precio_dual_fecha.strftime('%Y-%m-%d'),  # Start from 20th
-                    fecha_fin_carga 
+                    target_date,
+                    target_date
                 )
                 if not df.empty:
                     dfs.append(df)
-
-        # If entirely after regulatory change
-        elif fecha_inicio_dt >= self.precio_dual_fecha:
-            for sec_id in secundaria_lst:
-                df = self.get_esios_data(
-                    self.config.get_indicator_id(self.secundaria_name_map[sec_id]),
-                    fecha_inicio_carga,
-                    fecha_fin_carga
-                )
-                if not df.empty:
-                    dfs.append(df)
-
-        # If entirely before regulatory change
+        
+        # If date is before the regulatory change - use single price (bajar indicator)
         else:
-            # Only use bajar indicator (634) regardless of what was requested
             df = self.get_esios_data(
                 self.config.get_indicator_id("Secundaria a bajar"),
-                fecha_inicio_carga,
-                fecha_fin_carga
+                target_date,
+                target_date
             )
             if not df.empty:
                 dfs.append(df)
-
-        # Combine all DataFrames
+        
+        # Combine all DataFrames if any exist
         if dfs:
             final_df = pd.concat(dfs, ignore_index=True)
             return final_df
         else:
+            print(f"No data found for secundaria types {secundaria_lst} on date {target_date}")
             return pd.DataFrame()
 
 class TerciariaPreciosDL(DescargadorESIOS):
@@ -486,7 +471,7 @@ class TerciariaPreciosDL(DescargadorESIOS):
         # Ensure we're downloading data for a single day
         if fecha_inicio_carga != fecha_fin_carga:
             print(f"Warning: fecha_inicio_carga ({fecha_inicio_carga}) and fecha_fin_carga ({fecha_fin_carga}) differ. " 
-                  f"Using fecha_inicio_carga as the target date.")
+                  f"Using fecha_inicio_carga as the target date, only data for one day will be downloaded.")
         
         # Use only the start date for simplicity
         target_date = fecha_inicio_carga #fecha carga == fecha fin carga only hours will vary between both dates
