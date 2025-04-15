@@ -9,12 +9,13 @@ from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Tuple, Union
 from tqdm import tqdm
 import sys
+import os
 
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from utilidades.time_utils import TimeUtils
 from utilidades.db_utils import DatabaseUtils
+from configs.i90_config import I90Config, TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config
 
 class I90DownloaderDL:
     """
@@ -29,108 +30,47 @@ class I90DownloaderDL:
     
     def __init__(self):
         """Initialize the I90 downloader with ESIOS API token"""
-        self.esios_token = "0d31017ec920c6daa1c1ecfcb0fe166574f370ac7908674cdffcc5015500daea"
-        self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date
-    
-    def get_transition_dates(self, fecha_inicio_carga_dt: datetime, fecha_fin_carga_dt: datetime) -> Dict[date, int]:
+        self.esios_token = os.getenv('ESIOS_API_KEY')
+        self.config = I90Config()
+        self.lista_errores = self.config.get_error_data()
+        self.temporary_download_path = self.config.temporary_download_path
+
+    def get_i90_data(self, day: datetime, sheets_of_interest: List[str]) -> pd.DataFrame:
         """
-        Get the dates with time transitions (23 or 25 hours days) in the specified range.
+        Get I90 data for a specific day.
         
         Args:
-            fecha_inicio_carga_dt (datetime): Start date for the data range
-            fecha_fin_carga_dt (datetime): End date for the data range
+            day (datetime): The specific day to retrieve data for
+            sheets_of_interest (List[str]): List of sheet IDs to process
             
         Returns:
-            Dict[date, int]: Dictionary with transition dates as keys and timezone offset as values
+            pd.DataFrame: Processed data from the I90 file
         """
-        spain_timezone = pytz.timezone('Europe/Madrid')
-        utc_transition_times = spain_timezone._utc_transition_times[1:]
-        localized_transition_times = [pytz.utc.localize(transition).astimezone(spain_timezone) for transition in utc_transition_times]
-        fecha_inicio_local = spain_timezone.localize(fecha_inicio_carga_dt)
-        fecha_fin_local = spain_timezone.localize(fecha_fin_carga_dt)
-        filtered_transition_times = [transition for transition in localized_transition_times if fecha_inicio_local <= transition <= fecha_fin_local]
+        # Download the file
+        zip_file_name, excel_file_name = self._make_i90_request(day)
         
-        # Create dictionary with date and timezone offset
-        filtered_transition_dates = {dt.date(): int(dt.isoformat()[-4]) for dt in filtered_transition_times}
+        # Get error data for the day
+        df_errores_dia = self.lista_errores[self.lista_errores['fecha'] == day.date()]
+
+        #if there are errors for that particular day
+        if not df_errores_dia.empty:
+            pestañas_con_error = df_errores_dia['tipo_error'].values
+            # Filter out sheets with errors
+            valid_sheets = [sheet for sheet in sheets_of_interest if int(sheet) not in pestañas_con_error]
+
+            if not valid_sheets:
+                print(f"Warning: All requested sheets have errors for {day.date()}")
+                return pd.DataFrame()
         
-        return filtered_transition_dates
+        # Process the file with valid sheets only
+        filtered_excel_file = self.process_sheet(excel_file_name, valid_sheets)
+
+        # Clean up files
+        self.cleanup_files(zip_file_name, excel_file_name)
+        
+        return filtered_excel_file
     
-    def get_programming_units(self, bbdd_engine, UP_ids: Optional[List[int]] = None) -> Tuple[List[str], Dict[str, int]]:
-        """
-        Get the list of programming units from the database.
-        
-        Args:
-            bbdd_engine: Database engine connection
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            
-        Returns:
-            Tuple[List[str], Dict[str, int]]: List of programming unit names and dictionary mapping names to IDs
-        """
-        # Query to get programming units
-        query = '''SELECT u.id as id, UP FROM UPs u inner join Activos a on u.activo_id = a.id where a.region = "ES"'''
-        
-        # Add filter for specific programming units if provided
-        if UP_ids:
-            UP_list = """, """.join([str(item) for item in UP_ids])
-            query += f' and u.id in ({UP_list})'
-        
-        # Execute query and process results
-        df_up = pd.read_sql_query(query, con=bbdd_engine)
-        unidades = df_up['UP'].tolist()
-        dict_unidades = dict(zip(unidades, df_up['id']))
-        
-        return unidades, dict_unidades
-    
-    def get_market_data(self, bbdd_engine, mercados_ids: Optional[List[int]] = None) -> Tuple[pd.DataFrame, List[int], List[int]]:
-        """
-        Get market data from the database.
-        
-        Args:
-            bbdd_engine: Database engine connection
-            mercados_ids (Optional[List[int]]): List of market IDs to filter
-            
-        Returns:
-            Tuple[pd.DataFrame, List[int], List[int]]: DataFrame with market data, list of volume sheet IDs, and list of all sheet IDs
-        """
-        # Query to get markets with I90 volume data
-        query = '''SELECT * FROM Mercados
-                where sheet_i90_volumenes != 0'''
-        
-        # Add filter for specific markets if provided
-        if mercados_ids:
-            mercados_list = """, """.join([str(item) for item in mercados_ids])
-            query += f' and id in ({mercados_list})'
-        
-        # Execute query and process results
-        df_mercados = pd.read_sql_query(query, con=bbdd_engine)
-        pestañas_volumenes = df_mercados['sheet_i90_volumenes'].unique().tolist()
-        pestañas = pestañas_volumenes + df_mercados['sheet_i90_precios'].unique().tolist()
-        
-        # Convert to integers and filter out NaN values
-        pestañas = [int(item) for item in pestañas if item is not None and not (isinstance(item, float) and math.isnan(item))]
-        
-        return df_mercados, pestañas_volumenes, pestañas
-    
-    def get_error_data(self, bbdd_engine) -> pd.DataFrame:
-        """
-        Get error data for I90 files from the database.
-        
-        Args:
-            bbdd_engine: Database engine connection
-            
-        Returns:
-            pd.DataFrame: DataFrame with error data
-        """
-        # Query to get error data
-        query = '''SELECT fecha, tipo_error FROM Errores_i90_OMIE where fuente_error = "i90"'''
-        
-        # Execute query and process results
-        df_errores = pd.read_sql_query(query, con=bbdd_engine)
-        df_errores['fecha'] = pd.to_datetime(df_errores['fecha']).dt.date
-        
-        return df_errores
-    
-    def download_i90_file(self, day: datetime) -> Tuple[str, str]:
+    def _make_i90_request(self, day: datetime) -> Tuple[str, str]:
         """
         Download I90 file for a specific day from ESIOS API.
         
@@ -153,20 +93,62 @@ class I90DownloaderDL:
         )
         
         # Save the downloaded file
-        with open(f"{day.date()}.zip", "wb") as fd:
+        with open(f"{self.temporary_download_path}/{day.date()}.zip", "wb") as fd:
             fd.write(resp.content)
         
         # Create file names for the downloaded and extracted files
-        file_name = f"{day.year}-{str(day.month).zfill(2)}-{str(day.day).zfill(2)}"
-        file_name_2 = f"{day.year}{str(day.month).zfill(2)}{str(day.day).zfill(2)}"
+        zip_file_name = f"{day.year}-{str(day.month).zfill(2)}-{str(day.day).zfill(2)}"
+        excel_file_name = f"{day.year}{str(day.month).zfill(2)}{str(day.day).zfill(2)}"
         
         # Extract the zip file
-        with zipfile.ZipFile(f"./{file_name}.zip", 'r') as zip_ref:
-            zip_ref.extractall("./")
+        with zipfile.ZipFile(f"{self.temporary_download_path}/{zip_file_name}.zip", 'r') as zip_ref:
+            zip_ref.extractall(self.temporary_download_path)
         
-        return file_name, file_name_2
+        return zip_file_name, excel_file_name
     
-    def cleanup_files(self, file_name: str, file_name_2: str) -> None:
+    def process_sheet(self, excel_file_name: str, sheets_to_keep: List[str]) -> pd.ExcelFile:
+        """
+        Process the I90 Excel file by filtering and keeping only specified sheets.
+        
+        Args:
+            file_name_2 (str): Base name of the Excel file to process
+            sheets_to_keep (List[str]): List of sheet names to keep (e.g. ['03', '05', '07']), have to pass 
+            str and zero padded (e.g. '03' instead of 3)
+            
+        Returns:
+            pd.ExcelFile: Processed Excel file containing only specified sheets
+            
+        Notes:
+            - Creates a new filtered Excel file with only the specified sheets
+            - Original file remains unchanged
+        """
+        # Load the Excel file
+        excel_file = pd.ExcelFile(f"{self.temporary_download_path}/I90DIA_{excel_file_name}.xls")
+        
+        # Get all sheet names in the file
+        all_sheets = excel_file.sheet_names
+        
+        # Create a list of sheet names to keep with proper formatting
+        target_sheets = [f'I90DIA{sheet}' for sheet in sheets_to_keep]
+        
+        # Filter sheets
+        filtered_sheets = [sheet for sheet in all_sheets if sheet in target_sheets]
+        
+        # Create a new Excel file with only the filtered sheets
+        writer = pd.ExcelWriter(f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered.xls", engine='openpyxl')
+        
+        # Copy selected sheets to new file
+        for sheet in filtered_sheets:
+            df = pd.read_excel(excel_file, sheet_name=sheet)
+            df.to_excel(writer, sheet_name=sheet, index=False)
+        
+        # Save and close the writer
+        writer.close()
+        
+        # Return the new filtered Excel file
+        return pd.ExcelFile(f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered.xls")
+    
+    def cleanup_files(self, zip_file_name: str, excel_file_name: str) -> None:
         """
         Clean up temporary files after processing.
         
@@ -175,10 +157,13 @@ class I90DownloaderDL:
             file_name_2 (str): Base file name for the Excel file
         """
         # Remove the downloaded and extracted files
-        os.remove(f"./{file_name}.zip")
-        os.remove(f"./I90DIA_{file_name_2}.xls")
+        os.remove(f"./{zip_file_name}.zip")
+        os.remove(f"./I90DIA_{excel_file_name}.xls")
     
-    def process_sheet(self, pestaña: int, file_name_2: str, unidades: List[str], 
+
+
+
+    def process_sheet_v1(self, pestaña: int, file_name_2: str, unidades: List[str], 
                       df_mercados: pd.DataFrame, pestañas_volumenes: List[int],
                       is_special_date: bool, tipo_cambio_hora: int, day: datetime) -> List[Tuple[pd.DataFrame, str, bool]]:
         """
@@ -249,16 +234,19 @@ class I90DownloaderDL:
                     df = df[df['Redespacho'].isin(['ECOBSO', 'ECOBCBSO'])]
                 else:
                     df = df[df['Redespacho'].isin(['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB'])]
+
             elif sheet == '07':
                 if mercado['mercado'] in ['Terciaria a subir', 'Terciaria a bajar']:
                     df = df[df['Redespacho'] != 'TERDIR']
                 else:
                     df = df[df['Redespacho'] == 'TERDIR']
+
             elif sheet == '08' or sheet == '10':
                 if mercado['mercado'] == "Indisponibilidades":
                     df = df[df['Redespacho'] == "Indisponibilidad"]
                 else:
                     df = df[df['Redespacho'] == "Restricciones Técnicas"]
+
             elif sheet == '09':
                 df = df[df['Redespacho'].isin(['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB'])]
             
@@ -309,116 +297,6 @@ class I90DownloaderDL:
         
         return results
     
-    def ajuste_horario(self, row, is_special_date: bool, tipo_cambio_hora: int) -> str:
-        """
-        Adjust hourly values for special dates (23 or 25 hours days).
-        
-        Args:
-            row: DataFrame row being processed
-            is_special_date (bool): Whether the day is a special date
-            tipo_cambio_hora (int): Timezone offset for the day
-            
-        Returns:
-            str: Adjusted hour value
-        """
-        hora = int(row['hora'])
-        
-        # Apply adjustments for special dates
-        if is_special_date:
-            # Spring (23 hours day)
-            if tipo_cambio_hora == 2:
-                # Skip hour 3 (2 to 3 AM)
-                if hora > 3:
-                    return f"{hora-1:02d}:00"
-                else:
-                    return f"{hora:02d}:00"
-            # Fall (25 hours day)
-            elif tipo_cambio_hora == 1:
-                # Duplicate hour 3 (2 to 3 AM)
-                if hora >= 28:
-                    return f"{hora-25:02d}:00"
-                elif hora > 3:
-                    return f"{hora-1:02d}:00"
-                else:
-                    return f"{hora:02d}:00"
-        
-        # Normal days
-        return f"{hora:02d}:00"
-    
-    def ajuste_quinceminutal(self, row, is_special_date: bool, tipo_cambio_hora: int) -> str:
-        """
-        Adjust 15-minute values for special dates (23 or 25 hours days).
-        
-        Args:
-            row: DataFrame row being processed
-            is_special_date (bool): Whether the day is a special date
-            tipo_cambio_hora (int): Timezone offset for the day
-            
-        Returns:
-            str: Adjusted hour:minute value
-        """
-        hora_decimal = float(row['hora'])
-        hora = int(hora_decimal)
-        minuto = int((hora_decimal - hora) * 60)
-        
-        # Apply adjustments for special dates
-        if is_special_date:
-            # Spring (23 hours day)
-            if tipo_cambio_hora == 2:
-                # Skip hour 3 (2 to 3 AM)
-                if hora > 3:
-                    return f"{hora-1:02d}:{minuto:02d}"
-                else:
-                    return f"{hora:02d}:{minuto:02d}"
-            # Fall (25 hours day)
-            elif tipo_cambio_hora == 1:
-                # Duplicate hour 3 (2 to 3 AM)
-                if hora >= 28:
-                    return f"{hora-25:02d}:{minuto:02d}"
-                elif hora > 3:
-                    return f"{hora-1:02d}:{minuto:02d}"
-                else:
-                    return f"{hora:02d}:{minuto:02d}"
-        
-        # Normal days
-        return f"{hora:02d}:{minuto:02d}"
-    
-    def ajuste_quinceminutal_a_horario(self, row, is_special_date: bool, tipo_cambio_hora: int) -> str:
-        """
-        Convert 15-minute values to hourly format for special dates (23 or 25 hours days).
-        
-        Args:
-            row: DataFrame row being processed
-            is_special_date (bool): Whether the day is a special date
-            tipo_cambio_hora (int): Timezone offset for the day
-            
-        Returns:
-            str: Adjusted hour:00 value
-        """
-        hora_decimal = float(row['hora'])
-        hora = int(hora_decimal)
-        
-        # Apply adjustments for special dates
-        if is_special_date:
-            # Spring (23 hours day)
-            if tipo_cambio_hora == 2:
-                # Skip hour 3 (2 to 3 AM)
-                if hora > 3:
-                    return f"{hora-1:02d}:00"
-                else:
-                    return f"{hora:02d}:00"
-            # Fall (25 hours day)
-            elif tipo_cambio_hora == 1:
-                # Duplicate hour 3 (2 to 3 AM)
-                if hora >= 28:
-                    return f"{hora-25:02d}:00"
-                elif hora > 3:
-                    return f"{hora-1:02d}:00"
-                else:
-                    return f"{hora:02d}:00"
-        
-        # Normal days
-        return f"{hora:02d}:00"
 
 class TerciariaVolumenDL(I90DownloaderDL):
     """
@@ -428,7 +306,18 @@ class TerciariaVolumenDL(I90DownloaderDL):
     def __init__(self):
         """Initialize the tertiary regulation downloader"""
         super().__init__()
-        self.sheet_id = 7  # Sheet 07 contains tertiary regulation data
+
+        #initialize config
+        self.config = TerciariaConfig()
+
+        #get sheets of interest
+        self.sheets_of_interest = self.config.sheets_of_interest
+
+    def get_i90_data(self, day: datetime) -> pd.DataFrame:
+        """
+        Get I90 data for a specific day.
+        """
+        return super().get_i90_data(day, self.sheets_of_interest)
         
     def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None, 
                     sentidos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:
@@ -540,7 +429,12 @@ class SecundariaVolumenDL(I90DownloaderDL):
     def __init__(self):
         """Initialize the secondary regulation downloader"""
         super().__init__()
-        self.sheet_id = 9  # Sheet 09 contains secondary regulation data
+
+        #initialize config
+        self.config = SecundariaConfig()
+
+        #get sheets of interest
+        self.sheets_of_interest = self.config.sheets_of_interest
         
     def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None, 
                     sentidos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:

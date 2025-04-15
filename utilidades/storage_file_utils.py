@@ -199,6 +199,42 @@ class RawFileUtils(StorageFileUtils):
             print(f"Error processing file {filename}: {str(e)}")
             raise
 
+    @deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
+    def write_raw_excel(self, year: int, month: int, excel_file: pd.ExcelFile, dataset_type: str, mercado: str) -> None:
+        """
+        Processes a pd.ExcelFile and saves it as an Excel file in the appropriate directory structure. This method is used for I90 files.
+        """
+        try:
+            # Create directory structure
+            file_path = self.create_directory_structure(self.raw_path, mercado, year, month)
+            filename = f"{dataset_type}.xlsx"  # Using the compressed naming format directly
+            full_file_path = file_path / filename
+
+            if full_file_path.exists():
+                try:
+                    # Read existing Excel file
+                    existing_df = pd.read_excel(full_file_path)
+                    
+                    # Concatenate with existing data
+                    combined_df = pd.concat([existing_df, excel_file], ignore_index=True)
+                    
+                    # Save back to Excel
+                    combined_df.to_excel(full_file_path, index=False)
+                    print(f"Successfully updated existing file: {filename}")
+                    
+                except Exception as e:
+                    print(f"Error reading existing file {filename}: {str(e)}")
+                    raise
+            
+            else:
+                # Save the Excel file
+                excel_file.to_excel(full_file_path, index=False)
+                print(f"Created new file: {filename}")
+            
+        except Exception as e:
+            print(f"Error processing file {filename}: {str(e)}")
+            raise
+
     def write_raw_parquet(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
         """
         Processes a DataFrame and saves/appends it as a Parquet file in the appropriate directory structure.
@@ -261,7 +297,7 @@ class RawFileUtils(StorageFileUtils):
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")
             raise
-
+    
     def delete_raw_files_older_than(self, months: int, mercado: Optional[str] = None) -> None:
         """
         Deletes raw CSV files that are older than the specified number of months.

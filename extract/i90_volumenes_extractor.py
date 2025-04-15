@@ -11,7 +11,7 @@ import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from extract.descargador_i90 import I90DownloaderDL, TerciariaVolumenDL, SecundariaVolumenDL, RRVolumenDL, CurtailmentVolumenDL
-from utilidades.parquet_utils import RawFileUtils
+from utilidades.storage_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 
 class I90VolumenesExtractor:

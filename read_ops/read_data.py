@@ -12,7 +12,7 @@ sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
 from configs.esios_config import ESIOSConfig, IntraConfig, TerciariaConfig, SecundariaConfig, RRConfig
-from utilidades.parquet_utils import RawFileUtils
+from utilidades.storage_file_utils import RawFileUtils
 
 
 class ReadOps:

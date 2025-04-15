@@ -8,7 +8,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from extract.descargador_esios import DiarioPreciosDL, IntraPreciosDL, SecundariaPreciosDL, TerciariaPreciosDL, RRPreciosDL
-from utilidades.parquet_utils import RawFileUtils
+from utilidades.storage_file_utils import RawFileUtils
 
 class ESIOSPreciosExtractor:
     """

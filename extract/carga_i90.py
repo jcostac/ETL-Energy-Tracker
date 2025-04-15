@@ -101,7 +101,7 @@ def algo_i90(esios_token,bbdd_engine,fecha_inicio_carga=None,fecha_fin_carga=Non
         for pestaña in pestañas: 
             if pestaña not in pestañas_con_error and (pestaña != 5 or day < dia_inicio_SRS): 
                 #Definimos la pestaña en formato y cargamos los datos
-                sheet = str(pestaña).zfill(2)
+                sheet = str(pestaña).zfill(2) 
                 if sheet not in ['03','05','06','07','08','09','10']:
                     df = pd.read_excel("./I90DIA_" + file_name_2 + ".xls", sheet_name='I90DIA'+sheet, skiprows=3)
                 else:

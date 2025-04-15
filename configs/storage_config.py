@@ -9,4 +9,4 @@ DATA_LAKE_BASE_PATH = "/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testin
 DB_URL = lambda database: f"mysql+pymysql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{database}"
 
 #valid dataset types for raw and processed files
-VALID_DATASET_TYPES = ['precios', 'volumenes_i90', 'volumenes_i3', 'ingresos']
+VALID_DATASET_TYPES = ['precios', 'volumenes_i90', 'volumenes_i3', 'ingresos', "precios_i90"]
