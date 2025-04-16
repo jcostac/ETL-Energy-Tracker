@@ -15,7 +15,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from utilidades.db_utils import DatabaseUtils
-from configs.i90_config import I90Config, TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config
+from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig
 
 class I90DownloaderDL:
     """
@@ -469,7 +469,6 @@ class I90DownloaderDL:
         
         return results
     
-
 class DiarioDL(I90DownloaderDL):
     """
     Specialized class for downloading and processing diario data from I90 files.
@@ -482,7 +481,44 @@ class DiarioDL(I90DownloaderDL):
         self.config = DiarioConfig()
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
+
+    def get_i90_volumenes(self, day: datetime, volumenes_sheets: List[str]) -> pd.DataFrame:
+        """
+        Get diario (daily market) volume data for a specific day.
         
+        Args:
+            day (datetime): The specific day to retrieve data for
+           
+        Returns:
+            pd.DataFrame: Processed volume data from the I90 file containing:
+                        - Programming unit data
+                        - Hourly volumes
+                        - Market specific information
+                        
+        Notes:
+            - Uses sheet 26 from I90 file as specified in DiarioConfig
+            - Processes daily market volumes only
+            - Returns data in a standardized format for raw data lake insertion
+        """
+        return super().get_i90_data(day, volumenes_sheets=volumenes_sheets, precios_sheets=None)
+
+    def get_i90_precios(self, day: datetime, precios_sheets: List[str]) -> pd.DataFrame:
+        """
+        Get diario (daily market) price data for a specific day.
+        
+        Args:
+            day (datetime): The specific day to retrieve data for
+            precios_sheets (List[str]): List of sheet IDs to process for prices
+        
+        Returns:
+            pd.DataFrame: Empty DataFrame as prices are obtained from ESIOS API
+            
+        Notes:
+            - This method is not implemented as price data is retrieved from ESIOS API instead
+            - The method exists for interface consistency with other market types
+        """
+        super().get_i90_data(day, volumenes_sheets=None, precios_sheets=precios_sheets)
+        pass
 
 class TerciariaDL(I90DownloaderDL):
     """
@@ -500,231 +536,41 @@ class TerciariaDL(I90DownloaderDL):
 
     def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
         """
-        Get I90 data for a specific day.
-        """
-
-        return super().get_i90_data(day, volumenes_sheets = self.volumenes_sheets)
-    
-    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
-        """
-        Get I90 data for a specific day.
-        """
-        return super().get_i90_data(day, precios_sheets = self.precios_sheets)
-        
-    def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None, 
-                    sentidos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:
-        """
         Get tertiary regulation volume data for a specific day.
         
         Args:
-            day (datetime): Day to download data for
-            bbdd_engine: Database engine connection
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            sentidos (Optional[List[str]]): List of directions to filter ['Subir', 'Bajar', 'Directa']
+            day (datetime): The specific day to retrieve data for
             
         Returns:
-            List[Tuple[pd.DataFrame, str]]: List of tuples with (DataFrame, direction)
+            pd.DataFrame: Processed volume data from the I90 file containing:
+                        - Programming unit data
+                        - Hourly volumes for both upward and downward regulation
+                        - Market specific information
+                        
+        Notes:
+            - Uses sheet 07 from I90 file as specified in TerciariaConfig
+            - Processes both upward ('Terciaria a subir') and downward ('Terciaria a bajar') regulation
+            - Filters data based on 'Redespacho' != 'TERDIR'
+            - Returns data in a standardized format for database insertion
         """
-        # Set default sentidos if None
-        if sentidos is None:
-            sentidos = ['Subir', 'Bajar', 'Directa']
-        
-        # Get Programming Units
-        unidades, dict_unidades = self.get_programming_units(bbdd_engine, UP_ids)
-        
-        # Download I90 file
-        file_name, file_name_2 = self.download_i90_file(day)
-        
-        # Get transition dates
-        filtered_transition_dates = self.get_transition_dates(day, day + timedelta(days=1))
-        day_datef = day.date()
-        is_special_date = day_datef in filtered_transition_dates
-        tipo_cambio_hora = filtered_transition_dates.get(day_datef, 0)
-        
-        # Get error data
-        df_errores = self.get_error_data(bbdd_engine)
-        df_errores_dia = df_errores[df_errores['fecha'] == day.date()]
-        pestañas_con_error = df_errores_dia['tipo_error'].values
-        
-        results = []
-        
-        # Check if the sheet has errors
-        if self.sheet_id not in pestañas_con_error:
-            sheet = str(self.sheet_id).zfill(2)
-            
-            # Load sheet data
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
-            
-            # Filter by programming units
-            df = df[df['Unidad de Programación'].isin(unidades)]
-            
-            # Process for each direction
-            for sentido in sentidos:
-                df_sentido = df.copy()
-                
-                # Apply direction filter
-                if sentido == 'Subir':
-                    df_sentido = df_sentido[df_sentido['Sentido'] == 'Subir']
-                    df_sentido = df_sentido[df_sentido['Redespacho'] != 'TERDIR']
-                elif sentido == 'Bajar':
-                    df_sentido = df_sentido[df_sentido['Sentido'] == 'Bajar']
-                    df_sentido = df_sentido[df_sentido['Redespacho'] != 'TERDIR']
-                elif sentido == 'Directa':
-                    df_sentido = df_sentido[df_sentido['Redespacho'] == 'TERDIR']
-                
-                # Filter columns to keep only programming unit and value columns
-                if not df_sentido.empty:
-                    total_col = df_sentido.columns.get_loc("Total")
-                    cols_to_drop = list(range(0, total_col+1))
-                    up_col = df_sentido.columns.get_loc("Unidad de Programación")
-                    cols_to_drop.remove(up_col)
-                    df_sentido = df_sentido.drop(df_sentido.columns[cols_to_drop], axis=1)
-                    
-                    # Melt the dataframe to convert from wide to long format
-                    hora_colname = df_sentido.columns[1]
-                    df_sentido = df_sentido.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="volumen")
-                    
-                    # Apply time adjustments
-                    if hora_colname == 1:
-                        df_sentido['hora'] = df_sentido.apply(self.ajuste_quinceminutal, axis=1, 
-                                                             is_special_date=is_special_date, 
-                                                             tipo_cambio_hora=tipo_cambio_hora)
-                    else:
-                        df_sentido['hora'] = df_sentido.apply(self.ajuste_horario, axis=1, 
-                                                             is_special_date=is_special_date, 
-                                                             tipo_cambio_hora=tipo_cambio_hora)
-                    
-                    # Aggregate data
-                    df_sentido = df_sentido.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                    df_sentido = df_sentido[df_sentido['volumen'] != 0.0]
-                    
-                    # Add date and rename columns
-                    df_sentido['fecha'] = day
-                    df_sentido = df_sentido.rename(columns={"Unidad de Programación": "UP"})
-                    
-                    # Add UP_id from dict_unidades
-                    df_sentido['UP_id'] = df_sentido['UP'].map(dict_unidades)
-                    
-                    # Store the result
-                    results.append((df_sentido, sentido))
-        
-        # Clean up files
-        self.cleanup_files(file_name, file_name_2)
-        
-        return results
-
-class SecundariaDL(I90DownloaderDL):
-    """
-    Specialized class for downloading and processing secondary regulation volume data from I90 files.
-    """
+        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
     
-    def __init__(self):
-        """Initialize the secondary regulation downloader"""
-        super().__init__()
-
-        #initialize config
-        self.config = SecundariaConfig()
-
-        #get sheets of interest
-        self.sheets_of_interest = self.config.sheets_of_interest
-        
-    def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None, 
-                    sentidos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:
+    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
         """
-        Get secondary regulation volume data for a specific day.
+        Get tertiary regulation price data for a specific day.
         
         Args:
-            day (datetime): Day to download data for
-            bbdd_engine: Database engine connection
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            sentidos (Optional[List[str]]): List of directions to filter ['Subir', 'Bajar']
+            day (datetime): The specific day to retrieve data for
             
         Returns:
-            List[Tuple[pd.DataFrame, str]]: List of tuples with (DataFrame, direction)
+            pd.DataFrame: Empty DataFrame as prices are obtained from ESIOS API
+            
+        Notes:
+            - This method is not implemented as price data is retrieved from ESIOS API instead
+            - The method exists for interface consistency with other market types
         """
-        # Set default sentidos if None
-        if sentidos is None:
-            sentidos = ['Subir', 'Bajar']
-        
-        # Get Programming Units
-        unidades, dict_unidades = self.get_programming_units(bbdd_engine, UP_ids)
-        
-        # Download I90 file
-        file_name, file_name_2 = self.download_i90_file(day)
-        
-        # Get transition dates
-        filtered_transition_dates = self.get_transition_dates(day, day + timedelta(days=1))
-        day_datef = day.date()
-        is_special_date = day_datef in filtered_transition_dates
-        tipo_cambio_hora = filtered_transition_dates.get(day_datef, 0)
-        
-        # Get error data
-        df_errores = self.get_error_data(bbdd_engine)
-        df_errores_dia = df_errores[df_errores['fecha'] == day.date()]
-        pestañas_con_error = df_errores_dia['tipo_error'].values
-        
-        results = []
-        
-        # Check if the sheet has errors
-        if self.sheet_id not in pestañas_con_error:
-            sheet = str(self.sheet_id).zfill(2)
-            
-            # Load sheet data
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
-            
-            # Filter by programming units
-            df = df[df['Unidad de Programación'].isin(unidades)]
-            
-            # Process for each direction
-            for sentido in sentidos:
-                df_sentido = df.copy()
-                
-                # Apply direction filter
-                if sentido == 'Subir':
-                    df_sentido = df_sentido[df_sentido['Sentido'] == 'Subir']
-                elif sentido == 'Bajar':
-                    df_sentido = df_sentido[df_sentido['Sentido'] == 'Bajar']
-                
-                # Filter columns to keep only programming unit and value columns
-                if not df_sentido.empty:
-                    total_col = df_sentido.columns.get_loc("Total")
-                    cols_to_drop = list(range(0, total_col+1))
-                    up_col = df_sentido.columns.get_loc("Unidad de Programación")
-                    cols_to_drop.remove(up_col)
-                    df_sentido = df_sentido.drop(df_sentido.columns[cols_to_drop], axis=1)
-                    
-                    # Melt the dataframe to convert from wide to long format
-                    hora_colname = df_sentido.columns[1]
-                    df_sentido = df_sentido.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="volumen")
-                    
-                    # Apply time adjustments
-                    if hora_colname == 1:
-                        df_sentido['hora'] = df_sentido.apply(self.ajuste_quinceminutal, axis=1, 
-                                                             is_special_date=is_special_date, 
-                                                             tipo_cambio_hora=tipo_cambio_hora)
-                    else:
-                        df_sentido['hora'] = df_sentido.apply(self.ajuste_horario, axis=1, 
-                                                             is_special_date=is_special_date, 
-                                                             tipo_cambio_hora=tipo_cambio_hora)
-                    
-                    # Aggregate data
-                    df_sentido = df_sentido.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                    df_sentido = df_sentido[df_sentido['volumen'] != 0.0]
-                    
-                    # Add date and rename columns
-                    df_sentido['fecha'] = day
-                    df_sentido = df_sentido.rename(columns={"Unidad de Programación": "UP"})
-                    
-                    # Add UP_id from dict_unidades
-                    df_sentido['UP_id'] = df_sentido['UP'].map(dict_unidades)
-                    
-                    # Store the result
-                    results.append((df_sentido, sentido))
-        
-        # Clean up files
-        self.cleanup_files(file_name, file_name_2)
-        
-        return results
+        super().get_i90_data(day, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        pass
 
 class RRDL(I90DownloaderDL):
     """
@@ -734,91 +580,46 @@ class RRDL(I90DownloaderDL):
     def __init__(self):
         """Initialize the RR downloader"""
         super().__init__()
-        self.sheet_id = 8  # Sheet 08 contains RR data
-        
-    def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None) -> pd.DataFrame:
+        self.config = RRConfig()
+        self.precios_sheets = self.config.precios_sheets
+        self.volumenes_sheets = self.config.volumenes_sheets
+
+    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
         """
-        Get RR volume data for a specific day.
+        Get Replacement Reserve (RR) volume data for a specific day.
         
         Args:
-            day (datetime): Day to download data for
-            bbdd_engine: Database engine connection
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
+            day (datetime): The specific day to retrieve data for
             
         Returns:
-            pd.DataFrame: DataFrame with RR volume data
+            pd.DataFrame: Processed volume data from the I90 file containing:
+                        - Programming unit data
+                        - Hourly volumes for both upward and downward RR
+                        - Market specific information
+                        
+        Notes:
+            - Uses sheets defined in RRConfig for both upward ('RR a subir') and downward ('RR a bajar') volumes
+            - Processes both directions of RR activation
+            - Returns data in a standardized format for database insertion
         """
-        # Get Programming Units
-        unidades, dict_unidades = self.get_programming_units(bbdd_engine, UP_ids)
+        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
         
-        # Download I90 file
-        file_name, file_name_2 = self.download_i90_file(day)
+    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
+        """
+        Get Replacement Reserve (RR) price data for a specific day.
         
-        # Get transition dates
-        filtered_transition_dates = self.get_transition_dates(day, day + timedelta(days=1))
-        day_datef = day.date()
-        is_special_date = day_datef in filtered_transition_dates
-        tipo_cambio_hora = filtered_transition_dates.get(day_datef, 0)
-        
-        # Get error data
-        df_errores = self.get_error_data(bbdd_engine)
-        df_errores_dia = df_errores[df_errores['fecha'] == day.date()]
-        pestañas_con_error = df_errores_dia['tipo_error'].values
-        
-        result_df = pd.DataFrame()
-        
-        # Check if the sheet has errors
-        if self.sheet_id not in pestañas_con_error:
-            sheet = str(self.sheet_id).zfill(2)
+        Args:
+            day (datetime): The specific day to retrieve data for
             
-            # Load sheet data
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
+        Returns:
+            pd.DataFrame: Empty DataFrame as prices are obtained from ESIOS API
             
-            # Filter by programming units
-            df = df[df['Unidad de Programación'].isin(unidades)]
-            
-            # Filter for RR data - exclude indisponibilidades
-            df = df[df['Redespacho'] == 'Restricciones Técnicas']
-            
-            # Filter columns to keep only programming unit and value columns
-            if not df.empty:
-                total_col = df.columns.get_loc("Total")
-                cols_to_drop = list(range(0, total_col+1))
-                up_col = df.columns.get_loc("Unidad de Programación")
-                cols_to_drop.remove(up_col)
-                df = df.drop(df.columns[cols_to_drop], axis=1)
-                
-                # Melt the dataframe to convert from wide to long format
-                hora_colname = df.columns[1]
-                df = df.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="volumen")
-                
-                # Apply time adjustments
-                if hora_colname == 1:
-                    df['hora'] = df.apply(self.ajuste_quinceminutal, axis=1, 
-                                         is_special_date=is_special_date, 
-                                         tipo_cambio_hora=tipo_cambio_hora)
-                else:
-                    df['hora'] = df.apply(self.ajuste_horario, axis=1, 
-                                         is_special_date=is_special_date, 
-                                         tipo_cambio_hora=tipo_cambio_hora)
-                
-                # Aggregate data
-                df = df.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                df = df[df['volumen'] != 0.0]
-                
-                # Add date and rename columns
-                df['fecha'] = day
-                df = df.rename(columns={"Unidad de Programación": "UP"})
-                
-                # Add UP_id from dict_unidades
-                df['UP_id'] = df['UP'].map(dict_unidades)
-                
-                result_df = df
-        
-        # Clean up files
-        self.cleanup_files(file_name, file_name_2)
-        
-        return result_df
+        Notes:
+            - This method is not implemented as price data is retrieved from ESIOS API instead
+            - The method exists for interface consistency with other market types
+        """
+        super().get_i90_data(day, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        pass
 
 class CurtailmentDL(I90DownloaderDL):
     """
@@ -828,105 +629,10 @@ class CurtailmentDL(I90DownloaderDL):
     def __init__(self):
         """Initialize the curtailment downloader"""
         super().__init__()
-        self.sheet_id = 3  # Sheet 03 contains curtailment data
-        
-    def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None,
-                     tipos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:
-        """
-        Get curtailment volume data for a specific day.
-        
-        Args:
-            day (datetime): Day to download data for
-            bbdd_engine: Database engine connection
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            tipos (Optional[List[str]]): List of curtailment types to filter ['Curtailment', 'Curtailment demanda']
-            
-        Returns:
-            List[Tuple[pd.DataFrame, str]]: List of tuples with (DataFrame, curtailment type)
-        """
-        # Set default tipos if None
-        if tipos is None:
-            tipos = ['Curtailment', 'Curtailment demanda']
-        
-        # Get Programming Units
-        unidades, dict_unidades = self.get_programming_units(bbdd_engine, UP_ids)
-        
-        # Download I90 file
-        file_name, file_name_2 = self.download_i90_file(day)
-        
-        # Get transition dates
-        filtered_transition_dates = self.get_transition_dates(day, day + timedelta(days=1))
-        day_datef = day.date()
-        is_special_date = day_datef in filtered_transition_dates
-        tipo_cambio_hora = filtered_transition_dates.get(day_datef, 0)
-        
-        # Get error data
-        df_errores = self.get_error_data(bbdd_engine)
-        df_errores_dia = df_errores[df_errores['fecha'] == day.date()]
-        pestañas_con_error = df_errores_dia['tipo_error'].values
-        
-        results = []
-        
-        # Check if the sheet has errors
-        if self.sheet_id not in pestañas_con_error:
-            sheet = str(self.sheet_id).zfill(2)
-            
-            # Load sheet data
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
-            
-            # Filter by programming units
-            df = df[df['Unidad de Programación'].isin(unidades)]
-            
-            # Process for each tipo
-            for tipo in tipos:
-                df_tipo = df.copy()
-                
-                # Apply curtailment type filter
-                if tipo == 'Curtailment':
-                    df_tipo = df_tipo[df_tipo['Redespacho'].isin(['UPLPVPV', 'UPLPVPCBN'])]
-                elif tipo == 'Curtailment demanda':
-                    df_tipo = df_tipo[df_tipo['Redespacho'] == 'UPOPVPB']
-                
-                # Filter columns to keep only programming unit and value columns
-                if not df_tipo.empty:
-                    total_col = df_tipo.columns.get_loc("Total")
-                    cols_to_drop = list(range(0, total_col+1))
-                    up_col = df_tipo.columns.get_loc("Unidad de Programación")
-                    cols_to_drop.remove(up_col)
-                    df_tipo = df_tipo.drop(df_tipo.columns[cols_to_drop], axis=1)
-                    
-                    # Melt the dataframe to convert from wide to long format
-                    hora_colname = df_tipo.columns[1]
-                    df_tipo = df_tipo.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="volumen")
-                    
-                    # Apply time adjustments
-                    if hora_colname == 1:
-                        df_tipo['hora'] = df_tipo.apply(self.ajuste_quinceminutal, axis=1, 
-                                                       is_special_date=is_special_date, 
-                                                       tipo_cambio_hora=tipo_cambio_hora)
-                    else:
-                        df_tipo['hora'] = df_tipo.apply(self.ajuste_horario, axis=1, 
-                                                       is_special_date=is_special_date, 
-                                                       tipo_cambio_hora=tipo_cambio_hora)
-                    
-                    # Aggregate data
-                    df_tipo = df_tipo.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                    df_tipo = df_tipo[df_tipo['volumen'] != 0.0]
-                    
-                    # Add date and rename columns
-                    df_tipo['fecha'] = day
-                    df_tipo = df_tipo.rename(columns={"Unidad de Programación": "UP"})
-                    
-                    # Add UP_id from dict_unidades
-                    df_tipo['UP_id'] = df_tipo['UP'].map(dict_unidades)
-                    
-                    # Store the result
-                    results.append((df_tipo, tipo))
-        
-        # Clean up files
-        self.cleanup_files(file_name, file_name_2)
-        
-        return results
+        self.config = CurtailmentConfig()
+        self.precios_sheets = self.config.precios_sheets
+        self.volumenes_sheets = self.config.volumenes_sheets
+        self.sheet_id = self.config.sheet_id
     
 class RestriccionesDL(I90DownloaderDL):
     """
@@ -936,13 +642,54 @@ class RestriccionesDL(I90DownloaderDL):
     def __init__(self):
         """Initialize the restricciones de precios downloader"""
         super().__init__()
-        self.sheet_id = 9  # Sheet 09 contains restricciones de precios data
+
+        self.config = RestriccionesConfig()
+        self.precios_sheets = self.config.precios_sheets
+        self.volumenes_sheets = self.config.volumenes_sheets
+    
+    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+        """
+        Get technical restrictions volume data for a specific day.
         
-    def get_precios(self, day: datetime) -> pd.DataFrame:
+        Args:
+            day (datetime): The specific day to retrieve data for
+            
+        Returns:
+            pd.DataFrame: Processed volume data from the I90 file containing:
+                        - Programming unit data
+                        - Hourly volumes for all types of restrictions
+                        - Market specific information
+                        
+        Notes:
+            - Uses sheets defined in RestriccionesConfig for:
+                * Restricciones MD subir y bajar
+                * Restricciones TR subir y bajar
+                * Restricciones RT2 subir y bajar
+            - Processes all six types of restricciones volumes
+            - Returns data in a standardized format for raw data lake insertion
         """
-        Get restricciones de precios data for a specific day.
+        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+    
+
+    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
         """
-        return super().get_i90_data(day, precios_sheets = self.precios_sheets)
+        Get technical restrictions price data for a specific day.
+        
+        Args:
+            day (datetime): The specific day to retrieve data for
+            
+        Returns:
+            pd.DataFrame: Processed price data from the I90 file containing prices for:
+                        - Restricciones MD subir y bajar
+                        - Restricciones TR subir y bajar
+                        - Restricciones RT2 subir y bajar
+                        
+        Notes:
+            - Uses sheets defined in RestriccionesConfig for all restriction types
+            - Processes prices for all six types of restricciones
+            - Returns data in a standardized format for raw data lake insertion
+        """
+        return super().get_i90_data(day, volumenes_sheets=None, precios_sheets=self.precios_sheets)
 
 class P48DL(I90DownloaderDL):
     """
@@ -953,6 +700,30 @@ class P48DL(I90DownloaderDL):
         """Initialize the P48 downloader"""
         super().__init__()
 
+        self.config = P48Config()
+        self.volumenes_sheets = self.config.volumenes_sheets      
+
+    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+        """
+        Get P48 (Final Program) volume data for a specific day.
+        
+        Args:
+            day (datetime): The specific day to retrieve data for
+            
+        Returns:
+            pd.DataFrame: Processed volume data from the I90 file containing:
+                        - Programming unit data
+                        - Hourly scheduled generation volumes
+                        - Market specific information
+                        
+        Notes:
+            - Uses sheet 02 from I90 file as specified in P48Config
+            - P48 represents the final scheduled generation program after all markets and adjustments
+            - Only processes volume data as P48 does not have associated prices
+            - Returns data in a standardized format for database insertion
+        """
+        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+
 class IndisponibilidadesDL(I90DownloaderDL):
     """
     Specialized class for downloading and processing indisponibilidades data from I90 files.
@@ -960,3 +731,47 @@ class IndisponibilidadesDL(I90DownloaderDL):
     
     def __init__(self):
         """Initialize the indisponibilidades downloader"""
+        super().__init__()
+
+        self.config = IndisponibilidadesConfig()
+        self.volumenes_sheets = self.config.volumenes_sheets
+
+    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+        """
+        Get unavailability (indisponibilidades) volume data for a specific day.
+        
+        Args:
+            day (datetime): The specific day to retrieve data for
+            
+        Returns:
+            pd.DataFrame: Processed volume data from the I90 file containing:
+                        - Programming unit data
+                        - Hourly unavailability volumes
+                        - Market specific information
+                        
+        Notes:
+            - Uses sheet 08 from I90 file as specified in IndisponibilidadesConfig
+            - Filters data where 'Redespacho' == 'Indisponibilidad'
+            - Processes unavailability declarations for generation units
+            - Returns data in a standardized format for database insertion
+        """
+        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+
+    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
+        """
+        Get unavailability (indisponibilidades) price data for a specific day.
+        
+        Args:
+            day (datetime): The specific day to retrieve data for
+            
+        Returns:
+            pd.DataFrame: Empty DataFrame as prices are obtained from ESIOS API
+            
+        Notes:
+            - This method is not implemented as price data is retrieved from ESIOS API instead
+            - The method exists for interface consistency with other market types
+            - Unavailability declarations typically don't have associated prices
+        """
+        return super().get_i90_data(day, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+
+

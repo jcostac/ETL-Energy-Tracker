@@ -7,9 +7,13 @@ import os
 
 class I90Config:
     def __init__(self):
+
         self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date
+
         self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+
         self.indicator_id_map, self.precios_sheet, self.volumenes_sheet = self.get_id_sheet_mapping()
+
         self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temp_downloads')
 
     def get_id_sheet_mapping(self) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
