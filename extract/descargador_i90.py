@@ -484,12 +484,18 @@ class TerciariaVolumenDL(I90DownloaderDL):
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
 
-    def get_i90_data(self, day: datetime) -> pd.DataFrame:
+    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
         """
         Get I90 data for a specific day.
         """
 
-        return super().get_i90_data(day, self.sheets_of_interest)
+        return super().get_i90_data(day, volumenes_sheets = self.volumenes_sheets)
+    
+    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
+        """
+        Get I90 data for a specific day.
+        """
+        return super().get_i90_data(day, precios_sheets = self.precios_sheets)
         
     def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None, 
                     sentidos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:
