@@ -35,19 +35,28 @@ class I90DownloaderDL:
         self.lista_errores = self.config.get_error_data()
         self.temporary_download_path = self.config.temporary_download_path
 
-    def get_i90_data(self, day: datetime, sheets_of_interest: List[str]) -> pd.DataFrame:
+    def get_i90_data(self, day: datetime, volumenes_sheets: List[str] = None, precios_sheets: List[str] = None) -> pd.DataFrame:
         """
         Get I90 data for a specific day.
         
         Args:
             day (datetime): The specific day to retrieve data for
-            sheets_of_interest (List[str]): List of sheet IDs to process
+            volumenes_sheets (List[str]): List of sheet IDs to process for volumenes can be None
+            precios_sheets (List[str]): List of sheet IDs to process for precios can be None
             
         Returns:
             pd.DataFrame: Processed data from the I90 file
+
+        Notes:
+            - If volumenes_sheets is None, only precios_sheets will be processed
+            - If precios_sheets is None, only volumenes_sheets will be processed
         """
+        
         # Download the file
         zip_file_name, excel_file_name = self._make_i90_request(day)
+
+        #extract the date from the file name
+        fecha = self.extract_date_from_file_name(excel_file_name)
         
         # Get error data for the day
         df_errores_dia = self.lista_errores[self.lista_errores['fecha'] == day.date()]
@@ -55,20 +64,19 @@ class I90DownloaderDL:
         #if there are errors for that particular day
         if not df_errores_dia.empty:
             pestañas_con_error = df_errores_dia['tipo_error'].values
-            # Filter out sheets with errors
-            valid_sheets = [sheet for sheet in sheets_of_interest if int(sheet) not in pestañas_con_error]
 
-            if not valid_sheets:
-                print(f"Warning: All requested sheets have errors for {day.date()}")
-                return pd.DataFrame()
-        
-        # Process the file with valid sheets only
-        filtered_excel_file = self.process_sheet(excel_file_name, valid_sheets)
+        #REMEMBER: one of these will be none (either precios or volumenes), hence the one that is none will be ignored
+        #get valid sheets by filtering out the invalid sheets found in the error list
+        volumenes_sheets, precios_sheets = self._get_valid_sheets(volumenes_sheets, precios_sheets, pestañas_con_error)
 
-        # Clean up files
-        self.cleanup_files(zip_file_name, excel_file_name)
-        
-        return filtered_excel_file
+        #filter the excel file by the valid sheets
+        volumenes_excel_file, precios_excel_file = self._filter_sheets(excel_file_name, pestañas_con_error, volumenes_sheets, precios_sheets)
+
+        #excel files to dataframes 
+        df = self._excel_file_to_df(fecha, volumenes_excel_file, precios_excel_file) #one of these will be none, hence the one that is none will be ignored
+
+
+        return volumenes_excel_file, precios_excel_file
     
     def _make_i90_request(self, day: datetime) -> Tuple[str, str]:
         """
@@ -98,7 +106,7 @@ class I90DownloaderDL:
         
         # Create file names for the downloaded and extracted files
         zip_file_name = f"{day.year}-{str(day.month).zfill(2)}-{str(day.day).zfill(2)}"
-        excel_file_name = f"{day.year}{str(day.month).zfill(2)}{str(day.day).zfill(2)}"
+        excel_file_name = f"{day.year}{str(day.month).zfill(2)}{str(day.day).zfill(2)}" 
         
         # Extract the zip file
         with zipfile.ZipFile(f"{self.temporary_download_path}/{zip_file_name}.zip", 'r') as zip_ref:
@@ -106,62 +114,226 @@ class I90DownloaderDL:
         
         return zip_file_name, excel_file_name
     
-    def process_sheet(self, excel_file_name: str, sheets_to_keep: List[str]) -> pd.ExcelFile:
+    @staticmethod
+    def extract_date_from_file_name(excel_file_name: str) -> datetime:
         """
-        Process the I90 Excel file by filtering and keeping only specified sheets.
+        Extract the date from the Excel file name.
+        """
+        #extarct name from filename ie 20241212.xls --> 2024-12-12 00:00:00
+        date_str = excel_file_name.split('.')[0]
+        return datetime.strptime(date_str, '%Y%m%d')
+    
+    def _excel_file_to_df(self, fecha: datetime, volumenes_excel_file: pd.ExcelFile, precios_excel_file: pd.ExcelFile) -> pd.DataFrame:
+      
+        all_dfs = []
+
+        if volumenes_excel_file is not None:
+            excel_file = volumenes_excel_file
+            value_col_name = "volumenes"
+    
+        elif precios_excel_file is not None:
+            excel_file = precios_excel_file
+            value_col_name = "precios"
+        else:
+            raise ValueError("No valid Excel file provided")
+        
+        #Loop through each sheet (each sheet represents a particular inidcator for a particualr market)
+        for sheet_name in excel_file.sheet_names:
+
+            # Read the sheet without a header to inspect the rows
+            df_temp = pd.read_excel(excel_file, sheet_name=sheet_name, header=None)
+
+            # Find the header row by looking for "Total" column
+            header_row = 0
+            for i, row in df_temp.iterrows():
+                if "Total" in row.values:
+                    header_row = i
+                    break
+
+            if header_row == 0:
+                print(f"Could not find header row in sheet {sheet_name}. Skipping this sheet.")
+                continue
+
+            # Extract the date from file name "I90DIA_20241210.xls"
+            #date = sheet_name[-8:]
+            #date = pd.to_datetime(date, format='%Y%m%d')
+
+            #if not date:
+            #print(f"Could not find date in sheet {sheet_name}. Skipping this sheet.")
+                #continue
+
+            # Now read the sheet again, skipping the rows before the header
+            df = pd.read_excel(excel_file, sheet_name=sheet_name, skiprows=header_row)
+
+            # Identify the position of the 'Total' column
+            total_col_idx = df.columns.get_loc('Total')
+            #hora col name == column straight after total col
+            hora_col_name = df.columns[total_col_idx + 1]
+            
+            # Split columns into identifier columns (before Total) and hour columns (after Total)
+            id_cols = df.columns[:total_col_idx + 1].tolist()  # Include 'Total'
+            hour_cols = df.columns[total_col_idx + 1:].tolist()  # Everything after 'Total'
+
+            
+            # Melt the DataFrame using the dynamic id_cols
+            df_melted = df.melt(
+                id_vars=id_cols,
+                value_vars=hour_cols,
+                var_name='hora',
+                value_name= value_col_name
+            )
+
+            #add granularity column to the dataframe based on the hour col name
+            if hora_col_name == 1:
+                df_melted['granularity'] = "Quince minutos"
+            else:
+                df_melted['granularity'] = "Hora"
+            
+            #add date column to the dataframe
+            df_melted['fecha'] = fecha
+
+            print (df_melted)
+
+            all_dfs.append(df_melted)
+
+
+        #turn NaNs into 0s
+        df_concat = pd.concat(all_dfs)
+        df_concat = df_concat.fillna(0)
+
+        return df_concat
+
+    def _get_valid_sheets(self, volumenes_sheets: List[str], precios_sheets: List[str], pestañas_con_error: List[str]) -> Tuple[List[str], List[str]]:
+        """
+        Get valid sheets from the I90 Excel file.
+        """
+        # Validate sheets against the list of valid sheets
+        # This will filter out any invalid sheet IDs from the input lists
+        
+        # Check for invalid sheets in volumenes_sheets and remove the
+        if volumenes_sheets is not None:
+            invalid_volumenes = [sheet for sheet in volumenes_sheets if sheet in pestañas_con_error]
+            if invalid_volumenes:
+                # Log the invalid sheets being removed
+                print(f"Warning: Removing invalid volume sheets: {invalid_volumenes}")
+                # Filter out invalid sheets
+                volumenes_sheets = [sheet for sheet in volumenes_sheets if sheet not in pestañas_con_error]
+    
+        
+        # Check for invalid sheets in precios_sheets and remove the
+        if precios_sheets is not None:
+            invalid_precios = [sheet for sheet in precios_sheets if sheet in pestañas_con_error]
+            if invalid_precios:
+                # Log the invalid sheets being removed
+                print(f"Warning: Removing invalid price sheets: {invalid_precios}")
+            # Filter out invalid sheets
+            precios_sheets = [sheet for sheet in precios_sheets if sheet not in pestañas_con_error]
+        
+        # Check if we have any valid sheets left after filtering
+        if not volumenes_sheets and not precios_sheets:
+            raise ValueError("No valid sheets found after filtering. Please provide valid sheet IDs.")
+        
+        return volumenes_sheets, precios_sheets
+    
+    def _filter_sheets(self, excel_file_name: str, pestañas_con_error: List[str], volumenes_sheets: List[str], precios_sheets: List[str]) -> Tuple[pd.ExcelFile, pd.ExcelFile]:
+        """
+        Process a copy of the I90 Excel file by filtering and keeping only specified sheets.
         
         Args:
-            file_name_2 (str): Base name of the Excel file to process
-            sheets_to_keep (List[str]): List of sheet names to keep (e.g. ['03', '05', '07']), have to pass 
-            str and zero padded (e.g. '03' instead of 3)
+            excel_file_name (str): Name of the Excel file to process
+            volumenes_sheets (List[str]): List of sheet IDs for volume data
+            precios_sheets (List[str]): List of sheet IDs for price data
             
         Returns:
-            pd.ExcelFile: Processed Excel file containing only specified sheets
-            
+            Tuple[pd.ExcelFile, pd.ExcelFile]: Tuple containing:
+                - Processed Excel file with filtered volume sheets (or None if no volume sheets)
+                - Processed Excel file with filtered price sheets (or None if no price sheets)
+        
         Notes:
-            - Creates a new filtered Excel file with only the specified sheets
-            - Original file remains unchanged
+            - Creates new filtered Excel files from a copy of the original
+            - Original file remains completely untouched
+            - Uses temporary files for processing
         """
-        # Load the Excel file
-        excel_file = pd.ExcelFile(f"{self.temporary_download_path}/I90DIA_{excel_file_name}.xls")
+        # Initialize result variables
+        result_volumenes = None
+        result_precios = None
+
+        # Create a copy of the original file first
+        original_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}.xls"
+        temp_copy_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_temp_copy.xls"
         
-        # Get all sheet names in the file
-        all_sheets = excel_file.sheet_names
+        # Read and write to create a copy - keeping original sheet names
+        df_copy = pd.read_excel(original_path, sheet_name=None)
+        with pd.ExcelWriter(temp_copy_path, engine='openpyxl') as writer:
+            for sheet_name, df in df_copy.items():
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
         
-        # Create a list of sheet names to keep with proper formatting
-        target_sheets = [f'I90DIA{sheet}' for sheet in sheets_to_keep]
+        # Process volumenes sheets if provided
+        if volumenes_sheets:
+            excel_file = pd.ExcelFile(temp_copy_path)
+            all_sheets = excel_file.sheet_names
+            # Match exact sheet numbers without double prefixing
+            filtered_sheets = [sheet for sheet in all_sheets if any(vs in sheet for vs in volumenes_sheets)]
+            
+            if not filtered_sheets:
+                raise ValueError("At least one volume sheet must be found")
+            
+            # Create filtered volumenes file
+            volumenes_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_volumenes.xls"
+            with pd.ExcelWriter(volumenes_path, engine='openpyxl') as writer:
+                for sheet in filtered_sheets:
+                    df = pd.read_excel(excel_file, sheet_name=sheet)
+                    df.to_excel(writer, sheet_name=sheet, index=False)
+            
+            result_volumenes = pd.ExcelFile(volumenes_path)
         
-        # Filter sheets
-        filtered_sheets = [sheet for sheet in all_sheets if sheet in target_sheets]
-        
-        # Create a new Excel file with only the filtered sheets
-        writer = pd.ExcelWriter(f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered.xls", engine='openpyxl')
-        
-        # Copy selected sheets to new file
-        for sheet in filtered_sheets:
-            df = pd.read_excel(excel_file, sheet_name=sheet)
-            df.to_excel(writer, sheet_name=sheet, index=False)
-        
-        # Save and close the writer
-        writer.close()
-        
-        # Return the new filtered Excel file
-        return pd.ExcelFile(f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered.xls")
+        # Process precios sheets if provided
+        if precios_sheets:
+            excel_file = pd.ExcelFile(temp_copy_path)
+            all_sheets = excel_file.sheet_names
+            # Match exact sheet numbers without double prefixing
+            filtered_sheets = [sheet for sheet in all_sheets if any(ps in sheet for ps in precios_sheets)]
+            
+            if not filtered_sheets:
+                raise ValueError("At least one price sheet must be found")
+            
+            # Create filtered precios file
+            precios_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_precios.xls"
+            with pd.ExcelWriter(precios_path, engine='openpyxl') as writer:
+                for sheet in filtered_sheets:
+                    df = pd.read_excel(excel_file, sheet_name=sheet)
+                    df.to_excel(writer, sheet_name=sheet, index=False)
+            
+            result_precios = pd.ExcelFile(precios_path)
+
+        return result_volumenes, result_precios
     
     def cleanup_files(self, zip_file_name: str, excel_file_name: str) -> None:
         """
-        Clean up temporary files after processing.
+        Clean up temporary files after processing, only if they exist.
         
         Args:
-            file_name (str): Base file name for the zip file
-            file_name_2 (str): Base file name for the Excel file
+            zip_file_name (str): Base file name for the zip file
+            excel_file_name (str): Base file name for the Excel file
         """
-        # Remove the downloaded and extracted files
-        os.remove(f"./{zip_file_name}.zip")
-        os.remove(f"./I90DIA_{excel_file_name}.xls")
-    
-
-
+        # List of files to potentially remove
+        files_to_cleanup = [
+            f"{self.temporary_download_path}/{zip_file_name}.zip",
+            f"{self.temporary_download_path}/I90DIA_{excel_file_name}.xls",
+            f"{self.temporary_download_path}/I90DIA_{excel_file_name}_temp_copy.xls",
+            f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_volumenes.xls",
+            f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_precios.xls"
+        ]
+        
+        # Remove each file only if it exists
+        for file_path in files_to_cleanup:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    print(f"Successfully removed temporary file: {file_path}")
+            except Exception as e:
+                # Log the error but continue with other files
+                print(f"Error removing file {file_path}: {str(e)}")
 
     def process_sheet_v1(self, pestaña: int, file_name_2: str, unidades: List[str], 
                       df_mercados: pd.DataFrame, pestañas_volumenes: List[int],
@@ -309,14 +481,14 @@ class TerciariaVolumenDL(I90DownloaderDL):
 
         #initialize config
         self.config = TerciariaConfig()
-
-        #get sheets of interest
-        self.sheets_of_interest = self.config.sheets_of_interest
+        self.precios_sheets = self.config.precios_sheets
+        self.volumenes_sheets = self.config.volumenes_sheets
 
     def get_i90_data(self, day: datetime) -> pd.DataFrame:
         """
         Get I90 data for a specific day.
         """
+
         return super().get_i90_data(day, self.sheets_of_interest)
         
     def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None, 

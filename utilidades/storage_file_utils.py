@@ -69,7 +69,7 @@ class StorageFileUtils:
         base_path (str or Path): Base directory path where the folder structure will be created
         year (int): Year for the directory structure
         month (int): Month for the directory structure
-    
+        day (int): Day for the directory structure, optional if we want to save at the day level
     Returns:
         Path: Path object pointing to the created month directory
     """
@@ -85,11 +85,14 @@ class StorageFileUtils:
         month_dir = year_dir / f"month={month:02d}" # "data/mercado=secundaria/year=2025/month=04"
 
         #create directories if they don't exist
-        month_dir.mkdir(parents=True, exist_ok=True)
-
-       
-        return month_dir
-
+        if day is None:
+            month_dir.mkdir(parents=True, exist_ok=True)
+            return month_dir
+        else:
+            day_dir = month_dir / f"day={day:02d}" # "data/mercado=secundaria/year=2025/month=04/day=01"
+            day_dir.mkdir(parents=True, exist_ok=True)
+            return day_dir
+        
     @staticmethod
     def drop_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """

@@ -56,26 +56,29 @@ class I90Config:
         Get the list of programming units from the database.
         
         Args:
-            bbdd_engine: Database engine connection
             UP_ids (Optional[List[int]]): List of programming unit IDs to filter
             
         Returns:
             Tuple[List[str], Dict[str, int]]: List of programming unit names and dictionary mapping names to IDs
         """
-        # Query to get programming units
-        query = '''SELECT u.id as id, UP FROM UPs u inner join Activos a on u.activo_id = a.id where a.region = "ES"'''
-        
-        # Add filter for specific programming units if provided
+        # Build the WHERE clause for filtering by region and optionally by UP_ids
+        where_clause = 'a.region = "ES"'
         if UP_ids:
-            UP_list = """, """.join([str(item) for item in UP_ids])
-            query += f' and u.id in ({UP_list})'
-        
-        # Execute query and process results
-        df_up = pd.read_sql_query(query, con=self.bbdd_engine)
+            UP_list = ", ".join([str(item) for item in UP_ids])
+            where_clause += f' AND u.id IN ({UP_list})'
+
+        # Use DatabaseUtils.read_table to fetch the data
+        df_up = DatabaseUtils.read_table(
+            self.bbdd_engine,
+            table_name="UPs u INNER JOIN Activos a ON u.activo_id = a.id",
+            columns=["u.id as id", "UP"],
+            where_clause=where_clause
+        )
+        # Extract the list of UP names and a dictionary mapping UP names to IDs
         unidades = df_up['UP'].tolist()
         dict_unidades = dict(zip(unidades, df_up['id']))
-        
-        return dict_unidades
+
+        return unidades, dict_unidades
     
     def get_market_data(self, mercados_ids: Optional[List[int]] = None) -> Tuple[pd.DataFrame, List[int], List[int]]:
         """
@@ -87,27 +90,26 @@ class I90Config:
         Returns:
             Tuple[pd.DataFrame, List[int], List[int]]: DataFrame with market data, list of volume sheet IDs, and list of all relevant sheet numbers
         """
-        # Query to get markets with I90 volume data
-        query = '''SELECT * FROM Mercados
-                where sheet_i90_volumenes != 0'''
-        
-        # Add filter for specific markets if provided
+        # Build the WHERE clause for filtering by sheet_i90_volumenes and optionally by mercados_ids
+        where_clause = 'sheet_i90_volumenes != 0'
         if mercados_ids:
-            mercados_list = """, """.join([str(item) for item in mercados_ids])
-            query += f' and id in ({mercados_list})'
-        
-        # Execute query and process results
-        df_mercados = pd.read_sql_query(query, con=self.bbdd_engine) 
+            mercados_list = ", ".join([str(item) for item in mercados_ids])
+            where_clause += f' AND id IN ({mercados_list})'
 
-        #prestañas relacionadas con volumenes
+        # Use DatabaseUtils.read_table to fetch the data
+        df_mercados = DatabaseUtils.read_table(
+            self.bbdd_engine,
+            table_name="Mercados",
+            columns=None,  # None means select all columns
+            where_clause=where_clause
+        )
+
+        # Get unique volume sheet numbers
         pestañas_volumenes = df_mercados['sheet_i90_volumenes'].unique().tolist()
-
-        #prestañas relacionadas con precios y volumenes (entire thing)
+        # Combine volume and price sheet numbers, filter out NaN and convert to int
         pestañas = pestañas_volumenes + df_mercados['sheet_i90_precios'].unique().tolist()
-        
-        # Convert to integers and filter out NaN values
         pestañas = [int(item) for item in pestañas if item is not None and not (isinstance(item, float) and pd.isna(item))]
-        
+
         return df_mercados, pestañas_volumenes, pestañas
     
     def get_error_data(self) -> pd.DataFrame:
@@ -117,13 +119,16 @@ class I90Config:
         Returns:
             pd.DataFrame: DataFrame with error data containing dates and error types
         """
-        # Query to get error data
-        query = '''SELECT fecha, tipo_error FROM Errores_i90_OMIE where fuente_error = "i90"'''
-        
-        # Execute query and process results
-        df_errores = pd.read_sql_query(query, con=self.bbdd_engine)
+        # Use DatabaseUtils.read_table to fetch error data
+        df_errores = DatabaseUtils.read_table(
+            self.bbdd_engine,
+            table_name="Errores_i90_OMIE",
+            columns=["fecha", "tipo_error"],
+            where_clause='fuente_error = "i90"'
+        )
+        # Convert 'fecha' column to date type
         df_errores['fecha'] = pd.to_datetime(df_errores['fecha']).dt.date
-        
+
         return df_errores
 
     def _get_sheet_num(self, market_id: int, sheet_type: str) -> Optional[int]:
@@ -213,7 +218,7 @@ class DiariaConfig(I90Config):
         #get individual id
         self.diaria_id = self.indicator_id_map["Diario"]
 
-        #group id onto a single var (to be used in get_sheets_of_interest)
+        #group id onto a single var (this is the right way to do it in order to beused in get_sheets_of_interest)
         self.market_ids = [self.diaria_id]
 
         #get sheets of interest

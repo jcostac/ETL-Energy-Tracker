@@ -107,6 +107,7 @@ class ESIOSPreciosExtractor:
             #extract year and month from date
             year = day.year
             month = day.month
+            day = day.day
 
             df = self.diario.get_prices(fecha_inicio_carga=day.strftime('%Y-%m-%d'), 
                                     fecha_fin_carga=day.strftime('%Y-%m-%d'))
