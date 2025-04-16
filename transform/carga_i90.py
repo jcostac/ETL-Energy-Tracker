@@ -145,6 +145,7 @@ def algo_i90(esios_token,bbdd_engine,fecha_inicio_carga=None,fecha_fin_carga=Non
                     if sheet == '03':
                         if mercado['mercado'] in ['Curtailment','Curtailment demanda']:
                             df = df[df['Redespacho'].isin(['UPLPVPV','UPLPVPCBN','UPOPVPB'])]
+
                         elif mercado['mercado'] in ['RT2 a subir','RT2 a bajar']:
                             df = df[df['Redespacho'].isin(['ECOBSO','ECOBCBSO'])]
                         else:
@@ -153,7 +154,7 @@ def algo_i90(esios_token,bbdd_engine,fecha_inicio_carga=None,fecha_fin_carga=Non
                     elif sheet == '07':
                         if mercado['mercado'] in ['Terciaria a subir','Terciaria a bajar']:
                             df = df[df['Redespacho'] != 'TERDIR']
-                        else:
+                        else: #terciaria programada
                             df = df[df['Redespacho'] == 'TERDIR']
                     
                     elif sheet == '08' or sheet == '10':
@@ -163,7 +164,7 @@ def algo_i90(esios_token,bbdd_engine,fecha_inicio_carga=None,fecha_fin_carga=Non
                             #print("Filtro de Restricciones Técnicas")
                             df = df[df['Redespacho'] == "Restricciones Técnicas"]
 
-                    elif sheet == '09':
+                    elif sheet == '09': #restricciones md precios 
                         df = df[df['Redespacho'].isin(['ECO','ECOCB','UPOPVPV','UPOPVPVCB'])]
 
                     #Filtramos las columnas que nos interesan (UP + valores)

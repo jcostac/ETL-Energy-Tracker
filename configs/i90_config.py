@@ -212,7 +212,7 @@ class I90Config:
 
         return volumenes_sheets, precios_sheets, sheets_of_interest
 
-class DiariaConfig(I90Config):
+class DiarioConfig(I90Config):
     def __init__(self):
         super().__init__()
         #get individual id
@@ -225,6 +225,9 @@ class DiariaConfig(I90Config):
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
 class SecundariaConfig(I90Config):
+    """
+    Config for secundaria market data
+    """
     def __init__(self):
         super().__init__()
         #get individual ids for subir and bajar
@@ -238,6 +241,9 @@ class SecundariaConfig(I90Config):
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
 class TerciariaConfig(I90Config):
+    """
+    Config for terciaria market data
+    """
     def __init__(self):
         super().__init__()
         #get individual ids for subir and bajar
@@ -287,4 +293,38 @@ class P48Config(I90Config):
         #get sheets of interest
         self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
 
+class IndisponibilidadesConfig(I90Config):
+    def __init__(self):
+        super().__init__()
+        #get individual id
+        self.indisponibilidades_id = self.indicator_id_map["Indisponibilidades"]
+
+        self.market_ids = [self.indisponibilidades_id]
+
+        #get sheets of interest
+        self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
+
+class RestriccionesConfig(I90Config):
+    def __init__(self):
+        super().__init__()
+
+        #get restricciones mercado diario subir y bajar
+        self.restricciones_md_subir_id = self.indicator_id_map["Restricciones MD a subir"]
+        self.restricciones_md_bajar_id = self.indicator_id_map["Restricciones MD a bajar"]
+
+        #get restricciones mercado tiempo real subir y bajar
+        self.restricciones_tr_subir_id = self.indicator_id_map["Restricciones TR a subir"]
+        self.restricciones_tr_bajar_id = self.indicator_id_map["Restricciones TR a bajar"]
+
+        #get restricciones rt subir y bajar
+        self.restricciones_rt2_subir_id = self.indicator_id_map["RT2 a subir"]
+        self.restricciones_rt2_bajar_id = self.indicator_id_map["RT2 a bajar"]
+
+        #total market ids 
+        self.market_ids = [self.restricciones_md_subir_id, self.restricciones_md_bajar_id, self.restricciones_tr_subir_id,
+                            self.restricciones_tr_bajar_id, self.restricciones_rt2_subir_id, self.restricciones_rt2_bajar_id]
+
+        #get sheets of interest (uses attribute market ids)
+        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        
     

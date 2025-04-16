@@ -308,7 +308,7 @@ class I90DownloaderDL:
 
         return result_volumenes, result_precios
     
-    def cleanup_files(self, zip_file_name: str, excel_file_name: str) -> None:
+    def _cleanup_files(self, zip_file_name: str, excel_file_name: str) -> None:
         """
         Clean up temporary files after processing, only if they exist.
         
@@ -470,7 +470,21 @@ class I90DownloaderDL:
         return results
     
 
-class TerciariaVolumenDL(I90DownloaderDL):
+class DiarioDL(I90DownloaderDL):
+    """
+    Specialized class for downloading and processing diario data from I90 files.
+    """
+    
+    def __init__(self):
+        """Initialize the diario downloader"""
+        super().__init__()
+
+        self.config = DiarioConfig()
+        self.precios_sheets = self.config.precios_sheets
+        self.volumenes_sheets = self.config.volumenes_sheets
+        
+
+class TerciariaDL(I90DownloaderDL):
     """
     Specialized class for downloading and processing tertiary regulation volume data from I90 files.
     """
@@ -599,7 +613,7 @@ class TerciariaVolumenDL(I90DownloaderDL):
         
         return results
 
-class SecundariaVolumenDL(I90DownloaderDL):
+class SecundariaDL(I90DownloaderDL):
     """
     Specialized class for downloading and processing secondary regulation volume data from I90 files.
     """
@@ -712,7 +726,7 @@ class SecundariaVolumenDL(I90DownloaderDL):
         
         return results
 
-class RRVolumenDL(I90DownloaderDL):
+class RRDL(I90DownloaderDL):
     """
     Specialized class for downloading and processing Replacement Reserve (RR) volume data from I90 files.
     """
@@ -806,7 +820,7 @@ class RRVolumenDL(I90DownloaderDL):
         
         return result_df
 
-class CurtailmentVolumenDL(I90DownloaderDL):
+class CurtailmentDL(I90DownloaderDL):
     """
     Specialized class for downloading and processing curtailment volume data from I90 files.
     """
@@ -914,3 +928,35 @@ class CurtailmentVolumenDL(I90DownloaderDL):
         
         return results
     
+class RestriccionesDL(I90DownloaderDL):
+    """
+    Specialized class for downloading and processing restricciones de precios data from I90 files.
+    """
+    
+    def __init__(self):
+        """Initialize the restricciones de precios downloader"""
+        super().__init__()
+        self.sheet_id = 9  # Sheet 09 contains restricciones de precios data
+        
+    def get_precios(self, day: datetime) -> pd.DataFrame:
+        """
+        Get restricciones de precios data for a specific day.
+        """
+        return super().get_i90_data(day, precios_sheets = self.precios_sheets)
+
+class P48DL(I90DownloaderDL):
+    """
+    Specialized class for downloading and processing P48 data from I90 files.
+    """
+    
+    def __init__(self):
+        """Initialize the P48 downloader"""
+        super().__init__()
+
+class IndisponibilidadesDL(I90DownloaderDL):
+    """
+    Specialized class for downloading and processing indisponibilidades data from I90 files.
+    """
+    
+    def __init__(self):
+        """Initialize the indisponibilidades downloader"""
