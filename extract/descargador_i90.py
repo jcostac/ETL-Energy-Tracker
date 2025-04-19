@@ -192,7 +192,7 @@ class I90DownloaderDL:
             #add date column to the dataframe
             df_melted['fecha'] = fecha
 
-            print (df_melted)
+            print(df_melted)
 
             all_dfs.append(df_melted)
 
@@ -235,7 +235,7 @@ class I90DownloaderDL:
         
         return volumenes_sheets, precios_sheets
     
-    def _filter_sheets(self, excel_file_name: str, pestañas_con_error: List[str], volumenes_sheets: List[str], precios_sheets: List[str]) -> Tuple[pd.ExcelFile, pd.ExcelFile]:
+    def _filter_sheets(self, excel_file_name: str, volumenes_sheets: List[str], precios_sheets: List[str]) -> Tuple[pd.ExcelFile, pd.ExcelFile]:
         """
         Process a copy of the I90 Excel file by filtering and keeping only specified sheets.
         
@@ -272,7 +272,8 @@ class I90DownloaderDL:
         if volumenes_sheets:
             excel_file = pd.ExcelFile(temp_copy_path)
             all_sheets = excel_file.sheet_names
-            # Match exact sheet numbers without double prefixing
+
+            # Match exact sheet numbers 
             filtered_sheets = [sheet for sheet in all_sheets if any(vs in sheet for vs in volumenes_sheets)]
             
             if not filtered_sheets:
@@ -520,6 +521,29 @@ class DiarioDL(I90DownloaderDL):
         super().get_i90_data(day, volumenes_sheets=None, precios_sheets=precios_sheets)
         pass
 
+class SecundariaDL(I90DownloaderDL):
+    """
+    Specialized class for downloading and processing secundaria volume data from I90 files.
+    """
+    def __init__(self):
+        """Initialize the secundaria downloader"""
+        super().__init__()
+        self.config = SecundariaConfig()
+        self.precios_sheets = self.config.precios_sheets
+        self.volumenes_sheets = self.config.volumenes_sheets
+              
+    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+        """
+        Get secundaria volume data for a specific day.
+        """
+        df = super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+
+        #rename column that changed from the date of the SRS 
+        if 'Participante del Mercado' in df.columns:
+            df = df.rename(columns={'Participante del Mercado': 'Unidad de Programación'})
+
+        return df
+
 class TerciariaDL(I90DownloaderDL):
     """
     Specialized class for downloading and processing tertiary regulation volume data from I90 files.
@@ -531,8 +555,8 @@ class TerciariaDL(I90DownloaderDL):
 
         #initialize config
         self.config = TerciariaConfig()
-        self.precios_sheets = self.config.precios_sheets
-        self.volumenes_sheets = self.config.volumenes_sheets
+        self.precios_sheets = self.config.precios_sheets 
+        self.volumenes_sheets = self.config.volumenes_sheets 
 
     def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
         """
@@ -632,7 +656,16 @@ class CurtailmentDL(I90DownloaderDL):
         self.config = CurtailmentConfig()
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
-        self.sheet_id = self.config.sheet_id
+
+    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+        """
+        Get curtailment volume data for a specific day.
+        
+        Args:
+            day (datetime): The specific day to retrieve data for
+            
+        """ 
+        df = super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
     
 class RestriccionesDL(I90DownloaderDL):
     """

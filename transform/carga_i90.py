@@ -143,24 +143,31 @@ def algo_i90(esios_token,bbdd_engine,fecha_inicio_carga=None,fecha_fin_carga=Non
                         #print("Sin filtro de sentido")
 
                     if sheet == '03':
+                        #Apply redespacho filter for Curtialment class 
                         if mercado['mercado'] in ['Curtailment','Curtailment demanda']:
                             df = df[df['Redespacho'].isin(['UPLPVPV','UPLPVPCBN','UPOPVPB'])]
 
+                       #filter for restricciones class specifically for rt2 
                         elif mercado['mercado'] in ['RT2 a subir','RT2 a bajar']:
                             df = df[df['Redespacho'].isin(['ECOBSO','ECOBCBSO'])]
+                            
+                        #filter for restricciones class specifically for md 
                         else:
                             df = df[df['Redespacho'].isin(['ECO','ECOCB','UPOPVPV','UPOPVPVCB'])]
 
                     elif sheet == '07':
+                        #no filter here for terciaria 
                         if mercado['mercado'] in ['Terciaria a subir','Terciaria a bajar']:
                             df = df[df['Redespacho'] != 'TERDIR']
                         else: #terciaria programada
                             df = df[df['Redespacho'] == 'TERDIR']
                     
                     elif sheet == '08' or sheet == '10':
+                        #Apply redespacho filter for Indisponibilidades class in volumenes only for sheet 8 
                         if mercado['mercado'] == "Indisponibilidades":
                             df = df[df['Redespacho'] == "Indisponibilidad"]
                         else:
+                            #apply redespacho filter for Restricciones Técnicas class in volumenes for sheet 8 and sheet 10
                             #print("Filtro de Restricciones Técnicas")
                             df = df[df['Redespacho'] == "Restricciones Técnicas"]
 

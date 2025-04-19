@@ -222,10 +222,13 @@ class DiarioConfig(I90Config):
         #get individual id
         self.diaria_id = self.indicator_id_map["Diario"]
 
-        #group id onto a single var (this is the right way to do it in order to beused in get_sheets_of_interest)
-        self.market_ids = [self.diaria_id]
+        # group id onto a single var (this is the right way to do it in order to beused in get_sheets_of_interest)
+        self.market_ids: List[str] = [self.diaria_id]
 
-        #get sheets of interest
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+        self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
 class SecundariaConfig(I90Config):
@@ -233,15 +236,22 @@ class SecundariaConfig(I90Config):
     Config for secundaria market data
     """
     def __init__(self):
+        """
+        Configuration specific to the Secundaria market.
+        Initializes Secundaria specific settings including market IDs and relevant sheet filters.
+        """
         super().__init__()
-        #get individual ids for subir and bajar
-        self.secundaria_subir_id = self.indicator_id_map["Secundaria a subir"]
-        self.secundaria_bajar_id = self.indicator_id_map["Secundaria a bajar"]
+        # get individual ids for subir and bajar
+        self.secundaria_subir_id: str = self.indicator_id_map["Secundaria a subir"]
+        self.secundaria_bajar_id: str = self.indicator_id_map["Secundaria a bajar"]
 
-        #group ids onto a single var (to be used in get_sheets_of_interest)
-        self.market_ids = [self.secundaria_subir_id, self.secundaria_bajar_id]
+        # group ids onto a single var (to be used in get_sheets_of_interest)
+        self.market_ids: List[str] = [self.secundaria_subir_id, self.secundaria_bajar_id]
 
-        #get sheets of interest
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+        self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
 class TerciariaConfig(I90Config):
@@ -250,85 +260,145 @@ class TerciariaConfig(I90Config):
     """
     def __init__(self):
         super().__init__()
-        #get individual ids for subir and bajar
-        self.terciaria_subir_id = self.indicator_id_map["Terciaria a subir"]
-        self.terciaria_bajar_id = self.indicator_id_map["Terciaria a bajar"]
+        # get individual ids for subir and bajar
+        self.terciaria_subir_id: str = self.indicator_id_map["Terciaria a subir"]
+        self.terciaria_bajar_id: str = self.indicator_id_map["Terciaria a bajar"]
 
-        #group ids onto a single var (to be used in get_sheets_of_interest)
-        self.market_ids = [self.terciaria_subir_id, self.terciaria_bajar_id]
+        # group ids onto a single var (to be used in get_sheets_of_interest)
+        self.market_ids: List[str] = [self.terciaria_subir_id, self.terciaria_bajar_id]
 
-        #get sheets of interest
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+        self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
 class RRConfig(I90Config):
     def __init__(self):
+        """
+        Configuration specific to the RR (Reserva de Regulación) market.
+        Initializes RR specific settings including market IDs and relevant sheet filters.
+        """
         super().__init__()
-        #get individual ids for subir and bajar
-        self.rr_subir_id = self.indicator_id_map["RR a subir"]
-        self.rr_bajar_id = self.indicator_id_map["RR a bajar"]
+        # get individual ids for subir and bajar
+        self.rr_subir_id: str = self.indicator_id_map["RR a subir"]
+        self.rr_bajar_id: str = self.indicator_id_map["RR a bajar"]
         
-        #group ids onto a single var (to be used in get_sheets_of_interest)
-        self.market_ids = [self.rr_subir_id, self.rr_bajar_id]
+        # group ids onto a single var (to be used in get_sheets_of_interest)
+        self.market_ids: List[str] = [self.rr_subir_id, self.rr_bajar_id]
 
-        #get sheets of interest
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+        self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        # No specific Redespacho filters defined for RR sheets ('06') in the provided snippet
+
 
 class CurtailmentConfig(I90Config):
     def __init__(self):
+        """
+        Configuration specific to the Curtailment market.
+        Initializes Curtailment specific settings including market ID and relevant sheet filters.
+        """
         super().__init__()
-        #get individual id
-        self.curtailment_id = self.indicator_id_map["Curtailment"]
+        # get individual id
+        self.curtailment_id: str = self.indicator_id_map["Curtailment"]
+        self.curtailment_demanda_id: str = self.indicator_id_map["Curtailment demanda"]
 
-        #group id onto a single var (to be used in get_sheets_of_interest)
-        self.market_ids = [self.curtailment_id]
+        # group id onto a single var (to be used in get_sheets_of_interest)
+        self.market_ids: List[str] = [self.curtailment_id]
 
-        #get sheets of interest
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str] # Curtailment typically only has volumes
+        self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+        # Define Redespacho filter for volumenes sheet ('03')
+        # Renamed from curtailment_volumenes_sheets for clarity
+        self.redespacho_filter_volumenes: List[str] = ['UPLPVPV', 'UPLPVPCBN', 'UPOPVPB']
+
 
 class P48Config(I90Config):
     def __init__(self):
+        """
+        Configuration specific to the P48 market.
+        Initializes P48 specific settings including market ID and relevant sheet filters.
+        """
         super().__init__()
-        #get individual id
-        self.p48_id = self.indicator_id_map["P48"]
+        # get individual id
+        self.p48_id: str = self.indicator_id_map["P48"]
 
-        #group id onto a single var (to be used in get_sheets_of_interest)
-        self.market_ids = [self.p48_id]
+        # group id onto a single var (to be used in get_sheets_of_interest)
+        self.market_ids: List[str] = [self.p48_id]
 
-        #get sheets of interest
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        _ : List[str] # P48 typically only has volumes
+        self.sheets_of_interest: List[str]
         self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
+        # No specific Redespacho filters defined for P48 sheets ('12') in the provided snippet
 
 class IndisponibilidadesConfig(I90Config):
     def __init__(self):
+        """
+        Configuration specific to the Indisponibilidades market.
+        Initializes Indisponibilidades specific settings including market ID and relevant sheet filters.
+        """
         super().__init__()
-        #get individual id
-        self.indisponibilidades_id = self.indicator_id_map["Indisponibilidades"]
+        # get individual id
+        self.indisponibilidades_id: str = self.indicator_id_map["Indisponibilidades"]
 
-        self.market_ids = [self.indisponibilidades_id]
+        self.market_ids: List[str] = [self.indisponibilidades_id]
 
-        #get sheets of interest
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        _ : List[str] # Indisponibilidades typically only has volumes
+        self.sheets_of_interest: List[str]
         self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
+
+        # Define Redespacho filter for volumenes sheet ('08')
+        self.redespacho_filter_volumenes: List[str] = ["Indisponibilidad"]
+
 
 class RestriccionesConfig(I90Config):
     def __init__(self):
+        """
+        Configuration specific to the Restricciones markets (MD, TR, RT2).
+        Initializes Restricciones specific settings including market IDs and relevant sheet filters.
+        """
         super().__init__()
 
-        #get restricciones mercado diario subir y bajar
-        self.restricciones_md_subir_id = self.indicator_id_map["Restricciones MD a subir"]
-        self.restricciones_md_bajar_id = self.indicator_id_map["Restricciones MD a bajar"]
+        # get restricciones mercado diario subir y bajar
+        self.restricciones_md_subir_id: str = self.indicator_id_map["Restricciones MD a subir"]
+        self.restricciones_md_bajar_id: str = self.indicator_id_map["Restricciones MD a bajar"]
 
-        #get restricciones mercado tiempo real subir y bajar
-        self.restricciones_tr_subir_id = self.indicator_id_map["Restricciones TR a subir"]
-        self.restricciones_tr_bajar_id = self.indicator_id_map["Restricciones TR a bajar"]
+        # get restricciones mercado tiempo real subir y bajar
+        self.restricciones_tr_subir_id: str = self.indicator_id_map["Restricciones TR a subir"]
+        self.restricciones_tr_bajar_id: str = self.indicator_id_map["Restricciones TR a bajar"]
 
-        #get restricciones rt subir y bajar
-        self.restricciones_rt2_subir_id = self.indicator_id_map["RT2 a subir"]
-        self.restricciones_rt2_bajar_id = self.indicator_id_map["RT2 a bajar"]
+        # get restricciones rt subir y bajar
+        self.restricciones_rt2_subir_id: str = self.indicator_id_map["RT2 a subir"]
+        self.restricciones_rt2_bajar_id: str = self.indicator_id_map["RT2 a bajar"]
 
-        #total market ids 
-        self.market_ids = [self.restricciones_md_subir_id, self.restricciones_md_bajar_id, self.restricciones_tr_subir_id,
+        # total market ids 
+        self.market_ids: List[str] = [self.restricciones_md_subir_id, self.restricciones_md_bajar_id, self.restricciones_tr_subir_id,
                             self.restricciones_tr_bajar_id, self.restricciones_rt2_subir_id, self.restricciones_rt2_bajar_id]
 
-        #get sheets of interest (uses attribute market ids)
+        # get sheets of interest (uses attribute market ids)
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+        self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+        # --- Define Redespacho filters based on market type and sheet ---
+        # Filter for MD volumenes (sheet '03') and precios (sheet '09')
+        self.redespacho_filter_md: List[str] = ['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB']
+        # Filter for RT2 volumenes (sheet '03' - based on transform logic)
+        self.redespacho_filter_rt2_vol: List[str] = ['ECOBSO', 'ECOBCBSO']
+
+        # Filter for TR volumenes (sheet '08') and TR precios (sheet '10') - "Restricciones Técnicas"
+        self.redespacho_filter_tr: List[str] = ["Restricciones Técnicas"]
         
     
