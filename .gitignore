@@ -185,3 +185,7 @@ data/*
 #ignore all files in the tests directory
 tests/*
 
+#ignor all files in .cursor folder
+.cursor/*
+
+

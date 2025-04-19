@@ -1,6 +1,12 @@
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict
 import pandas as pd
+import sys
+import os
+
+# Add the project root to Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+
 from utilidades.db_utils import DatabaseUtils
 from configs.storage_config import DATA_LAKE_BASE_PATH
 import os
@@ -16,44 +22,67 @@ class I90Config:
 
         self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temp_downloads')
 
-    def get_id_sheet_mapping(self) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    def get_id_sheet_mapping(self) -> tuple[dict[str, str], dict[str, Optional[str]], dict[str, Optional[str]]]:
         """
-        Obtiene el mapping de los IDs de los mercados de ESIOS.
+        Obtiene el mapping de los IDs de los mercados de ESIOS y sus números de hoja correspondientes.
+
         Returns:
-            dict: 1. indicator_id_map: Un diccionario con los nombres de los mercados y sus respectivos IDs de ESIOS.
-                        i.e {'Diario': 1, 'Intra 1': 2, 'Intra 2': 3, 'Intra 3': 4} (nombre de mercado como key, id de ESIOS como value)
-                    2. volumenes_id_map: Un diccionario con los IDs de los mercados de ESIOS y sus IDs de mercado en la BBDD.
-                        i.e {1: 1, 2: 2, 3: 3, 4: 4} (id de ESIOS como key, id de mercado como value)
-                    3. precios_id_map: Un diccionario con los IDs de los mercados de ESIOS y sus IDs de mercado en la BBDD.
-                        i.e {1: 1, 2: 2, 3: 3, 4: 4} (id de ESIOS como key, id de mercado como value)
+            tuple[dict[str, str], dict[str, Optional[str]], dict[str, Optional[str]]]:
+                1. indicator_id_map: Mapping de nombre de mercado a ID de mercado (str -> str).
+                   Ej: {'Diario': '1', 'Intra 1': '2', ...}
+                2. precios_id_map: Mapping de ID de mercado a número de hoja de precios (str -> Optional[str]).
+                   El número de hoja es un string con padding ('01', '09', etc.) o None si no aplica.
+                   Ej: {'1': '01', '2': None, ...}
+                3. volumenes_id_map: Mapping de ID de mercado a número de hoja de volúmenes (str -> Optional[str]).
+                   El número de hoja es un string con padding ('01', '03', etc.) o None si no aplica.
+                   Ej: {'1': '03', '2': '05', ...}
         """
+        # Get all market ids where either sheet number is specified (not 0)
+        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados',
+                                                columns=['id', 'mercado', 'sheet_i90_precios', 'sheet_i90_volumenes', 'is_quinceminutal'],
+                                                where_clause='(sheet_i90_volumenes != 0 OR sheet_i90_precios != 0)')
 
-        #get all market ids with indicator_esios_precios != 0
-        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados', columns=['id', 'mercado', 'sheet_i90_precios', 'sheet_i90_volumenes', 'is_quinceminutal'], 
-                                            where_clause='(sheet_i90_volumenes != 0 OR sheet_i90_precios != 0)')
+        # Create indicator map {mercado_name: market_id}
+        indicator_map_raw = dict(zip(df_mercados['mercado'], df_mercados['id']))
+
+        # Initialize maps for sheet numbers {market_id: sheet_num_or_None}
+        volumenes_id_map_raw = {}
+        precios_id_map_raw = {}
+
+        # Populate sheet maps, handling NaNs before string conversion
+        for index, row in df_mercados.iterrows():
+            market_id: int = row['id']
+            sheet_vol = row['sheet_i90_volumenes']
+            sheet_pre = row['sheet_i90_precios']
+
+            # Process volumenes sheet number
+            if pd.notna(sheet_vol) and sheet_vol != 0:
+                # Convert valid number to padded string
+                volumenes_id_map_raw[market_id] = str(int(sheet_vol)).zfill(2)
+            else:
+                # Assign None if NaN or 0
+                volumenes_id_map_raw[market_id] = None
+
+            # Process precios sheet number
+            if pd.notna(sheet_pre) and sheet_pre != 0:
+                # Convert valid number to padded string
+                precios_id_map_raw[market_id] = str(int(sheet_pre)).zfill(2)
+            else:
+                # Assign None if NaN or 0
+                precios_id_map_raw[market_id] = None
+
+        # Convert all keys and non-None values to strings for final output
+        # Ensuring consistent string keys across all maps
+        indicator_id_map = {str(key): str(value) for key, value in indicator_map_raw.items()}
         
+        # Create final volumenes map with string keys
+        volumenes_id_map = {str(key): value for key, value in volumenes_id_map_raw.items()}
         
-        #get idnicator map with mercado as key and indicator as value i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614}
-        indicator_map = dict(zip(df_mercados['mercado'], df_mercados['id']))
+        # Create final precios map with string keys
+        precios_id_map = {str(key): value for key, value in precios_id_map_raw.items()}
 
-        #filter where sheet_i90_volumenes != 0
-        df_mercados_volumenes = df_mercados[df_mercados['sheet_i90_volumenes'] != 0]
-        
-        #convert int to str "00" -> 3 to "03"
-        df_mercados_volumenes['sheet_i90_volumenes'] = df_mercados_volumenes['sheet_i90_volumenes'].astype(str).str.zfill(2)
-        volumenes_id_map = dict(zip(df_mercados_volumenes["id"], df_mercados_volumenes['sheet_i90_volumenes']))
-
-        #filter where sheet_i90_precios != 0
-        df_mercados_precios = df_mercados[df_mercados['sheet_i90_precios'] != 0]
-        df_mercados_precios['sheet_i90_precios'] = df_mercados_precios['sheet_i90_precios'].astype(str).str.zfill(2)
-        precios_id_map = dict(zip(df_mercados_precios["id"], df_mercados_precios['sheet_i90_precios']))
-
-        #convert indicator value to str to avoid type errors
-        indicator_id_map = {str(key): str(value) for key, value in indicator_map.items()}
-        volumenes_id_map = {str(key): str(value) for key, value in volumenes_id_map.items()}
-        precios_id_map = {str(key): str(value) for key, value in precios_id_map.items()}
-
-        return indicator_id_map, volumenes_id_map, precios_id_map
+        # Return the maps with string keys and Optional[str] values for sheets
+        return indicator_id_map, precios_id_map, volumenes_id_map
     
     def get_lista_UPs(self, UP_ids: Optional[List[int]] = None) -> Tuple[List[str], Dict[str, int]]:
         """
@@ -401,4 +430,14 @@ class RestriccionesConfig(I90Config):
         # Filter for TR volumenes (sheet '08') and TR precios (sheet '10') - "Restricciones Técnicas"
         self.redespacho_filter_tr: List[str] = ["Restricciones Técnicas"]
         
+if __name__ == "__main__":
+    config = DiarioConfig()
+
+    print(config.volumenes_sheets)
     
+    if config.precios_sheets is None:
+        print("precios_sheets is None")
+    else:
+        print(config.precios_sheets)
+
+    print(config.sheets_of_interest)

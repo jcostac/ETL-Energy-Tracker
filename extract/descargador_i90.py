@@ -35,7 +35,16 @@ class I90DownloaderDL:
         self.lista_errores = self.config.get_error_data()
         self.temporary_download_path = self.config.temporary_download_path
 
-    def get_i90_data(self, day: datetime, volumenes_sheets: List[str] = None, precios_sheets: List[str] = None) -> pd.DataFrame:
+    @staticmethod
+    def extract_date_from_file_name(excel_file_name: str) -> datetime:
+        """
+        Extract the date from the Excel file name.
+        """
+        #extarct name from filename ie 20241212.xls --> 2024-12-12 00:00:00
+        date_str = excel_file_name.split('.')[0]
+        return datetime.strptime(date_str, '%Y%m%d')
+    
+    def get_i90_data(self, day: datetime) :
         """
         Get I90 data for a specific day.
         
@@ -54,29 +63,44 @@ class I90DownloaderDL:
         
         # Download the file
         zip_file_name, excel_file_name = self._make_i90_request(day)
-
-        #extract the date from the file name
-        fecha = self.extract_date_from_file_name(excel_file_name)
         
         # Get error data for the day
         df_errores_dia = self.lista_errores[self.lista_errores['fecha'] == day.date()]
 
         #if there are errors for that particular day
         if not df_errores_dia.empty:
-            pestañas_con_error = df_errores_dia['tipo_error'].values
+            pestañas_con_error = df_errores_dia['tipo_error'].values.tolist()
+        else: 
+            pestañas_con_error = []
+
+        return zip_file_name, excel_file_name, pestañas_con_error
+        
+    def extract_sheets_of_interest(self, excel_file_name: str, pestañas_con_error: List[str], volumenes_sheets: List[str] = None, precios_sheets: List[str] = None) -> Tuple[pd.ExcelFile, pd.ExcelFile]:
+        """
+        Process the Excel file by filtering and extracting valid sheets.
+        
+        Args:
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
+            volumenes_sheets (List[str]): List of sheet IDs for volume data, can be None
+            precios_sheets (List[str]): List of sheet IDs for price data, can be None
+        """
+        #extract the date from the file name
+        fecha = self.extract_date_from_file_name(excel_file_name)
 
         #REMEMBER: one of these will be none (either precios or volumenes), hence the one that is none will be ignored
         #get valid sheets by filtering out the invalid sheets found in the error list
         volumenes_sheets, precios_sheets = self._get_valid_sheets(volumenes_sheets, precios_sheets, pestañas_con_error)
 
-        #filter the excel file by the valid sheets
-        volumenes_excel_file, precios_excel_file = self._filter_sheets(excel_file_name, pestañas_con_error, volumenes_sheets, precios_sheets)
+        #filter the excel file by the valid sheets per market (each market has its own valid sheets for prices and volumenes)
+        volumenes_excel_file, precios_excel_file = self._filter_sheets(excel_file_name, volumenes_sheets, precios_sheets)
 
         #excel files to dataframes 
         df = self._excel_file_to_df(fecha, volumenes_excel_file, precios_excel_file) #one of these will be none, hence the one that is none will be ignored
 
+        print(df)
 
-        return volumenes_excel_file, precios_excel_file
+        return df
     
     def _make_i90_request(self, day: datetime) -> Tuple[str, str]:
         """
@@ -113,15 +137,6 @@ class I90DownloaderDL:
             zip_ref.extractall(self.temporary_download_path)
         
         return zip_file_name, excel_file_name
-    
-    @staticmethod
-    def extract_date_from_file_name(excel_file_name: str) -> datetime:
-        """
-        Extract the date from the Excel file name.
-        """
-        #extarct name from filename ie 20241212.xls --> 2024-12-12 00:00:00
-        date_str = excel_file_name.split('.')[0]
-        return datetime.strptime(date_str, '%Y%m%d')
     
     def _excel_file_to_df(self, fecha: datetime, volumenes_excel_file: pd.ExcelFile, precios_excel_file: pd.ExcelFile) -> pd.DataFrame:
       
@@ -235,9 +250,9 @@ class I90DownloaderDL:
         
         return volumenes_sheets, precios_sheets
     
-    def _filter_sheets(self, excel_file_name: str, volumenes_sheets: List[str], precios_sheets: List[str]) -> Tuple[pd.ExcelFile, pd.ExcelFile]:
+    def _filter_sheets(self, excel_file_name: str, volumenes_sheets: List[str], precios_sheets: List[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Process a copy of the I90 Excel file by filtering and keeping only specified sheets.
+        Process the I90 Excel file by filtering and keeping only specified sheets.
         
         Args:
             excel_file_name (str): Name of the Excel file to process
@@ -245,67 +260,50 @@ class I90DownloaderDL:
             precios_sheets (List[str]): List of sheet IDs for price data
             
         Returns:
-            Tuple[pd.ExcelFile, pd.ExcelFile]: Tuple containing:
-                - Processed Excel file with filtered volume sheets (or None if no volume sheets)
-                - Processed Excel file with filtered price sheets (or None if no price sheets)
-        
-        Notes:
-            - Creates new filtered Excel files from a copy of the original
-            - Original file remains completely untouched
-            - Uses temporary files for processing
+            Tuple[pd.DataFrame, pd.DataFrame]: Tuple containing:
+                - DataFrame with filtered volume data (or None if no volume sheets)
+                - DataFrame with filtered price data (or None if no price sheets)
         """
         # Initialize result variables
         result_volumenes = None
         result_precios = None
 
-        # Create a copy of the original file first
-        original_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}.xls"
-        temp_copy_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_temp_copy.xls"
-        
-        # Read and write to create a copy - keeping original sheet names
-        df_copy = pd.read_excel(original_path, sheet_name=None)
-        with pd.ExcelWriter(temp_copy_path, engine='openpyxl') as writer:
-            for sheet_name, df in df_copy.items():
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
+        excel_file = pd.ExcelFile(f"{self.temporary_download_path}/I90DIA_{excel_file_name}.xls")
         
         # Process volumenes sheets if provided
         if volumenes_sheets:
-            excel_file = pd.ExcelFile(temp_copy_path)
+            print(f"Filtering volumenes sheets: {volumenes_sheets}")
             all_sheets = excel_file.sheet_names
-
+            
             # Match exact sheet numbers 
             filtered_sheets = [sheet for sheet in all_sheets if any(vs in sheet for vs in volumenes_sheets)]
             
             if not filtered_sheets:
                 raise ValueError("At least one volume sheet must be found")
             
-            # Create filtered volumenes file
-            volumenes_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_volumenes.xls"
-            with pd.ExcelWriter(volumenes_path, engine='openpyxl') as writer:
-                for sheet in filtered_sheets:
-                    df = pd.read_excel(excel_file, sheet_name=sheet)
-                    df.to_excel(writer, sheet_name=sheet, index=False)
-            
-            result_volumenes = pd.ExcelFile(volumenes_path)
+            # Read and concatenate volume sheets directly
+            dfs = []
+            for sheet in filtered_sheets:
+                df = pd.read_excel(excel_file, sheet_name=sheet)
+                dfs.append(df)
+            result_volumenes = pd.concat(dfs) if dfs else None
         
         # Process precios sheets if provided
         if precios_sheets:
-            excel_file = pd.ExcelFile(temp_copy_path)
+            print(f"Filtering precios sheets: {precios_sheets}")
             all_sheets = excel_file.sheet_names
-            # Match exact sheet numbers without double prefixing
+            
             filtered_sheets = [sheet for sheet in all_sheets if any(ps in sheet for ps in precios_sheets)]
             
             if not filtered_sheets:
                 raise ValueError("At least one price sheet must be found")
             
-            # Create filtered precios file
-            precios_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_precios.xls"
-            with pd.ExcelWriter(precios_path, engine='openpyxl') as writer:
-                for sheet in filtered_sheets:
-                    df = pd.read_excel(excel_file, sheet_name=sheet)
-                    df.to_excel(writer, sheet_name=sheet, index=False)
-            
-            result_precios = pd.ExcelFile(precios_path)
+            # Read and concatenate price sheets directly
+            dfs = []
+            for sheet in filtered_sheets:
+                df = pd.read_excel(excel_file, sheet_name=sheet)
+                dfs.append(df)
+            result_precios = pd.concat(dfs) if dfs else None
 
         return result_volumenes, result_precios
     
@@ -483,7 +481,7 @@ class DiarioDL(I90DownloaderDL):
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
 
-    def get_i90_volumenes(self, day: datetime, volumenes_sheets: List[str]) -> pd.DataFrame:
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
         Get diario (daily market) volume data for a specific day.
         
@@ -491,7 +489,7 @@ class DiarioDL(I90DownloaderDL):
             day (datetime): The specific day to retrieve data for
            
         Returns:
-            pd.DataFrame: Processed volume data from the I90 file containing:
+            pd.ExcelFile: Processed volume data from the I90 file containing:
                         - Programming unit data
                         - Hourly volumes
                         - Market specific information
@@ -501,9 +499,11 @@ class DiarioDL(I90DownloaderDL):
             - Processes daily market volumes only
             - Returns data in a standardized format for raw data lake insertion
         """
-        return super().get_i90_data(day, volumenes_sheets=volumenes_sheets, precios_sheets=None)
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+    
+        return df_volumenes
 
-    def get_i90_precios(self, day: datetime, precios_sheets: List[str]) -> pd.DataFrame:
+    def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
         Get diario (daily market) price data for a specific day.
         
@@ -518,8 +518,8 @@ class DiarioDL(I90DownloaderDL):
             - This method is not implemented as price data is retrieved from ESIOS API instead
             - The method exists for interface consistency with other market types
         """
-        super().get_i90_data(day, volumenes_sheets=None, precios_sheets=precios_sheets)
-        pass
+        df_precios = super().extract_sheets_of_interest(excel_file_name, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        return df_precios
 
 class SecundariaDL(I90DownloaderDL):
     """
@@ -532,17 +532,38 @@ class SecundariaDL(I90DownloaderDL):
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
               
-    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
         Get secundaria volume data for a specific day.
+        
+        Args:
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
+            
+        Returns:
+            pd.DataFrame: Processed volume data from the I90 file
         """
-        df = super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
-
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        
         #rename column that changed from the date of the SRS 
-        if 'Participante del Mercado' in df.columns:
-            df = df.rename(columns={'Participante del Mercado': 'Unidad de Programación'})
+        if 'Participante del Mercado' in df_volumenes.columns:
+            df_volumenes = df_volumenes.rename(columns={'Participante del Mercado': 'Unidad de Programación'})
+            
+        return df_volumenes
 
-        return df
+    def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
+        """
+        Get secundaria price data for a specific day.
+        
+        Args:
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
+            
+        Returns:
+            pd.DataFrame: Processed price data from the I90 file
+        """
+        df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        return df_precios
 
 class TerciariaDL(I90DownloaderDL):
     """
@@ -558,43 +579,33 @@ class TerciariaDL(I90DownloaderDL):
         self.precios_sheets = self.config.precios_sheets 
         self.volumenes_sheets = self.config.volumenes_sheets 
 
-    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get tertiary regulation volume data for a specific day.
+        Get tertiary regulation volume data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Processed volume data from the I90 file containing:
-                        - Programming unit data
-                        - Hourly volumes for both upward and downward regulation
-                        - Market specific information
-                        
-        Notes:
-            - Uses sheet 07 from I90 file as specified in TerciariaConfig
-            - Processes both upward ('Terciaria a subir') and downward ('Terciaria a bajar') regulation
-            - Filters data based on 'Redespacho' != 'TERDIR'
-            - Returns data in a standardized format for database insertion
+            pd.DataFrame: Processed volume data containing upward and downward regulation
         """
-        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        return df_volumenes
     
-    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
+    def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get tertiary regulation price data for a specific day.
+        Get tertiary regulation price data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Empty DataFrame as prices are obtained from ESIOS API
-            
-        Notes:
-            - This method is not implemented as price data is retrieved from ESIOS API instead
-            - The method exists for interface consistency with other market types
+            pd.DataFrame: Processed price data
         """
-        super().get_i90_data(day, volumenes_sheets=None, precios_sheets=self.precios_sheets)
-        pass
+        df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        return df_precios
 
 class RRDL(I90DownloaderDL):
     """
@@ -608,42 +619,33 @@ class RRDL(I90DownloaderDL):
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
 
-    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get Replacement Reserve (RR) volume data for a specific day.
+        Get Replacement Reserve (RR) volume data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Processed volume data from the I90 file containing:
-                        - Programming unit data
-                        - Hourly volumes for both upward and downward RR
-                        - Market specific information
-                        
-        Notes:
-            - Uses sheets defined in RRConfig for both upward ('RR a subir') and downward ('RR a bajar') volumes
-            - Processes both directions of RR activation
-            - Returns data in a standardized format for database insertion
+            pd.DataFrame: Processed volume data for upward and downward RR
         """
-        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        return df_volumenes
         
-    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
+    def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get Replacement Reserve (RR) price data for a specific day.
+        Get Replacement Reserve (RR) price data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Empty DataFrame as prices are obtained from ESIOS API
-            
-        Notes:
-            - This method is not implemented as price data is retrieved from ESIOS API instead
-            - The method exists for interface consistency with other market types
+            pd.DataFrame: Processed price data
         """
-        super().get_i90_data(day, volumenes_sheets=None, precios_sheets=self.precios_sheets)
-        pass
+        df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        return df_precios
 
 class CurtailmentDL(I90DownloaderDL):
     """
@@ -657,16 +659,20 @@ class CurtailmentDL(I90DownloaderDL):
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
 
-    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get curtailment volume data for a specific day.
+        Get curtailment volume data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
-        """ 
-        df = super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
-    
+        Returns:
+            pd.DataFrame: Processed curtailment volume data
+        """
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        return df_volumenes
+
 class RestriccionesDL(I90DownloaderDL):
     """
     Specialized class for downloading and processing restricciones de precios data from I90 files.
@@ -680,49 +686,33 @@ class RestriccionesDL(I90DownloaderDL):
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
     
-    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get technical restrictions volume data for a specific day.
+        Get technical restrictions volume data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Processed volume data from the I90 file containing:
-                        - Programming unit data
-                        - Hourly volumes for all types of restrictions
-                        - Market specific information
-                        
-        Notes:
-            - Uses sheets defined in RestriccionesConfig for:
-                * Restricciones MD subir y bajar
-                * Restricciones TR subir y bajar
-                * Restricciones RT2 subir y bajar
-            - Processes all six types of restricciones volumes
-            - Returns data in a standardized format for raw data lake insertion
+            pd.DataFrame: Processed volume data for all types of restrictions
         """
-        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
-    
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        return df_volumenes
 
-    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
+    def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get technical restrictions price data for a specific day.
+        Get technical restrictions price data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Processed price data from the I90 file containing prices for:
-                        - Restricciones MD subir y bajar
-                        - Restricciones TR subir y bajar
-                        - Restricciones RT2 subir y bajar
-                        
-        Notes:
-            - Uses sheets defined in RestriccionesConfig for all restriction types
-            - Processes prices for all six types of restricciones
-            - Returns data in a standardized format for raw data lake insertion
+            pd.DataFrame: Processed price data for all types of restrictions
         """
-        return super().get_i90_data(day, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        return df_precios
 
 class P48DL(I90DownloaderDL):
     """
@@ -736,26 +726,19 @@ class P48DL(I90DownloaderDL):
         self.config = P48Config()
         self.volumenes_sheets = self.config.volumenes_sheets      
 
-    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get P48 (Final Program) volume data for a specific day.
+        Get P48 (Final Program) volume data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Processed volume data from the I90 file containing:
-                        - Programming unit data
-                        - Hourly scheduled generation volumes
-                        - Market specific information
-                        
-        Notes:
-            - Uses sheet 02 from I90 file as specified in P48Config
-            - P48 represents the final scheduled generation program after all markets and adjustments
-            - Only processes volume data as P48 does not have associated prices
-            - Returns data in a standardized format for database insertion
+            pd.DataFrame: Processed P48 volume data
         """
-        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        return df_volumenes
 
 class IndisponibilidadesDL(I90DownloaderDL):
     """
@@ -769,42 +752,32 @@ class IndisponibilidadesDL(I90DownloaderDL):
         self.config = IndisponibilidadesConfig()
         self.volumenes_sheets = self.config.volumenes_sheets
 
-    def get_i90_volumenes(self, day: datetime) -> pd.DataFrame:
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get unavailability (indisponibilidades) volume data for a specific day.
+        Get unavailability (indisponibilidades) volume data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Processed volume data from the I90 file containing:
-                        - Programming unit data
-                        - Hourly unavailability volumes
-                        - Market specific information
-                        
-        Notes:
-            - Uses sheet 08 from I90 file as specified in IndisponibilidadesConfig
-            - Filters data where 'Redespacho' == 'Indisponibilidad'
-            - Processes unavailability declarations for generation units
-            - Returns data in a standardized format for database insertion
+            pd.DataFrame: Processed unavailability volume data
         """
-        return super().get_i90_data(day, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        return df_volumenes
 
-    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
+    def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get unavailability (indisponibilidades) price data for a specific day.
+        Get unavailability (indisponibilidades) price data.
         
         Args:
-            day (datetime): The specific day to retrieve data for
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             
         Returns:
-            pd.DataFrame: Empty DataFrame as prices are obtained from ESIOS API
-            
-        Notes:
-            - This method is not implemented as price data is retrieved from ESIOS API instead
-            - The method exists for interface consistency with other market types
-            - Unavailability declarations typically don't have associated prices
+            pd.DataFrame: Processed price data
         """
-        return super().get_i90_data(day, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        return df_precios
 
 
