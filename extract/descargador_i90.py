@@ -281,13 +281,14 @@ class I90DownloaderDL:
             if not filtered_sheets:
                 raise ValueError("At least one volume sheet must be found")
             
-            # Read and concatenate volume sheets directly
-            dfs = []
-            for sheet in filtered_sheets:
-                df = pd.read_excel(excel_file, sheet_name=sheet)
-                dfs.append(df)
-            result_volumenes = pd.concat(dfs) if dfs else None
-        
+            #create a temporary filefor volumenes
+            volumenes_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_volumenes.xls"
+            with pd.ExcelWriter(volumenes_path, engine='openpyxl') as writer:
+                for sheet in filtered_sheets:
+                    df = pd.read_excel(excel_file, sheet_name=sheet)
+                    df.to_excel(writer, sheet_name=sheet, index=False)
+                    
+            result_volumenes = pd.ExcelFile(volumenes_path)
         # Process precios sheets if provided
         if precios_sheets:
             print(f"Filtering precios sheets: {precios_sheets}")
@@ -298,12 +299,14 @@ class I90DownloaderDL:
             if not filtered_sheets:
                 raise ValueError("At least one price sheet must be found")
             
-            # Read and concatenate price sheets directly
-            dfs = []
-            for sheet in filtered_sheets:
-                df = pd.read_excel(excel_file, sheet_name=sheet)
-                dfs.append(df)
-            result_precios = pd.concat(dfs) if dfs else None
+            #create a temporary file for precios
+            precios_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_precios.xls"
+            with pd.ExcelWriter(precios_path, engine='openpyxl') as writer:
+                for sheet in filtered_sheets:
+                    df = pd.read_excel(excel_file, sheet_name=sheet)
+                    df.to_excel(writer, sheet_name=sheet, index=False)
+                    
+            result_precios = pd.ExcelFile(precios_path)
 
         return result_volumenes, result_precios
     
