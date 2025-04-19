@@ -207,8 +207,6 @@ class I90DownloaderDL:
             #add date column to the dataframe
             df_melted['fecha'] = fecha
 
-            print(df_melted)
-
             all_dfs.append(df_melted)
 
 
