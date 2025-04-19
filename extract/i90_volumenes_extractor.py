@@ -125,6 +125,90 @@ class I90VolumenesExtractor:
 
         return
 
+    def extract_volumenes_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, dev: bool = False) -> None:
+        """
+        Extract diario (daily market) volume data from I90 files for a date range.
+
+        Args:
+            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format. Defaults to 93 days ago if None.
+            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format. Defaults to 92 days ago if None.
+            dev (bool): If True, save to development files/tables instead of production.
+        """
+        # Validate input dates
+        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+
+        # Convert to datetime objects
+        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
+        fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+
+        # Ensure required downloader and utils are present
+        if not hasattr(self, 'diario_downloader'):
+            raise AttributeError("Downloader instance 'self.diario_downloader' not found.")
+        if not hasattr(self, 'raw_file_utils'):
+             raise AttributeError("Utility instance 'self.raw_file_utils' not found.")
+        if not hasattr(self, 'i90_downloader'):
+             raise AttributeError("Downloader instance 'self.i90_downloader' not found.")
+
+
+        # Download and process data for each day in the range
+        for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
+            try:
+                # 1. Get the I90 file details for the day
+                self.extract_i90_data(day) # This updates self.latest_i90_* attributes
+                excel_file_name = self.latest_i90_excel_file_name
+                pestañas_con_error = self.latest_i90_pestañas_con_error
+
+                if excel_file_name is None:
+                    print(f"Skipping day {day.date()}: No Excel file found for I90 download.")
+                    continue
+
+                # 2. Extract volumenes using the specific diario downloader
+                # Assumes get_i90_volumenes returns a DataFrame ready for saving
+                # based on the structure in file_context_1
+                df_volumenes = self.diario_downloader.get_i90_volumenes(
+                    excel_file_name=excel_file_name,
+                    pestañas_con_error=pestañas_con_error
+                )
+
+                # 3. Process/Save the extracted data
+                if df_volumenes is not None and not df_volumenes.empty:
+                    year = day.year
+                    month = day.month
+
+                    # Define market name
+                    mercado = 'diario'
+
+                    # Use appropriate saving method based on dev flag
+                    if dev:
+                         self.raw_file_utils.write_raw_csv(
+                             year=year, month=month, df=df_volumenes,
+                             dataset_type='volumenes',
+                             mercado=f"{mercado}_dev" # Example dev naming
+                         )
+                         print(f"Successfully processed and saved DEV diario volumenes for {day.date()}")
+                    else:
+                         self.raw_file_utils.write_raw_csv(
+                             year=year, month=month, df=df_volumenes,
+                             dataset_type='volumenes',
+                             mercado=mercado
+                         )
+                         print(f"Successfully processed and saved diario volumenes for {day.date()}")
+                else:
+                    # This case might occur if the sheet exists but is empty or filtered out
+                    print(f"No diario volumenes data found or extracted for {day.date()} from {excel_file_name}")
+
+                # Optional: Cleanup might be handled by the downloader or after the loop
+
+            except FileNotFoundError:
+                 print(f"Skipping day {day.date()}: Excel file '{excel_file_name}' not found.")
+                 continue
+            except Exception as e:
+                print(f"Error processing diario volumenes for {day.date()}: {e}")
+                # Continue to the next day
+                continue
+    
+    
+    
     def extract_volumenes_terciaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
                                   UP_ids: Optional[List[int]] = None, sentidos: Optional[List[str]] = None, 
                                   dev: bool = False) -> None:
