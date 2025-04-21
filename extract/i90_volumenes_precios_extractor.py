@@ -3,14 +3,11 @@ import pandas as pd
 from datetime import datetime, timedelta
 import sys
 import os
-import zipfile
-import time
-import requests
 
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from extract.descargador_i90 import I90DownloaderDL, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, RestriccionesDL
+from extract.descargador_i90 import I90Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, RestriccionesDL
 from utilidades.storage_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 
@@ -24,7 +21,7 @@ class I90Extractor:
         """Initialize the I90 downloader and raw file utils"""
 
         #downloaders
-        self.i90_downloader = I90DownloaderDL()
+        self.i90_downloader = I90Downloader()
         self.diario_downloader = DiarioDL()
         self.terciaria_downloader = TerciariaDL()
         self.secundaria_downloader = SecundariaDL()
@@ -39,7 +36,7 @@ class I90Extractor:
         self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
         
         # Set the maximum download window (in days)
-        self.download_window = 93  # ESIOS API typically limits requests to 3 months
+        self.download_window = 93  #i90 is published with 90 day delay (3 day buffer extra)
 
         #latest i90 data for the day
         self.latest_i90_excel_file_name = None
@@ -94,7 +91,7 @@ class I90Extractor:
 
         return fecha_inicio_carga, fecha_fin_carga
     
-    def extract_i90_data(self, day: datetime) -> None:
+    def download_i90_data(self, day: datetime) -> None:
         """
         Downloads the I90 file for a specific day using the downloader.
 
@@ -114,7 +111,7 @@ class I90Extractor:
              # For now, let's assume it exists. If not, this needs adjustment based on class structure.
              raise AttributeError("Downloader instance 'self.i90_downloader' not found.")
 
-        zip_file_name, excel_file_name, pestañas_con_error = self.i90_downloader.get_i90_data(day)
+        zip_file_name, excel_file_name, pestañas_con_error = self.i90_downloader.download_i90_file(day)
         print(f"Downloaded I90 data for {day.date()}: Zip='{zip_file_name}', Excel='{excel_file_name}', Errors='{pestañas_con_error}'")
 
         #update latest i90 data
@@ -132,7 +129,21 @@ class I90Extractor:
     ) -> None:
         """
         Generic workflow to extract all data for each day in the specified date range.
-        Calls self.extract_for_day(day, dev) for each day.
+
+        This method orchestrates the extraction process by validating the provided date range,
+        iterating through each day within that range, and calling the `extract_i90_data` method
+        for each day. It also handles potential errors during the extraction process and ensures
+        that the latest I90 data attributes are reset after each day's extraction attempt.
+
+        Args:
+            fecha_inicio_carga (Optional[str]): The start date for the data extraction in 'YYYY-MM-DD' format.
+            fecha_fin_carga (Optional[str]): The end date for the data extraction in 'YYYY-MM-DD' format.
+            dev (bool): A flag indicating whether to run in development mode, which may alter the behavior
+                        of the extraction process (e.g., logging, data handling).
+
+        Raises:
+            ValueError: If the date range is invalid or incomplete.
+            Exception: If an error occurs during the extraction for a specific day.
         """
         fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
         fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
@@ -140,7 +151,10 @@ class I90Extractor:
 
         for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
             try:
-                self.extract_i90_data(day)
+                #downlaod the i90 file for the given day
+                self.download_i90_data(day)
+
+                #check if the i90 file attributes are set
                 if (
                     self.latest_i90_excel_file_name is None or
                     self.latest_i90_zip_file_name is None or
@@ -148,10 +162,19 @@ class I90Extractor:
                 ):
                     print(f"Skipping day {day.date()}: I90 file attributes not set. Extraction will not proceed for this day.")
                     continue
+
+                #extract data for the given day in range
                 self.extract_for_day(day, dev=dev)
+
             except Exception as e:
                 print(f"Error during extraction for {day.date()}: {e}")
+
             finally:
+
+                #clean up files in the temporary download path
+                self.i90_downloader._cleanup_files(self.latest_i90_zip_file_name, self.latest_i90_excel_file_name)
+
+                #reset latest i90 data
                 self.latest_i90_zip_file_name = None
                 self.latest_i90_excel_file_name = None
                 self.latest_i90_pestañas_con_error = None
@@ -186,12 +209,22 @@ class I90VolumenesExtractor(I90Extractor):
 
                 # Use appropriate saving method based on dev flag
                 # Sticking to write_raw_csv for consistency with recent changes
-                self.raw_file_utils.write_raw_csv(
-                    year=year, month=month, df=df_volumenes,
-                    dataset_type=dataset_type,
-                    mercado=mercado
-                )
-                status = "DEV " if dev else ""
+
+                if dev == True:
+                    status = "DEV "
+                    self.raw_file_utils.write_raw_csv(
+                        year=year, month=month, df=df_volumenes,
+                        dataset_type=dataset_type,
+                        mercado=mercado
+                    )
+                else:
+                    self.raw_file_utils.write_raw_parquet(
+                        year=year, month=month, df=df_volumenes,
+                        dataset_type=dataset_type,
+                        mercado=mercado
+                    )
+
+                status = ""
                 print(f"Successfully processed and saved {status}{mercado} volumenes for {day.date()}")
 
             else:
@@ -227,6 +260,9 @@ class I90VolumenesExtractor(I90Extractor):
         self._extract_and_save_volumenes(day, dev, 'restricciones', self.restricciones_downloader)
 
     def extract_for_day(self, day: datetime, dev: bool = False):
+        """
+        Extracts all volumenes data from I90 files for a given day.
+        """
         self.extract_volumenes_diario(day, dev=dev)
         self.extract_volumenes_terciaria(day, dev=dev)
         self.extract_volumenes_secundaria(day, dev=dev)
@@ -253,16 +289,25 @@ class I90PreciosExtractor(I90Extractor):
             if df_precios is not None and not df_precios.empty:
                 year = day.year
                 month = day.month
-                dataset_type = 'precios_i90' # Consistent dataset type for prices
+                dataset_type = 'precios' # Consistent dataset type for prices
 
                 # Use appropriate saving method based on dev flag
                 # Assuming write_raw_csv for consistency, adjust if needed (e.g., parquet)
-                self.raw_file_utils.write_raw_csv(
-                    year=year, month=month, df=df_precios,
-                    dataset_type=dataset_type,
-                    mercado=mercado
-                )
-                status = "DEV " if dev else ""
+                if dev == True:
+                    status = "DEV "
+                    self.raw_file_utils.write_raw_csv(
+                        year=year, month=month, df=df_precios,
+                        dataset_type=dataset_type,
+                        mercado=mercado
+                    )
+                else:
+                    status = ""
+                    self.raw_file_utils.write_raw_parquet(
+                        year=year, month=month, df=df_precios,
+                        dataset_type=dataset_type,
+                        mercado=mercado
+                    )
+                    
                 print(f"Successfully processed and saved {status}{mercado} precios for {day.date()}")
 
             else:
@@ -277,15 +322,27 @@ class I90PreciosExtractor(I90Extractor):
     # Note: Diario, Curtailment, P48 do not have get_i90_precios in their downloaders
 
     def extract_precios_secundaria(self, day: datetime, dev: bool = False) -> None:
+        """
+        Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
+        """
         self._extract_and_save_precios(day, dev, 'secundaria', self.secundaria_downloader)
 
     def extract_precios_terciaria(self, day: datetime, dev: bool = False) -> None:
+        """
+        Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
+        """
         self._extract_and_save_precios(day, dev, 'terciaria', self.terciaria_downloader)
 
     def extract_precios_rr(self, day: datetime, dev: bool = False) -> None:
+        """
+        Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
+        """
         self._extract_and_save_precios(day, dev, 'rr', self.rr_downloader)
 
     def extract_precios_indisponibilidades(self, day: datetime, dev: bool = False) -> None:
+        """
+        Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
+        """
         self._extract_and_save_precios(day, dev, 'indisponibilidades', self.indisponibilidades_downloader)
 
     def extract_precios_restricciones(self, day: datetime, dev: bool = False) -> None:
@@ -293,6 +350,12 @@ class I90PreciosExtractor(I90Extractor):
 
 
     def extract_for_day(self, day: datetime, dev: bool = False):
+
+        """
+        Extracts all precios data from I90 files for a given day
+
+        Note: All prices come from API, not I90 file typically except for restricciones
+        """
         # Call extraction methods only for markets with I90 price data
 
         #self.extract_precios_secundaria(day, dev=dev)

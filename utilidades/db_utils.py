@@ -39,7 +39,6 @@ class DatabaseUtils:
         except Exception as e:
             raise ConnectionError(f"Failed to connect to database {database_name}: {str(e)}")
 
-    @staticmethod
     def read_table(engine: Engine, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None) -> pd.DataFrame:
         """Read data from a table into a DataFrame
         

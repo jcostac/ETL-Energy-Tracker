@@ -17,7 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from utilidades.db_utils import DatabaseUtils
 from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig
 
-class I90DownloaderDL:
+class I90Downloader:
     """
     Class for downloading and processing I90 files from ESIOS API.
     
@@ -44,7 +44,7 @@ class I90DownloaderDL:
         date_str = excel_file_name.split('.')[0]
         return datetime.strptime(date_str, '%Y%m%d')
     
-    def get_i90_data(self, day: datetime) :
+    def download_i90_file(self, day: datetime) -> Tuple[str, str, List[str]]:
         """
         Get I90 data for a specific day.
         
@@ -62,8 +62,12 @@ class I90DownloaderDL:
         """
         
         # Download the file
+        print(f"Downloading I90 file for {day.date()}...")
+        print(f"--------------------------------")
         zip_file_name, excel_file_name = self._make_i90_request(day)
-        
+        print(f"Successfully downloaded I90 file for {day.date()}...")
+        print(f"--------------------------------")
+
         # Get error data for the day
         df_errores_dia = self.lista_errores[self.lista_errores['fecha'] == day.date()]
 
@@ -75,15 +79,18 @@ class I90DownloaderDL:
 
         return zip_file_name, excel_file_name, pestañas_con_error
         
-    def extract_sheets_of_interest(self, excel_file_name: str, pestañas_con_error: List[str], volumenes_sheets: List[str] = None, precios_sheets: List[str] = None) -> Tuple[pd.ExcelFile, pd.ExcelFile]:
+    def extract_sheets_of_interest(self, excel_file_name: str, pestañas_con_error: List[str], volumenes_sheets: List[str] = None, precios_sheets: List[str] = None) -> pd.DataFrame:
         """
-        Process the Excel file by filtering and extracting valid sheets.
+        Process the Excel file by filtering, extracting valid sheets, and converting to a DataFrame.
         
         Args:
             excel_file_name (str): Name of the Excel file to process
             pestañas_con_error (List[str]): List of sheet IDs with errors to skip
             volumenes_sheets (List[str]): List of sheet IDs for volume data, can be None
             precios_sheets (List[str]): List of sheet IDs for price data, can be None
+        
+        Returns:
+            pd.DataFrame: The final melted DataFrame containing the requested data.
         """
         #extract the date from the file name
         fecha = self.extract_date_from_file_name(excel_file_name)
@@ -92,15 +99,55 @@ class I90DownloaderDL:
         #get valid sheets by filtering out the invalid sheets found in the error list
         volumenes_sheets, precios_sheets = self._get_valid_sheets(volumenes_sheets, precios_sheets, pestañas_con_error)
 
-        #filter the excel file by the valid sheets per market (each market has its own valid sheets for prices and volumenes)
-        volumenes_excel_file, precios_excel_file = self._filter_sheets(excel_file_name, volumenes_sheets, precios_sheets)
+        #initialize the excel files to ensure finally block is executed (finally blcok will always execute regardless of whether an error is raised or not)
+        volumenes_excel_file = None
+        precios_excel_file = None
 
-        #excel files to dataframes 
-        df = self._excel_file_to_df(fecha, volumenes_excel_file, precios_excel_file) #one of these will be none, hence the one that is none will be ignored
+        try:
+            #filter the excel file by the valid sheets per market (each market has its own valid sheets for prices and volumenes)
+            print(f"Filtering relevant sheets...")
+            # _filter_sheets creates the temporary files and returns ExcelFile objects
+            volumenes_excel_file, precios_excel_file = self._filter_sheets(excel_file_name, volumenes_sheets, precios_sheets)
+            print(f"--------------------------------")
 
-        print(df)
+            #excel files to dataframes 
+            print(f"Converting excel files to dataframes...")
+            # _excel_file_to_df uses the ExcelFile objects (needs them open)
+            df = self._excel_file_to_df(fecha, volumenes_excel_file, precios_excel_file) #one of these will be none, hence the one that is none will be ignored
+            print(f"--------------------------------")
 
-        return df
+            if volumenes_excel_file is not None:
+                print(f"Successfully processed volumenes for {fecha.date()}:")
+
+            elif precios_excel_file is not None:
+                print(f"Successfully processed precios for {fecha.date()}:")
+            
+            if not df.empty:
+                 print(df.head()) # Print head for brevity
+            else:
+                 print(f"No data processed into DataFrame for {fecha.date()}")
+
+
+        finally:
+            # --- Explicitly close the ExcelFile objects here ---
+            # This ensures they are closed even if _excel_file_to_df raises an error
+            if volumenes_excel_file is not None:
+                try:
+                    volumenes_excel_file.close()
+                    print(f"Closed temporary volumenes file object for {fecha.date()}")
+                except Exception as e:
+                    # Log error if closing fails, but don't stop execution
+                    print(f"Warning: Error closing volumenes ExcelFile object: {e}")
+            
+            if precios_excel_file is not None:
+                try:
+                    precios_excel_file.close()
+                    print(f"Closed temporary precios file object for {fecha.date()}")
+                except Exception as e:
+                    print(f"Warning: Error closing precios ExcelFile object: {e}")
+            # --- End of closing block ---
+
+        return df # Return the final DataFrame
     
     def _make_i90_request(self, day: datetime) -> Tuple[str, str]:
         """
@@ -129,7 +176,7 @@ class I90DownloaderDL:
             fd.write(resp.content)
         
         # Create file names for the downloaded and extracted files
-        zip_file_name = f"{day.year}-{str(day.month).zfill(2)}-{str(day.day).zfill(2)}"
+        zip_file_name = f"{day.year}-{str(day.month).zfill(2)}-{str(day.day).zfill(2)}" 
         excel_file_name = f"{day.year}{str(day.month).zfill(2)}{str(day.day).zfill(2)}" 
         
         # Extract the zip file
@@ -169,14 +216,6 @@ class I90DownloaderDL:
                 print(f"Could not find header row in sheet {sheet_name}. Skipping this sheet.")
                 continue
 
-            # Extract the date from file name "I90DIA_20241210.xls"
-            #date = sheet_name[-8:]
-            #date = pd.to_datetime(date, format='%Y%m%d')
-
-            #if not date:
-            #print(f"Could not find date in sheet {sheet_name}. Skipping this sheet.")
-                #continue
-
             # Now read the sheet again, skipping the rows before the header
             df = pd.read_excel(excel_file, sheet_name=sheet_name, skiprows=header_row)
 
@@ -210,9 +249,9 @@ class I90DownloaderDL:
             all_dfs.append(df_melted)
 
 
-        #turn NaNs into 0s
+        #concat and turn NaNs into 0s
         df_concat = pd.concat(all_dfs)
-        df_concat = df_concat.fillna(0)
+        df_concat = df_concat.fillna(0).infer_objects()
 
         return df_concat
 
@@ -231,6 +270,7 @@ class I90DownloaderDL:
                 print(f"Warning: Removing invalid volume sheets: {invalid_volumenes}")
                 # Filter out invalid sheets
                 volumenes_sheets = [sheet for sheet in volumenes_sheets if sheet not in pestañas_con_error]
+                
     
         
         # Check for invalid sheets in precios_sheets and remove the
@@ -277,7 +317,7 @@ class I90DownloaderDL:
             filtered_sheets = [sheet for sheet in all_sheets if any(vs in sheet for vs in volumenes_sheets)]
             
             if not filtered_sheets:
-                raise ValueError("At least one volume sheet must be found")
+                raise ValueError("At least one of the volume sheets must be found in the I90 file")
             
             #create a temporary filefor volumenes
             volumenes_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_volumenes.xls"
@@ -295,7 +335,7 @@ class I90DownloaderDL:
             filtered_sheets = [sheet for sheet in all_sheets if any(ps in sheet for ps in precios_sheets)]
             
             if not filtered_sheets:
-                raise ValueError("At least one price sheet must be found")
+                raise ValueError("At least one of the price sheets must be found in the I90 file")
             
             #create a temporary file for precios
             precios_path = f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_precios.xls"
@@ -308,7 +348,7 @@ class I90DownloaderDL:
 
         return result_volumenes, result_precios
     
-    def _cleanup_files(self, zip_file_name: str, excel_file_name: str) -> None:
+    def cleanup_files(self, zip_file_name: str, excel_file_name: str) -> None:
         """
         Clean up temporary files after processing, only if they exist.
         
@@ -320,156 +360,27 @@ class I90DownloaderDL:
         files_to_cleanup = [
             f"{self.temporary_download_path}/{zip_file_name}.zip",
             f"{self.temporary_download_path}/I90DIA_{excel_file_name}.xls",
-            f"{self.temporary_download_path}/I90DIA_{excel_file_name}_temp_copy.xls",
             f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_volumenes.xls",
             f"{self.temporary_download_path}/I90DIA_{excel_file_name}_filtered_precios.xls"
         ]
         
-        # Remove each file only if it exists
+            # Remove each file only if it exists
         for file_path in files_to_cleanup:
-            try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    print(f"Successfully removed temporary file: {file_path}")
-            except Exception as e:
-                # Log the error but continue with other files
-                print(f"Error removing file {file_path}: {str(e)}")
-
-    def process_sheet_v1(self, pestaña: int, file_name_2: str, unidades: List[str], 
-                      df_mercados: pd.DataFrame, pestañas_volumenes: List[int],
-                      is_special_date: bool, tipo_cambio_hora: int, day: datetime) -> List[Tuple[pd.DataFrame, str, bool]]:
-        """
-        Process data from a specific sheet in the I90 file.
+            for attempt in range(5):  # Try up to 5 times
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"Successfully removed temporary file: {file_path}")
+                    break  # Exit the retry loop if successful
+                except PermissionError:
+                    print(f"File {file_path} is in use. Attempt {attempt + 1} of 5.")
+                    time.sleep(1)  # Wait for 1 second before retrying
+                except Exception as e:
+                    # Log the error but continue with other files
+                    print(f"Error removing file {file_path}: {str(e)}")
+                    break  # Exit the retry loop on other exceptions
         
-        Args:
-            pestaña (int): Sheet ID to process
-            file_name_2 (str): Base file name for the Excel file
-            unidades (List[str]): List of programming unit names to filter data for
-            df_mercados (pd.DataFrame): DataFrame with market data
-            pestañas_volumenes (List[int]): List of sheet IDs for volume data
-            is_special_date (bool): Whether the day is a special date (23 or 25 hours)
-            tipo_cambio_hora (int): Timezone offset for the day
-            day (datetime): Day being processed
-            
-        Returns:
-            List[Tuple[pd.DataFrame, str, bool]]: List of tuples with processed DataFrames, market names, and price flags
-        """
-        # Special handling for sheet 5 after SRS start date
-        if pestaña == 5 and day >= self.dia_inicio_SRS:
-            return []
-        
-        # Define sheet name format and load data
-        sheet = str(pestaña).zfill(2)
-        
-        # Different skiprows depending on sheet
-        if sheet not in ['03', '05', '06', '07', '08', '09', '10']:
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=3)
-        else:
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
-        
-        # Handle special case for sheet 05
-        if sheet == '05' and 'Participante del Mercado' in df.columns:
-            df = df.rename(columns={'Participante del Mercado': 'Unidad de Programación'})
-        
-        # Filter by programming units
-        df = df[df['Unidad de Programación'].isin(unidades)]
-        
-        # Determine if this is a volume or price sheet
-        is_precio = pestaña not in pestañas_volumenes
-        
-        # Filter markets based on sheet type
-        if pestaña in pestañas_volumenes:
-            df_mercados_filtrado = df_mercados[df_mercados['sheet_i90_volumenes'] == pestaña]
-        else:
-            df_mercados_filtrado = df_mercados[df_mercados['sheet_i90_precios'] == pestaña]
-        
-        # Copy dataframe for processing
-        df_sheet = df.copy()
-        results = []
-        
-        # Process each market in the sheet
-        for _, mercado in df_mercados_filtrado.iterrows():
-            # Create a fresh copy of the data
-            df = df_sheet.copy()
-            
-            # Apply direction filter if specified
-            if mercado['sentido'] == 'Subir':
-                df = df[df['Sentido'] == 'Subir']
-            elif mercado['sentido'] == 'Bajar':
-                df = df[df['Sentido'] == 'Bajar']
-            
-            # Apply specific filters based on sheet
-            if sheet == '03':
-                if mercado['mercado'] in ['Curtailment', 'Curtailment demanda']:
-                    df = df[df['Redespacho'].isin(['UPLPVPV', 'UPLPVPCBN', 'UPOPVPB'])]
-                elif mercado['mercado'] in ['RT2 a subir', 'RT2 a bajar']:
-                    df = df[df['Redespacho'].isin(['ECOBSO', 'ECOBCBSO'])]
-                else:
-                    df = df[df['Redespacho'].isin(['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB'])]
-
-            elif sheet == '07':
-                if mercado['mercado'] in ['Terciaria a subir', 'Terciaria a bajar']:
-                    df = df[df['Redespacho'] != 'TERDIR']
-                else:
-                    df = df[df['Redespacho'] == 'TERDIR']
-
-            elif sheet == '08' or sheet == '10':
-                if mercado['mercado'] == "Indisponibilidades":
-                    df = df[df['Redespacho'] == "Indisponibilidad"]
-                else:
-                    df = df[df['Redespacho'] == "Restricciones Técnicas"]
-
-            elif sheet == '09':
-                df = df[df['Redespacho'].isin(['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB'])]
-            
-            # Filter columns to keep only programming unit and value columns
-            total_col = df.columns.get_loc("Total")
-            cols_to_drop = list(range(0, total_col+1))
-            up_col = df.columns.get_loc("Unidad de Programación")
-            cols_to_drop.remove(up_col)
-            df = df.drop(df.columns[cols_to_drop], axis=1)
-            
-            # Melt the dataframe to convert from wide to long format
-            hora_colname = df.columns[1]
-            df = df.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="valor")
-            
-            # Apply time adjustments based on special dates and format
-            if len(df) > 0:
-                if hora_colname == 1:
-                    if mercado['is_quinceminutal']:
-                        df['hora'] = df.apply(self.ajuste_quinceminutal, axis=1, 
-                                             is_special_date=is_special_date, 
-                                             tipo_cambio_hora=tipo_cambio_hora)
-                    else:
-                        df['hora'] = df.apply(self.ajuste_quinceminutal_a_horario, axis=1, 
-                                             is_special_date=is_special_date, 
-                                             tipo_cambio_hora=tipo_cambio_hora)
-                else:
-                    df['hora'] = df.apply(self.ajuste_horario, axis=1, 
-                                         is_special_date=is_special_date, 
-                                         tipo_cambio_hora=tipo_cambio_hora)
-                
-                # Aggregate data
-                if is_precio:
-                    df = df.groupby(['Unidad de Programación', 'hora']).mean().reset_index()
-                    df['valor'] = df['valor'].round(decimals=3)
-                else:
-                    df = df.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                    df = df[df['valor'] != 0.0]
-                
-                # Add date and market ID
-                df['fecha'] = day
-                df['id_mercado'] = mercado['id']
-                
-                # Get UP_id from Unidad de Programación
-                df = df.rename(columns={"Unidad de Programación": "UP"})
-                
-                # Save the processed data
-                results.append((df, mercado['mercado'].lower(), is_precio))
-        
-        return results
-    
-class DiarioDL(I90DownloaderDL):
+class DiarioDL(I90Downloader):
     """
     Specialized class for downloading and processing diario data from I90 files.
     """
@@ -522,7 +433,7 @@ class DiarioDL(I90DownloaderDL):
         df_precios = super().extract_sheets_of_interest(excel_file_name, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class SecundariaDL(I90DownloaderDL):
+class SecundariaDL(I90Downloader):
     """
     Specialized class for downloading and processing secundaria volume data from I90 files.
     """
@@ -566,7 +477,7 @@ class SecundariaDL(I90DownloaderDL):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class TerciariaDL(I90DownloaderDL):
+class TerciariaDL(I90Downloader):
     """
     Specialized class for downloading and processing tertiary regulation volume data from I90 files.
     """
@@ -608,7 +519,7 @@ class TerciariaDL(I90DownloaderDL):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class RRDL(I90DownloaderDL):
+class RRDL(I90Downloader):
     """
     Specialized class for downloading and processing Replacement Reserve (RR) volume data from I90 files.
     """
@@ -648,7 +559,7 @@ class RRDL(I90DownloaderDL):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class CurtailmentDL(I90DownloaderDL):
+class CurtailmentDL(I90Downloader):
     """
     Specialized class for downloading and processing curtailment volume data from I90 files.
     """
@@ -674,7 +585,7 @@ class CurtailmentDL(I90DownloaderDL):
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
         return df_volumenes
 
-class RestriccionesDL(I90DownloaderDL):
+class RestriccionesDL(I90Downloader):
     """
     Specialized class for downloading and processing restricciones de precios data from I90 files.
     """
@@ -715,7 +626,7 @@ class RestriccionesDL(I90DownloaderDL):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class P48DL(I90DownloaderDL):
+class P48DL(I90Downloader):
     """
     Specialized class for downloading and processing P48 data from I90 files.
     """
@@ -741,7 +652,7 @@ class P48DL(I90DownloaderDL):
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
         return df_volumenes
 
-class IndisponibilidadesDL(I90DownloaderDL):
+class IndisponibilidadesDL(I90Downloader):
     """
     Specialized class for downloading and processing indisponibilidades data from I90 files.
     """

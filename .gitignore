@@ -179,8 +179,8 @@ data/raw/*
 #ignore all files in the data/processed directory
 data/processed/*
 
-#ignore all folders in the data directory
-data/*
+#ignore all files in the data/temporary directory
+data/temporary/*
 
 #ignore all files in the tests directory
 tests/*

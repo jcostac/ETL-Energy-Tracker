@@ -20,7 +20,7 @@ class I90Config:
 
         self.indicator_id_map, self.precios_sheet, self.volumenes_sheet = self.get_id_sheet_mapping()
 
-        self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temp_downloads')
+        self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temporary')
 
     def get_id_sheet_mapping(self) -> tuple[dict[str, str], dict[str, Optional[str]], dict[str, Optional[str]]]:
         """
@@ -190,29 +190,8 @@ class I90Config:
             # Handle case where market_id is not found in the dictionary
             print(f"Warning: No {sheet_type} sheet found for market ID {market_id}")
             return None
-
-    def _get_precios_sheets(self, market_ids: List[int]) -> List[int]:
-        """
-        Get the sheet numbers for prices for the specified market IDs.
-        
-        This method retrieves the sheet numbers in the I90 Excel file that contain
-        price data for the given market IDs. It filters out any market IDs that
-        don't have corresponding price sheets.
-        
-        Args:
-            market_ids (List[int]): List of market IDs to get price sheets for
-            
-        Returns:
-            List[int]: List of sheet numbers containing price data for the specified markets
-        """
-        sheet_nums = []
-        for id in market_ids:
-            sheet_num = self._get_sheet_num(id, "precios")
-            if sheet_num is not None:
-                sheet_nums.append(sheet_num)
-        return sheet_nums
     
-    def _get_volumenes_sheets(self, market_ids: List[int]) -> List[int]:
+    def _get_sheets(self, market_ids: List[int], sheet_type: str) -> List[int]:
         """
         Get the sheet numbers for volumes for the specified market IDs.
         
@@ -228,9 +207,10 @@ class I90Config:
         """
         sheet_nums = []
         for id in market_ids:
-            sheet_num = self._get_sheet_num(id, "volumenes")
+            sheet_num = self._get_sheet_num(id, sheet_type)
             if sheet_num is not None:
                 sheet_nums.append(sheet_num)
+        sheet_nums = list(set(sheet_nums))
         return sheet_nums
 
     def get_sheets_of_interest(self) -> List[str]:
@@ -238,8 +218,8 @@ class I90Config:
         Get the sheets of interest (by combining volumenes and precios sheets for a particular indicator).
         """
         #get volumnes and precios sheets and merge them (dropping duplicates)
-        volumenes_sheets = self._get_volumenes_sheets(self.market_ids)
-        precios_sheets = self._get_precios_sheets(self.market_ids)
+        volumenes_sheets = self._get_sheets(self.market_ids, "volumenes")
+        precios_sheets = self._get_sheets(self.market_ids, "precios")
         sheets_of_interest = volumenes_sheets + precios_sheets
         sheets_of_interest = list(set(sheets_of_interest))
 
@@ -441,3 +421,6 @@ if __name__ == "__main__":
         print(config.precios_sheets)
 
     print(config.sheets_of_interest)
+
+
+    print(config.temporary_download_path)
