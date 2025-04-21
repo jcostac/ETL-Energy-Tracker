@@ -94,7 +94,7 @@ class StorageFileUtils:
             return day_dir
         
     @staticmethod
-    def drop_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+    def drop_raw_duplicates(df: pd.DataFrame) -> pd.DataFrame:
         """
         Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of raw data
         Args:
@@ -111,7 +111,14 @@ class StorageFileUtils:
         
         if exact_dups > 0:
             print(f"Removed {exact_dups} exact duplicate rows")
-        
+
+        return df
+
+    @staticmethod
+    def drop_processed_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+        """
+        Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of processed data
+        """
         # Then handle subset-based duplicates
         try:
             if dataset_type == 'volumenes_i90':
@@ -182,7 +189,7 @@ class RawFileUtils(StorageFileUtils):
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
                     
                     # Drop duplicates using raw string values
-                    #combined_df = self.drop_duplicates(combined_df, dataset_type)
+                    combined_df = self.drop_raw_duplicates(combined_df)
                     
                     # Save back to CSV without any type conversions
                     combined_df.to_csv(full_file_path, index=False)
@@ -276,7 +283,7 @@ class RawFileUtils(StorageFileUtils):
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
                     
                     # Drop duplicates using raw string values
-                   #combined_df = self.drop_duplicates(combined_df, dataset_type)
+                    combined_df = self.drop_raw_duplicates(combined_df)
                     
                     # Save back to parquet with compression
                     combined_df.to_parquet(

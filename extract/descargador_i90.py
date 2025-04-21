@@ -134,7 +134,7 @@ class I90Downloader:
             if volumenes_excel_file is not None:
                 try:
                     volumenes_excel_file.close()
-                    print(f"Closed temporary volumenes file object for {fecha.date()}")
+                    #print(f"Closed temporary volumenes file object for {fecha.date()}")
                 except Exception as e:
                     # Log error if closing fails, but don't stop execution
                     print(f"Warning: Error closing volumenes ExcelFile object: {e}")
@@ -142,7 +142,7 @@ class I90Downloader:
             if precios_excel_file is not None:
                 try:
                     precios_excel_file.close()
-                    print(f"Closed temporary precios file object for {fecha.date()}")
+                    #print(f"Closed temporary precios file object for {fecha.date()}")
                 except Exception as e:
                     print(f"Warning: Error closing precios ExcelFile object: {e}")
             # --- End of closing block ---
@@ -245,6 +245,7 @@ class I90Downloader:
             
             #add date column to the dataframe
             df_melted['fecha'] = fecha
+            print(fecha)
 
             all_dfs.append(df_melted)
 
@@ -252,6 +253,10 @@ class I90Downloader:
         #concat and turn NaNs into 0s
         df_concat = pd.concat(all_dfs)
         df_concat = df_concat.fillna(0).infer_objects()
+
+        # Explicitly format the 'fecha' column to ensure consistency in the output
+        if not df_concat.empty and 'fecha' in df_concat.columns:
+            df_concat['fecha'] = pd.to_datetime(df_concat['fecha']).dt.strftime('%Y-%m-%d')
 
         return df_concat
 
