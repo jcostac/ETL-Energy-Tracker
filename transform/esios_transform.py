@@ -5,7 +5,7 @@ from datetime import datetime
 import sys
 import os
 
-class ESIOSPreciosTransformer:
+class ESIOSTransformer:
     """
     Transformer class for ESIOS price data.
     Handles data cleaning, validation, and transformation operations.

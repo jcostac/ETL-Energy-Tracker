@@ -66,7 +66,7 @@ class ESIOSPreciosExtractor:
 
             #get datetitme range for 93 days ago to 92 days from now
             fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window) # 93 days ago
-            fecha_fin_carga_dt = datetime.now() - timedelta(days=1) # yesterday to avoid issues with today's data
+            fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window) + timedelta(days=1) # yesterday to avoid issues with today's data
             
             #convert to string format
             fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') 
@@ -111,7 +111,7 @@ class ESIOSPreciosExtractor:
                 df = downloader.get_prices(
                     fecha_inicio_carga=day_str,
                     fecha_fin_carga=day_str,
-                    **kwargs # Pass any additional market-specific arguments
+                    **kwargs # Pass any additional market-specific arguments atm not needed
                 )
 
                 if df is not None and not df.empty:
@@ -133,7 +133,22 @@ class ESIOSPreciosExtractor:
                     print(f"  - No {mercado} price data found or extracted for {day_str}")
 
             except Exception as e:
-                print(f"  - Error processing {mercado} prices for {day_str}: {e}")
+                print(f"  - Error downloading {mercado} prices for {day_str}: {e}")
+
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
+                     dev: bool = False) -> None:
+        """
+        Extract data for all relevant markets from ESIOS API for a given date range.
+        """
+        try:
+            self.extract_diario(fecha_inicio_carga, fecha_fin_carga, dev = dev)
+            self.extract_intra(fecha_inicio_carga, fecha_fin_carga, dev = dev)
+            self.extract_secundaria(fecha_inicio_carga, fecha_fin_carga, dev = dev)
+            self.extract_terciaria(fecha_inicio_carga, fecha_fin_carga, dev = dev)
+            self.extract_rr(fecha_inicio_carga, fecha_fin_carga, dev = dev)
+
+        except Exception as e:
+            print(f"Error extracting data: {e}")
 
     def extract_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
                        dev: bool = False) -> None:

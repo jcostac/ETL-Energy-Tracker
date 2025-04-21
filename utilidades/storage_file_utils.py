@@ -19,7 +19,7 @@ from deprecated import deprecated
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
 
-from configs.storage_config import DATA_LAKE_BASE_PATH
+from configs.storage_config import DATA_LAKE_BASE_PATH, VALID_DATASET_TYPES
 
 
 class StorageFileUtils:
@@ -77,19 +77,19 @@ class StorageFileUtils:
         path = Path(path)
 
         #create mercado directory
-        market_dir = path / f"mercado={mercado}"  # "data/mercado=secundaria"
+        market_dir = path / f"{mercado}"  # "data/mercado=secundaria"
 
         # Create year and month directories
-        year_dir = market_dir / f"year={year}" # "data/mercado=secundaria/year=2025"
+        year_dir = market_dir / f"{year}" # "data/mercado=secundaria/year=2025"
     
-        month_dir = year_dir / f"month={month:02d}" # "data/mercado=secundaria/year=2025/month=04"
+        month_dir = year_dir / f"{month:02d}" # "data/mercado=secundaria/year=2025/month=04"
 
         #create directories if they don't exist
         if day is None:
             month_dir.mkdir(parents=True, exist_ok=True)
             return month_dir
         else:
-            day_dir = month_dir / f"day={day:02d}" # "data/mercado=secundaria/year=2025/month=04/day=01"
+            day_dir = month_dir / f"{day:02d}" # "data/mercado=secundaria/year=2025/month=04/day=01"
             day_dir.mkdir(parents=True, exist_ok=True)
             return day_dir      
 
@@ -100,7 +100,7 @@ class StorageFileUtils:
         """
 
         # Validate data_types (WIP - add more types)
-        valid_types = ('volumenes_i90', "volumenes_i3", 'precios', 'ingresos')
+        valid_types = VALID_DATASET_TYPES
 
         if dataset_type not in valid_types:
             raise ValueError(f"data_type must be one of {valid_types}")

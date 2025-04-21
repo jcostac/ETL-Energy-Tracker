@@ -9,8 +9,8 @@ result = load_dotenv()
 #print(f"Loaded .env file: {result}")  # Should print True if .env was found and loaded
 
 #Data lake base path
-DATA_LAKE_BASE_PATH_DEV = "C:\\Users\\Usuario\\OneDrive - OPTIMIZE ENERGY\\Escritorio\\Optimize Energy\\timescale_v_duckdb_testing\\data"
-# #DATA_LAKE_BASE_PATH = "/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data"
+#DATA_LAKE_BASE_PATH_DEV = "C:\\Users\\Usuario\\OneDrive - OPTIMIZE ENERGY\\Escritorio\\Optimize Energy\\timescale_v_duckdb_testing\\data"
+DATA_LAKE_BASE_PATH_DEV= "/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data"
 DATA_LAKE_BASE_PATH_PROD = ""
 
 # Add a default value in case ENV is None

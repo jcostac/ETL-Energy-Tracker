@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import sys
 import os
+import re
+
 
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
@@ -121,7 +123,65 @@ class I90Extractor:
 
         return
 
-    def extract_all(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, dev: bool = False) -> None:
+    def validate_i90_attributes(self):
+        """Validates the presence and format of the latest I90 download attributes."""
+
+        # Check for None values
+        if self.latest_i90_zip_file_name is None:
+            print("Validation failed: latest_i90_zip_file_name is None.")
+            return False
+        if self.latest_i90_excel_file_name is None:
+            print("Validation failed: latest_i90_excel_file_name is None.")
+            return False
+        if self.latest_i90_pestañas_con_error is None:
+            print("Validation failed: latest_i90_pestañas_con_error is None.")
+            return False
+
+        # Check types
+        if not isinstance(self.latest_i90_zip_file_name, str):
+            print(f"Validation failed: latest_i90_zip_file_name is not a string ({type(self.latest_i90_zip_file_name)}).")
+            return False
+        if not isinstance(self.latest_i90_excel_file_name, str):
+            print(f"Validation failed: latest_i90_excel_file_name is not a string ({type(self.latest_i90_excel_file_name)}).")
+            return False
+        if not isinstance(self.latest_i90_pestañas_con_error, list):
+            print(f"Validation failed: latest_i90_pestañas_con_error is not a list ({type(self.latest_i90_pestañas_con_error)}).")
+            return False
+
+        # Validate zip file name format (contains YYYYMMDD)
+        # Assumes filename format like 'I90DIA_YYYYMMDD.zip'
+        zip_match = re.search(r'(\d{8})', self.latest_i90_zip_file_name)
+        if not zip_match:
+            print(f"Validation failed: Could not find YYYYMMDD date pattern in zip file name: {self.latest_i90_zip_file_name}")
+            return False
+        zip_date_str = zip_match.group(1)
+        try:
+            # Attempt to parse the extracted date string to confirm format
+            datetime.strptime(zip_date_str, '%Y%m%d')
+        except ValueError:
+            print(f"Validation failed: Invalid date format '{zip_date_str}' found in zip file name: {self.latest_i90_zip_file_name}")
+            return False
+
+        # Validate excel file name format (contains YYYYMMDD)
+        # Assumes filename format like 'I90DIA_YYYYMMDD.xlsx'
+        # The instruction "yyyy-mm-dd str for excel" might be inaccurate for the filename itself.
+        # We validate the presence of a YYYYMMDD string instead.
+        excel_match = re.search(r'(\d{8})', self.latest_i90_excel_file_name)
+        if not excel_match:
+            print(f"Validation failed: Could not find YYYYMMDD date pattern in excel file name: {self.latest_i90_excel_file_name}")
+            return False
+        excel_date_str = excel_match.group(1)
+        try:
+            # Attempt to parse the extracted date string to confirm format
+            datetime.strptime(excel_date_str, '%Y%m%d')
+        except ValueError:
+            print(f"Validation failed: Invalid date format '{excel_date_str}' found in excel file name: {self.latest_i90_excel_file_name}")
+            return False
+
+        # All checks passed
+        return True
+    
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, dev: bool = False) -> None:
         """
         Generic workflow to extract all data for each day in the specified date range.
 
@@ -159,7 +219,7 @@ class I90Extractor:
                     continue
 
                 #extract data for the given day in range
-                self.extract_for_day(day, dev=dev)
+                self._extract_data_per_day_all_markets(day, dev=dev)
 
             except Exception as e:
                 print(f"Error during extraction for {day.date()}: {e}")
@@ -174,7 +234,7 @@ class I90Extractor:
                 self.latest_i90_excel_file_name = None
                 self.latest_i90_pestañas_con_error = None
 
-    def extract_for_day(self, day: datetime, dev: bool = False):
+    def _extract_data_per_day_all_markets(self, day: datetime, dev: bool = False):
         """
         To be implemented by child classes.
         """
@@ -254,18 +314,23 @@ class I90VolumenesExtractor(I90Extractor):
     def extract_volumenes_restricciones(self, day: datetime, dev: bool = False) -> None:
         self._extract_and_save_volumenes(day, dev, 'restricciones', self.restricciones_downloader)
 
-    def extract_for_day(self, day: datetime, dev: bool = False):
+    def _extract_data_per_day_all_markets(self, day: datetime, dev: bool = False):
         """
         Extracts all volumenes data from I90 files for a given day.
         """
-        self.extract_volumenes_diario(day, dev=dev)
-        self.extract_volumenes_terciaria(day, dev=dev)
-        self.extract_volumenes_secundaria(day, dev=dev)
-        self.extract_volumenes_rr(day, dev=dev)
-        self.extract_volumenes_curtailment(day, dev=dev)
-        self.extract_volumenes_p48(day, dev=dev)
-        self.extract_volumenes_indisponibilidades(day, dev=dev)
-        self.extract_volumenes_restricciones(day, dev=dev)
+        try:
+
+            self.extract_volumenes_diario(day, dev=dev)
+            self.extract_volumenes_terciaria(day, dev=dev)
+            self.extract_volumenes_secundaria(day, dev=dev)
+            self.extract_volumenes_rr(day, dev=dev)
+            self.extract_volumenes_curtailment(day, dev=dev)
+            self.extract_volumenes_p48(day, dev=dev)
+            self.extract_volumenes_indisponibilidades(day, dev=dev)
+            self.extract_volumenes_restricciones(day, dev=dev)
+
+        except Exception as e:
+            print(f"Error extracting data: {e}")
 
 class I90PreciosExtractor(I90Extractor):
     def __init__(self):
@@ -344,20 +409,25 @@ class I90PreciosExtractor(I90Extractor):
         self._extract_and_save_precios(day, dev, 'restricciones', self.restricciones_downloader)
 
 
-    def extract_for_day(self, day: datetime, dev: bool = False):
+    def _extract_data_per_day_all_markets(self, day: datetime, dev: bool = False):
 
         """
         Extracts all precios data from I90 files for a given day
 
         Note: All prices come from API, not I90 file typically except for restricciones
         """
-        # Call extraction methods only for markets with I90 price data
 
-        #self.extract_precios_secundaria(day, dev=dev)
-        #self.extract_precios_terciaria(day, dev=dev)
-        #self.extract_precios_rr(day, dev=dev)
-        #self.extract_precios_indisponibilidades(day, dev=dev)
-        self.extract_precios_restricciones(day, dev=dev)
+        try:
+            # Call extraction methods only for markets with I90 price data
+
+            #self.extract_precios_secundaria(day, dev=dev)
+            #self.extract_precios_terciaria(day, dev=dev)
+            #self.extract_precios_rr(day, dev=dev)
+            #self.extract_precios_indisponibilidades(day, dev=dev)
+            self.extract_precios_restricciones(day, dev=dev)
+
+        except Exception as e:
+            print(f"Error extracting data: {e}")
 
         # Note: Diario prices come from API, not I90 file typically.
         # Curtailment and P48 downloaders don't define get_i90_precios.
