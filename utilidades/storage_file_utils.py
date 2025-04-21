@@ -96,7 +96,7 @@ class StorageFileUtils:
     @staticmethod
     def drop_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Drops duplicates from the DataFrame based on the data type and mercado.
+        Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of raw data
         Args:
             df (pd.DataFrame): The DataFrame to drop duplicates from
             dataset_type (str): The type of dataset to drop duplicates from
@@ -113,12 +113,16 @@ class StorageFileUtils:
             print(f"Removed {exact_dups} exact duplicate rows")
         
         # Then handle subset-based duplicates
-        if dataset_type == 'volumenes_i90':
-            df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
-        elif dataset_type == 'volumenes_i3':
-            df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
-        else:
-            df = df.drop_duplicates(subset=['datetime_utc', 'indicador_id'], keep='last')
+        try:
+            if dataset_type == 'volumenes_i90':
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
+            elif dataset_type == 'volumenes_i3':
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
+            else:
+                df = df.drop_duplicates(subset=['datetime_utc', 'indicador_id'], keep='last')
+        except Exception as e:
+            print(f"Error dropping duplicates: {e}")
+            raise
         
         return df
 
@@ -178,7 +182,7 @@ class RawFileUtils(StorageFileUtils):
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
                     
                     # Drop duplicates using raw string values
-                    combined_df = self.drop_duplicates(combined_df, dataset_type)
+                    #combined_df = self.drop_duplicates(combined_df, dataset_type)
                     
                     # Save back to CSV without any type conversions
                     combined_df.to_csv(full_file_path, index=False)
@@ -272,7 +276,7 @@ class RawFileUtils(StorageFileUtils):
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
                     
                     # Drop duplicates using raw string values
-                    combined_df = self.drop_duplicates(combined_df, dataset_type)
+                   #combined_df = self.drop_duplicates(combined_df, dataset_type)
                     
                     # Save back to parquet with compression
                     combined_df.to_parquet(

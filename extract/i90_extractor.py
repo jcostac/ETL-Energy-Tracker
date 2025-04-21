@@ -121,12 +121,7 @@ class I90Extractor:
 
         return
 
-    def extract_all(
-        self,
-        fecha_inicio_carga: Optional[str] = None,
-        fecha_fin_carga: Optional[str] = None,
-        dev: bool = False
-    ) -> None:
+    def extract_all(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, dev: bool = False) -> None:
         """
         Generic workflow to extract all data for each day in the specified date range.
 
@@ -172,7 +167,7 @@ class I90Extractor:
             finally:
 
                 #clean up files in the temporary download path
-                self.i90_downloader._cleanup_files(self.latest_i90_zip_file_name, self.latest_i90_excel_file_name)
+                self.i90_downloader.cleanup_files(self.latest_i90_zip_file_name, self.latest_i90_excel_file_name)
 
                 #reset latest i90 data
                 self.latest_i90_zip_file_name = None
