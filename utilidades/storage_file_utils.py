@@ -91,47 +91,7 @@ class StorageFileUtils:
         else:
             day_dir = month_dir / f"day={day:02d}" # "data/mercado=secundaria/year=2025/month=04/day=01"
             day_dir.mkdir(parents=True, exist_ok=True)
-            return day_dir
-        
-    @staticmethod
-    def drop_raw_duplicates(df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of raw data
-        Args:
-            df (pd.DataFrame): The DataFrame to drop duplicates from
-            dataset_type (str): The type of dataset to drop duplicates from
-            WIP redownload (bool): Whether to redownload the data
-        Returns:
-            pd.DataFrame: The DataFrame with duplicates dropped
-        """
-         # First remove exact duplicates across all columns
-        df_before = len(df)
-        df = df.drop_duplicates(keep='last')  
-        exact_dups = df_before - len(df)
-        
-        if exact_dups > 0:
-            print(f"Removed {exact_dups} exact duplicate rows")
-
-        return df
-
-    @staticmethod
-    def drop_processed_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """
-        Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of processed data
-        """
-        # Then handle subset-based duplicates
-        try:
-            if dataset_type == 'volumenes_i90':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
-            elif dataset_type == 'volumenes_i3':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
-            else:
-                df = df.drop_duplicates(subset=['datetime_utc', 'indicador_id'], keep='last')
-        except Exception as e:
-            print(f"Error dropping duplicates: {e}")
-            raise
-        
-        return df
+            return day_dir      
 
     @staticmethod
     def validate_dataset_type(dataset_type: str) -> tuple[str]:
@@ -152,6 +112,28 @@ class RawFileUtils(StorageFileUtils):
     def __init__(self, use_s3: bool = False) -> None:
         super().__init__(use_s3)
         self.raw_path = self.base_path / 'raw'
+
+    @staticmethod
+    def drop_raw_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of raw data. 
+        This allows for redownloads of the same day since we keep last download of the same day.
+        Args:
+            df (pd.DataFrame): The DataFrame to drop duplicates from
+            dataset_type (str): The type of dataset to drop duplicates from
+            WIP redownload (bool): Whether to redownload the data
+        Returns:
+            pd.DataFrame: The DataFrame with duplicates dropped
+        """
+         # First remove exact duplicates across all columns
+        df_before = len(df)
+        df = df.drop_duplicates(keep='last')  
+        exact_dups = df_before - len(df)
+        
+        if exact_dups > 0:
+            print(f"Removed {exact_dups} exact duplicate rows")
+
+        return df
 
     @deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
     def write_raw_csv(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
@@ -188,7 +170,7 @@ class RawFileUtils(StorageFileUtils):
                     # Concatenate with existing data
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
                     
-                    # Drop duplicates using raw string values
+                    # Drop duplicates using raw string values -this allows for redownloads of the same day
                     combined_df = self.drop_raw_duplicates(combined_df)
                     
                     # Save back to CSV without any type conversions
@@ -378,6 +360,26 @@ class ProcessedFileUtils(StorageFileUtils):
         super().__init__(use_s3)
         self.processed_path = self.base_path / 'processed'
         self.row_group_size = 2880 
+
+    
+    @staticmethod
+    def drop_processed_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+        """
+        Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of processed data
+        """
+        # Then handle subset-based duplicates
+        try:
+            if dataset_type == 'volumenes_i90':
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
+            elif dataset_type == 'volumenes_i3':
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
+            else:
+                df = df.drop_duplicates(subset=['datetime_utc', 'indicador_id'], keep='last')
+        except Exception as e:
+            print(f"Error dropping duplicates: {e}")
+            raise
+        
+        return df
 
     def write_processed_parquet(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
         """
