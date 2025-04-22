@@ -20,7 +20,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
 
 from configs.storage_config import DATA_LAKE_BASE_PATH, VALID_DATASET_TYPES
-
+from utilidades.env_utils import EnvUtils
 
 class StorageFileUtils:
     """
@@ -35,7 +35,16 @@ class StorageFileUtils:
         Args:
             use_s3 (bool): Flag to determine if S3 path should be used.
         """
-        self.base_path = self.set_base_path(use_s3)
+
+        #check if dev or prod environment
+        env_utils = EnvUtils()
+        self.dev, self.prod = env_utils.check_dev_env() 
+
+        #set base path for s3 or local storage
+        if self.dev and not self.prod:
+            self.base_path = self.set_base_path(False) #use s3 set to false
+        else:
+            self.base_path = self.set_base_path(True) #use s3 set to true
 
     def set_base_path(self, use_s3: bool = False) -> Path:
         """
@@ -66,12 +75,13 @@ class StorageFileUtils:
         Creates the necessary directory structure for storing parquet files.
         
         Args:
-        base_path (str or Path): Base directory path where the folder structure will be created
-        year (int): Year for the directory structure
-        month (int): Month for the directory structure
-        day (int): Day for the directory structure, optional if we want to save at the day level
-    Returns:
-        Path: Path object pointing to the created month directory
+            path (str or Path): Base directory path where the folder structure will be created
+            mercado (str): Market name for file organization ('diario', 'intra', 'secundaria', 'terciaria', 'rr')
+            year (int): Year for the directory structure
+            month (int): Month for the directory structure
+            day (int): Day for the directory structure, optional if we want to save at the day level
+        Returns:
+            Path: Path object pointing to the created month directory
     """
         # Convert string path to Path object if necessary
         path = Path(path)
@@ -350,6 +360,29 @@ class RawFileUtils(StorageFileUtils):
         
         print(f"Deletion complete. Removed {deleted_count} directories older than {months} months.")
 
+    def read_raw_file(self, year: int, month: int, dataset_type: str, mercado: str) -> pd.DataFrame:
+        """
+        Reads a raw file from the appropriate directory structure.
+        """
+
+        if self.dev and not self.prod:
+            file_extension = 'csv'
+        else:
+            file_extension = 'parquet'
+    
+        file_path = os.path.join(self.raw_path, mercado, f"{year}", f"{month:02d}", f"{dataset_type}.{file_extension}")
+
+        try:
+            if file_extension == 'csv':
+                return pd.read_csv(file_path)
+            else:
+                return pd.read_parquet(file_path)
+            
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+            raise
+       
+          
     
 
 class ProcessedFileUtils(StorageFileUtils):

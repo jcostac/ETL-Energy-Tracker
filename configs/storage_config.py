@@ -14,7 +14,7 @@ DATA_LAKE_BASE_PATH_DEV= "/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_tes
 DATA_LAKE_BASE_PATH_PROD = ""
 
 # Add a default value in case ENV is None
-DATA_LAKE_BASE_PATH = DATA_LAKE_BASE_PATH_DEV if os.getenv('ENV', 'DEV') == 'DEV' else DATA_LAKE_BASE_PATH_PROD
+DATA_LAKE_BASE_PATH = DATA_LAKE_BASE_PATH_DEV if os.getenv('DEV') == 'True' else DATA_LAKE_BASE_PATH_PROD
 
 #mySQL DB connection url function using lambda
 DB_URL = lambda database: f"mysql+pymysql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{database}"

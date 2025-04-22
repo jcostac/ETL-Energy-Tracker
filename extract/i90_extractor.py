@@ -12,6 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from extract.descargador_i90 import I90Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, RestriccionesDL
 from utilidades.storage_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
+from utilidades.env_utils import EnvUtils
 
 class I90Extractor:
     """
@@ -36,6 +37,7 @@ class I90Extractor:
         #utils 
         self.raw_file_utils = RawFileUtils()
         self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        self.env_utils = EnvUtils()
         
         # Set the maximum download window (in days)
         self.download_window = 93  #i90 is published with 90 day delay (3 day buffer extra)
@@ -181,7 +183,7 @@ class I90Extractor:
         # All checks passed
         return True
     
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, dev: bool = False) -> None:
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
         Generic workflow to extract all data for each day in the specified date range.
 
@@ -193,8 +195,6 @@ class I90Extractor:
         Args:
             fecha_inicio_carga (Optional[str]): The start date for the data extraction in 'YYYY-MM-DD' format.
             fecha_fin_carga (Optional[str]): The end date for the data extraction in 'YYYY-MM-DD' format.
-            dev (bool): A flag indicating whether to run in development mode, which may alter the behavior
-                        of the extraction process (e.g., logging, data handling).
 
         Raises:
             ValueError: If the date range is invalid or incomplete.
@@ -219,7 +219,7 @@ class I90Extractor:
                     continue
 
                 #extract data for the given day in range
-                self._extract_data_per_day_all_markets(day, dev=dev)
+                self._extract_data_per_day_all_markets(day)
 
             except Exception as e:
                 print(f"Error during extraction for {day.date()}: {e}")
@@ -234,7 +234,7 @@ class I90Extractor:
                 self.latest_i90_excel_file_name = None
                 self.latest_i90_pestañas_con_error = None
 
-    def _extract_data_per_day_all_markets(self, day: datetime, dev: bool = False):
+    def _extract_data_per_day_all_markets(self, day: datetime):
         """
         To be implemented by child classes.
         """
@@ -247,9 +247,11 @@ class I90VolumenesExtractor(I90Extractor):
     def __init__(self):
         super().__init__()
 
-    def _extract_and_save_volumenes(self, day: datetime, dev: bool, mercado: str, downloader) -> None:
+    def _extract_and_save_volumenes(self, day: datetime, mercado: str, downloader) -> None:
         """Helper method to extract and save volumenes data for a given market."""
         try:
+            dev, prod = self.env_utils.check_dev_env()
+
             # 1. Call the specific downloader's get_i90_volumenes
             df_volumenes = downloader.get_i90_volumenes(
                 excel_file_name=self.latest_i90_excel_file_name,
@@ -265,21 +267,21 @@ class I90VolumenesExtractor(I90Extractor):
                 # Use appropriate saving method based on dev flag
                 # Sticking to write_raw_csv for consistency with recent changes
 
-                if dev == True:
-                    status = "DEV "
+                if dev and not prod:
+                    status = "DEVELOPMENT "
                     self.raw_file_utils.write_raw_csv(
                         year=year, month=month, df=df_volumenes,
                         dataset_type=dataset_type,
                         mercado=mercado
                     )
                 else:
+                    status = "PRODUCTION "
                     self.raw_file_utils.write_raw_parquet(
                         year=year, month=month, df=df_volumenes,
                         dataset_type=dataset_type,
                         mercado=mercado
                     )
 
-                status = ""
                 print(f"Successfully processed and saved {status}{mercado} volumenes for {day.date()}")
 
             else:
@@ -290,44 +292,44 @@ class I90VolumenesExtractor(I90Extractor):
         except Exception as e:
             print(f"Error processing {mercado} volumenes for {day.date()}: {e}")
 
-    def extract_volumenes_diario(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_volumenes(day, dev, 'diario', self.diario_downloader)
+    def extract_volumenes_diario(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'diario', self.diario_downloader)
 
-    def extract_volumenes_terciaria(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_volumenes(day, dev, 'terciaria', self.terciaria_downloader)
+    def extract_volumenes_terciaria(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'terciaria', self.terciaria_downloader)
 
-    def extract_volumenes_secundaria(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_volumenes(day, dev, 'secundaria', self.secundaria_downloader)
+    def extract_volumenes_secundaria(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'secundaria', self.secundaria_downloader)
 
-    def extract_volumenes_rr(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_volumenes(day, dev, 'rr', self.rr_downloader)
+    def extract_volumenes_rr(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'rr', self.rr_downloader)
 
-    def extract_volumenes_curtailment(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_volumenes(day, dev, 'curtailment', self.curtailment_downloader)
+    def extract_volumenes_curtailment(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'curtailment', self.curtailment_downloader)
 
-    def extract_volumenes_p48(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_volumenes(day, dev, 'p48', self.p48_downloader)
+    def extract_volumenes_p48(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'p48', self.p48_downloader)
 
-    def extract_volumenes_indisponibilidades(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_volumenes(day, dev, 'indisponibilidades', self.indisponibilidades_downloader)
+    def extract_volumenes_indisponibilidades(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'indisponibilidades', self.indisponibilidades_downloader)
 
-    def extract_volumenes_restricciones(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_volumenes(day, dev, 'restricciones', self.restricciones_downloader)
+    def extract_volumenes_restricciones(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'restricciones', self.restricciones_downloader)
 
-    def _extract_data_per_day_all_markets(self, day: datetime, dev: bool = False):
+    def _extract_data_per_day_all_markets(self, day: datetime):
         """
         Extracts all volumenes data from I90 files for a given day.
         """
         try:
 
-            self.extract_volumenes_diario(day, dev=dev)
-            self.extract_volumenes_terciaria(day, dev=dev)
-            self.extract_volumenes_secundaria(day, dev=dev)
-            self.extract_volumenes_rr(day, dev=dev)
-            self.extract_volumenes_curtailment(day, dev=dev)
-            self.extract_volumenes_p48(day, dev=dev)
-            self.extract_volumenes_indisponibilidades(day, dev=dev)
-            self.extract_volumenes_restricciones(day, dev=dev)
+            self.extract_volumenes_diario(day)
+            self.extract_volumenes_terciaria(day)
+            self.extract_volumenes_secundaria(day)
+            self.extract_volumenes_rr(day)
+            self.extract_volumenes_curtailment(day)
+            self.extract_volumenes_p48(day)
+            self.extract_volumenes_indisponibilidades(day)
+            self.extract_volumenes_restricciones(day)
 
         except Exception as e:
             print(f"Error extracting data: {e}")
@@ -336,9 +338,11 @@ class I90PreciosExtractor(I90Extractor):
     def __init__(self):
         super().__init__()
 
-    def _extract_and_save_precios(self, day: datetime, dev: bool, mercado: str, downloader) -> None:
+    def _extract_and_save_precios(self, day: datetime, mercado: str, downloader) -> None:
         """Helper method to extract and save precios data for a given market."""
         try:
+            dev, prod = self.env_utils.check_dev_env()
+
             # 1. Call the specific downloader's get_i90_precios
             df_precios = downloader.get_i90_precios(
                 excel_file_name=self.latest_i90_excel_file_name,
@@ -353,15 +357,15 @@ class I90PreciosExtractor(I90Extractor):
 
                 # Use appropriate saving method based on dev flag
                 # Assuming write_raw_csv for consistency, adjust if needed (e.g., parquet)
-                if dev == True:
-                    status = "DEV "
+                if dev and not prod:
+                    status = "DEVELOPMENT "
                     self.raw_file_utils.write_raw_csv(
                         year=year, month=month, df=df_precios,
                         dataset_type=dataset_type,
                         mercado=mercado
                     )
                 else:
-                    status = ""
+                    status = "PRODUCTION "
                     self.raw_file_utils.write_raw_parquet(
                         year=year, month=month, df=df_precios,
                         dataset_type=dataset_type,
@@ -381,35 +385,35 @@ class I90PreciosExtractor(I90Extractor):
     # --- Public methods for markets with price data ---
     # Note: Diario, Curtailment, P48 do not have get_i90_precios in their downloaders
 
-    def extract_precios_secundaria(self, day: datetime, dev: bool = False) -> None:
+    def extract_precios_secundaria(self, day: datetime) -> None:
         """
         Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
         """
-        self._extract_and_save_precios(day, dev, 'secundaria', self.secundaria_downloader)
+        self._extract_and_save_precios(day, 'secundaria', self.secundaria_downloader)
 
-    def extract_precios_terciaria(self, day: datetime, dev: bool = False) -> None:
+    def extract_precios_terciaria(self, day: datetime) -> None:
         """
         Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
         """
-        self._extract_and_save_precios(day, dev, 'terciaria', self.terciaria_downloader)
+        self._extract_and_save_precios(day, 'terciaria', self.terciaria_downloader)
 
-    def extract_precios_rr(self, day: datetime, dev: bool = False) -> None:
+    def extract_precios_rr(self, day: datetime) -> None:
         """
         Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
         """
-        self._extract_and_save_precios(day, dev, 'rr', self.rr_downloader)
+        self._extract_and_save_precios(day, 'rr', self.rr_downloader)
 
-    def extract_precios_indisponibilidades(self, day: datetime, dev: bool = False) -> None:
+    def extract_precios_indisponibilidades(self, day: datetime) -> None:
         """
         Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
         """
-        self._extract_and_save_precios(day, dev, 'indisponibilidades', self.indisponibilidades_downloader)
+        self._extract_and_save_precios(day, 'indisponibilidades', self.indisponibilidades_downloader)
 
-    def extract_precios_restricciones(self, day: datetime, dev: bool = False) -> None:
-        self._extract_and_save_precios(day, dev, 'restricciones', self.restricciones_downloader)
+    def extract_precios_restricciones(self, day: datetime) -> None:
+        self._extract_and_save_precios(day, 'restricciones', self.restricciones_downloader)
 
 
-    def _extract_data_per_day_all_markets(self, day: datetime, dev: bool = False):
+    def _extract_data_per_day_all_markets(self, day: datetime):
 
         """
         Extracts all precios data from I90 files for a given day
@@ -420,11 +424,11 @@ class I90PreciosExtractor(I90Extractor):
         try:
             # Call extraction methods only for markets with I90 price data
 
-            #self.extract_precios_secundaria(day, dev=dev)
-            #self.extract_precios_terciaria(day, dev=dev)
-            #self.extract_precios_rr(day, dev=dev)
-            #self.extract_precios_indisponibilidades(day, dev=dev)
-            self.extract_precios_restricciones(day, dev=dev)
+            #self.extract_precios_secundaria(day)
+            #self.extract_precios_terciaria(day)
+            #self.extract_precios_rr(day)
+            #self.extract_precios_indisponibilidades(day)
+            self.extract_precios_restricciones(day)
 
         except Exception as e:
             print(f"Error extracting data: {e}")

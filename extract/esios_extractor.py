@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from extract.descargador_esios import DiarioPreciosDL, IntraPreciosDL, SecundariaPreciosDL, TerciariaPreciosDL, RRPreciosDL
 from utilidades.storage_file_utils import RawFileUtils
-
+from utilidades.env_utils import EnvUtils
 class ESIOSPreciosExtractor:
     """
     Wrapper class for extracting price data from ESIOS API.
@@ -18,12 +18,20 @@ class ESIOSPreciosExtractor:
     
     def __init__(self):
         """Initialize market extractors and raw file utils"""
+
+        #initialize market extractors
         self.diario = DiarioPreciosDL()
         self.intra = IntraPreciosDL()
         self.secundaria = SecundariaPreciosDL()
         self.terciaria = TerciariaPreciosDL()
         self.rr = RRPreciosDL()
+
+        #initialize raw file utils
         self.raw_file_utils = RawFileUtils()
+
+        #initialize env utils
+        env_utils = EnvUtils()
+        self.dev, self.prod = env_utils.check_dev_env()
 
         # Set the maximum download window (in days)
         self.download_window = 93  # ESIOS API typically limits requests to 3 months
@@ -79,14 +87,13 @@ class ESIOSPreciosExtractor:
         return fecha_inicio_carga, fecha_fin_carga
 
     def _extract_and_save_prices(self, fecha_inicio_carga: Optional[str], fecha_fin_carga: Optional[str],
-                                 dev: bool, mercado: str, downloader, **kwargs) -> None:
+                                 mercado: str, downloader, **kwargs) -> None:
         """
         Helper method to extract and save price data for a given market.
 
         Args:
             fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format.
             fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format.
-            dev (bool): Development mode flag.
             mercado (str): Name of the market (e.g., 'diario', 'intra').
             downloader: The downloader instance for the specific market.
             **kwargs: Additional arguments specific to the market downloader's get_prices method.
@@ -111,19 +118,19 @@ class ESIOSPreciosExtractor:
                 df = downloader.get_prices(
                     fecha_inicio_carga=day_str,
                     fecha_fin_carga=day_str,
-                    **kwargs # Pass any additional market-specific arguments atm not needed
+                    **kwargs # Pass any additional market-specific arguments (for terciaria, secundaria, intras)
                 )
 
                 if df is not None and not df.empty:
-                    # Determine file format based on dev flag
-                    if dev:
-                        status = "DEV "
+                    # Determine file format based on self.dev flag
+                    if self.dev and not self.prod:
+                        status = "DEVELOPMEMT "
                         self.raw_file_utils.write_raw_csv(
                             year=year, month=month, df=df,
                             dataset_type='precios', mercado=mercado
                         )
                     else:
-                        status = ""
+                        status = "PRODUCTION "
                         self.raw_file_utils.write_raw_parquet(
                             year=year, month=month, df=df,
                             dataset_type='precios', mercado=mercado
@@ -135,30 +142,29 @@ class ESIOSPreciosExtractor:
             except Exception as e:
                 print(f"  - Error downloading {mercado} prices for {day_str}: {e}")
 
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
-                     dev: bool = False) -> None:
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
         Extract data for all relevant markets from ESIOS API for a given date range.
+        Uses the environment setting (DEV/PROD) for file saving format.
         """
         try:
-            self.extract_diario(fecha_inicio_carga, fecha_fin_carga, dev = dev)
-            self.extract_intra(fecha_inicio_carga, fecha_fin_carga, dev = dev)
-            self.extract_secundaria(fecha_inicio_carga, fecha_fin_carga, dev = dev)
-            self.extract_terciaria(fecha_inicio_carga, fecha_fin_carga, dev = dev)
-            self.extract_rr(fecha_inicio_carga, fecha_fin_carga, dev = dev)
+            self.extract_diario(fecha_inicio_carga, fecha_fin_carga)
+            self.extract_intra(fecha_inicio_carga, fecha_fin_carga)
+            self.extract_secundaria(fecha_inicio_carga, fecha_fin_carga)
+            self.extract_terciaria(fecha_inicio_carga, fecha_fin_carga)
+            self.extract_rr(fecha_inicio_carga, fecha_fin_carga)
 
         except Exception as e:
             print(f"Error extracting data: {e}")
 
-    def extract_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
-                       dev: bool = False) -> None:
+    def extract_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
         Extract daily market prices from ESIOS.
+        Uses the environment setting (DEV/PROD) for file saving format.
         
         Args:
             fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
             fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
-            dev (bool): Development mode flag.
             
         Returns:
             None
@@ -166,22 +172,21 @@ class ESIOSPreciosExtractor:
         self._extract_and_save_prices(
             fecha_inicio_carga=fecha_inicio_carga,
             fecha_fin_carga=fecha_fin_carga,
-            dev=dev,
             mercado='diario',
             downloader=self.diario
         )
         return
 
     def extract_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
-                      intra_lst: Optional[List[int]] = None, dev: bool = False) -> None:
+                      intra_lst: Optional[List[int]] = None) -> None:
         """
         Extract intraday market prices from ESIOS.
+        Uses the environment setting (DEV/PROD) for file saving format.
         
         Args:
             fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
             fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
             intra_lst (Optional[List[int]]): List of intraday market IDs (1-7), default None is all available markets
-            dev (bool): Development mode flag.
             
         Returns:
             None
@@ -196,7 +201,6 @@ class ESIOSPreciosExtractor:
         self._extract_and_save_prices(
             fecha_inicio_carga=fecha_inicio_carga,
             fecha_fin_carga=fecha_fin_carga,
-            dev=dev,
             mercado='intra',
             downloader=self.intra,
             intra_lst=intra_lst
@@ -204,15 +208,15 @@ class ESIOSPreciosExtractor:
         return
 
     def extract_secundaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
-                           secundaria_lst: Optional[List[int]] = None, dev: bool = False) -> None:
+                           secundaria_lst: Optional[List[int]] = None) -> None:
         """
         Extract secondary regulation prices from ESIOS.
+        Uses the environment setting (DEV/PROD) for file saving format.
         
         Args:
             fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
             fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
             secundaria_lst (Optional[List[int]]): List of secondary regulation types [1: up, 2: down], default None is both
-            dev (bool): Development mode flag.
             
         Returns:
             None
@@ -227,7 +231,6 @@ class ESIOSPreciosExtractor:
         self._extract_and_save_prices(
             fecha_inicio_carga=fecha_inicio_carga,
             fecha_fin_carga=fecha_fin_carga,
-            dev=dev,
             mercado='secundaria',
             downloader=self.secundaria,
             secundaria_lst=secundaria_lst
@@ -235,16 +238,16 @@ class ESIOSPreciosExtractor:
         return
 
     def extract_terciaria(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
-                          terciaria_lst: Optional[List[int]] = None, dev: bool = False) -> None:
+                          terciaria_lst: Optional[List[int]] = None) -> None:
         """
         Extract tertiary regulation prices from ESIOS.
+        Uses the environment setting (DEV/PROD) for file saving format.
         
         Args:
             fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
             fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
             terciaria_lst (Optional[List[int]]): List of tertiary types, default None is all types
                 [1: up, 2: down, 3: direct up, 4: direct down, 5: programmed single]
-            dev (bool): Development mode flag.
             
         Returns:
             None
@@ -259,21 +262,20 @@ class ESIOSPreciosExtractor:
         self._extract_and_save_prices(
             fecha_inicio_carga=fecha_inicio_carga,
             fecha_fin_carga=fecha_fin_carga,
-            dev=dev,
             mercado='terciaria',
             downloader=self.terciaria,
             terciaria_lst=terciaria_lst
         )
         return
 
-    def extract_rr(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, dev: bool = False) -> None:
+    def extract_rr(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
         Extract Replacement Reserve (RR) prices from ESIOS.
+        Uses the environment setting (DEV/PROD) for file saving format.
         
         Args:
             fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
             fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
-            dev (bool): Development mode flag.
             
         Returns:
             None
@@ -284,7 +286,6 @@ class ESIOSPreciosExtractor:
         self._extract_and_save_prices(
             fecha_inicio_carga=fecha_inicio_carga,
             fecha_fin_carga=fecha_fin_carga,
-            dev=dev,
             mercado='rr',
             downloader=self.rr
         )
