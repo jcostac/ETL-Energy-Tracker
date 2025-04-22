@@ -42,10 +42,10 @@ class DataValidationUtils:
             df['id_mercado'] = df['id_mercado'].astype('uint8')
             df['price'] = df['price'].astype('float32')
 
+            print(f"Price data types validated successfully. {df.dtypes}")
+
         except Exception as e:
             raise ValueError(f"Error validating price data types: {e}")
-
-        return df
 
     def _validate_price_cols(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -58,4 +58,4 @@ class DataValidationUtils:
         if not all(col in df.columns for col in self.price_required_cols):
             raise ValueError(f"Missing required columns. Expected: {self.price_required_cols}")
         
-        return df
+        print(f"Price data structure validated successfully. {df.columns}")

@@ -650,7 +650,6 @@ class DateUtilsETL:
 
         return df_hourly
         
-    
 def DateUtilsETL_example_usage():
     """Example usage of DateUtilsETL class
     
