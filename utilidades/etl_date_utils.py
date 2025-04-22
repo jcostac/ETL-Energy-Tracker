@@ -358,8 +358,7 @@ class DateUtilsETL:
         
         # Create a new DataFrame with the datetime column and timezone column
         result_df = pd.DataFrame({
-            'datetime': dt_utc_converted,
-            'timezone': local_timezone
+            'datetime_utc': dt_utc_converted
         })
         
         return result_df
@@ -394,7 +393,7 @@ class DateUtilsETL:
 
         # Create a new DataFrame with the datetime column
         result_df = pd.DataFrame({
-            'datetime': dt_local_converted,
+            'datetime_local': dt_local_converted,
         })
         
         return result_df
@@ -437,7 +436,7 @@ class DateUtilsETL:
         
         # Create a new DataFrame with the naive datetime column
         result_df = pd.DataFrame({
-            'datetime': dt_naive
+            'datetime_naive': dt_naive
         })
         
         return result_df
@@ -540,11 +539,29 @@ class DateUtilsETL:
                 
         # Create result DataFrame
         result_df = pd.DataFrame({
-            'datetime': result
+            'datetime_local': result
         })
         
         return result_df
 
+    @staticmethod
+    def convert_naive_to_utc(dt_naive: pd.Series) -> pd.DataFrame:
+        """
+        Converts naive datetime objects to UTC datetime objects.
+        """
+        df_local = DateUtilsETL.convert_naive_to_local(dt_naive, 'Europe/Madrid')
+        df_utc = DateUtilsETL.convert_local_to_utc(df_local['datetime_local'])
+        return df_utc
+
+    @staticmethod
+    def convert_utc_to_naive(dt_utc: pd.Series) -> pd.DataFrame:
+        """
+        Converts UTC datetime objects to naive datetime objects.
+        """
+        df_local = DateUtilsETL.convert_utc_to_local(dt_utc, 'Europe/Madrid')
+        df_naive = DateUtilsETL.convert_local_to_naive(df_local['datetime_local'], 'Europe/Madrid')
+        return df_naive
+    
     @staticmethod
     def convert_hourly_to_15min(df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -690,17 +707,17 @@ def DateUtilsETL_example_usage():
     print("\nNaive to Local Conversion:")
     print(result)
 
-    result = DateUtilsETL.convert_local_to_naive(result['datetime'])
+    result = DateUtilsETL.convert_local_to_naive(result['datetime_local'])
     print("\nLocal to Naive Conversion:")
     print(result)
 
-    result_local= DateUtilsETL.convert_naive_to_local(result['datetime'], 'Europe/Madrid')
-    result_utc= DateUtilsETL.convert_local_to_utc(result_local['datetime'])
+    result_local= DateUtilsETL.convert_naive_to_local(naive_series, 'Europe/Madrid')
+    result_utc= DateUtilsETL.convert_local_to_utc(result_local['datetime_local'])
     print("\nNaive to Local to UTC Conversion:")
     print(result_utc)
 
-    result_utc= DateUtilsETL.convert_utc_to_local(result_utc['datetime'], 'Europe/Madrid')
-    result_naive= DateUtilsETL.convert_local_to_naive(result_utc['datetime'])
+    result_local= DateUtilsETL.convert_utc_to_local(result_utc['datetime_utc'], 'Europe/Madrid')
+    result_naive= DateUtilsETL.convert_local_to_naive(result_local['datetime_local'])
     print("\nUTC to Local to Naive Conversion:")
     print(result_naive)
 

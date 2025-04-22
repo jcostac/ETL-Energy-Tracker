@@ -392,26 +392,33 @@ class RawFileUtils(StorageFileUtils):
             print(f"Error reading file {file_path}: {e}")
             raise
        
-    def get_raw_folder_list(self, mercado: str, year: int = None) -> list[int]:
+    def get_raw_folder_list(self, mercado: str = None, year: int = None) -> list[int]:
         """
         Get a list of years from a given market folder based on directory names.
         Assumes directory structure: processed_path/mercado/year/
         
         Args:
-            mercado (str): The market name folder.
+            mercado (str): The market name folder. (optional)
             year (int): The year folder. (optional)
         Returns:
-            list[int]: A list of folder names found in the directory (it can be years or months since ).
+            list[int]: A list of folder names found in the directory (it can be mercados, year or months).
 
         Note:
             -This method is used to batch process raw files (use this to get list of years or months to process, and 
             @read_raw_file to read the files)
         """
 
-        if year is None:
+        if mercado != None and year == None:
+            #when we pass only mercado, we want to get year folder list
             target_path = self.raw_path / mercado 
-        else:
+
+        elif mercado != None and year != None:
+            #when we pass both mercado and year, we want to get month folder list
             target_path = self.raw_path / mercado / str(year)
+
+        elif mercado == None and year == None:
+            #when we pass no arguments, we want to get all mercados folder list
+            target_path = self.raw_path 
 
         if target_path.exists() and target_path.is_dir():
             folder_list = []
@@ -455,8 +462,17 @@ class ProcessedFileUtils(StorageFileUtils):
         return df
     
 
+    def add_partition_cols(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
+        """
+        Adds necessary partition columns to the DataFrame.
+        """
+        df['year'] = df['datetime_utc'].dt.year
+        df['month'] = df['datetime_utc'].dt.month
+        df['mercado'] = mercado
 
-    def write_processed_parquet(self, df: pd.DataFrame) -> None:
+        return df
+        
+    def write_processed_parquet(self, df: pd.DataFrame, mercado: str) -> None:
         """
         Processes a DataFrame and saves/appends it as a parquet file in the appropriate directory structure.
         
@@ -471,6 +487,8 @@ class ProcessedFileUtils(StorageFileUtils):
             None
         """
 
+        df = self.add_partition_cols(df, mercado)
+
         # Convert to PyArrow Table
         table = pa.Table.from_pandas(df)
 
@@ -478,8 +496,6 @@ class ProcessedFileUtils(StorageFileUtils):
         partition_cols = ['mercado', 'id_mercado', 'year', 'month']
         partitioned_df= df[partition_cols].drop_duplicates()
 
-        # Output directory
-        output_dir = self.processed_path
 
         # Write partitioned Parquet files
         for _, partition in partitioned_df.iterrows():
@@ -502,7 +518,7 @@ class ProcessedFileUtils(StorageFileUtils):
             # Define output path ie mercado/id_mercado/year/month/data.parquet -> secundaria/1/2025/04/data.parquet
 
             partition_path = os.path.join(
-                output_dir,
+                self.processed_path,
                 f"{partition['mercado']}",
                 f"{partition['id_mercado']}",
                 f"{partition['year']}",
