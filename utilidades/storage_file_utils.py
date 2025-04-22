@@ -362,7 +362,17 @@ class RawFileUtils(StorageFileUtils):
 
     def read_raw_file(self, year: int, month: int, dataset_type: str, mercado: str) -> pd.DataFrame:
         """
-        Reads a raw file from the appropriate directory structure.
+        Reads a raw file from the appropriate directory structure. 
+        Args:
+            year (int): The year of the file
+            month (int): The month of the file
+            dataset_type (str): The type of dataset
+            mercado (str): The market name
+        Returns:
+            pd.DataFrame: The DataFrame containing the data
+
+        Note:
+            -This method is used to read raw files that are processed on a daily basis. (Fucntionality reads latest file)
         """
 
         if self.dev and not self.prod:
@@ -382,7 +392,37 @@ class RawFileUtils(StorageFileUtils):
             print(f"Error reading file {file_path}: {e}")
             raise
        
-          
+    def get_raw_folder_list(self, mercado: str, year: int = None) -> list[int]:
+        """
+        Get a list of years from a given market folder based on directory names.
+        Assumes directory structure: processed_path/mercado/year/
+        
+        Args:
+            mercado (str): The market name folder.
+            year (int): The year folder. (optional)
+        Returns:
+            list[int]: A list of folder names found in the directory (it can be years or months since ).
+
+        Note:
+            -This method is used to batch process raw files (use this to get list of years or months to process, and 
+            @read_raw_file to read the files)
+        """
+
+        if year is None:
+            target_path = self.raw_path / mercado 
+        else:
+            target_path = self.raw_path / mercado / str(year)
+
+        if target_path.exists() and target_path.is_dir():
+            folder_list = []
+            for item in target_path.iterdir():
+                # Check if the item is a directory and its name represents a year (is numeric)
+                if item.is_dir():
+                    folder_list.append(int(item.name))
+            return folder_list
+        else:
+            print(f"Target path {target_path} does not exist or is not a directory.")
+            return []
     
 
 class ProcessedFileUtils(StorageFileUtils):
@@ -413,6 +453,8 @@ class ProcessedFileUtils(StorageFileUtils):
             raise
         
         return df
+    
+
 
     def write_processed_parquet(self, df: pd.DataFrame) -> None:
         """
