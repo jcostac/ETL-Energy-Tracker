@@ -25,7 +25,8 @@ class ESIOSTransformer:
         Raises:
             ValueError: If required columns are missing or data is invalid
         """
-        required_cols = ['fecha', 'hora', 'precio', 'id_mercado']
+        required_cols = ['datetime_utc', 'price', 'id_mercado']
+
         if not all(col in df.columns for col in required_cols):
             raise ValueError(f"Missing required columns. Expected: {required_cols}")
         
@@ -106,9 +107,7 @@ class ESIOSTransformer:
         
         return agg_df.drop('hour', axis=1)
 
-    def transform_market_data(self, 
-                            df: pd.DataFrame, 
-                            aggregate_to_hourly: bool = False) -> pd.DataFrame:
+    def transform_price_data(self, df: pd.DataFrame, aggregate_to_hourly: bool = False) -> pd.DataFrame:
         """
         Apply all transformation steps to market data.
         

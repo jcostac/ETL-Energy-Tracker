@@ -11,6 +11,7 @@ from typing import Dict, Union, Tuple
 import pretty_errors
 from datetime import timedelta, timezone
 from deprecated import deprecated
+import numpy as np
 
 @deprecated(action="error", reason="Class used in an old ETL pipeline, now deprecated.")
 class TimeUtils:
@@ -547,28 +548,108 @@ class DateUtilsETL:
     @staticmethod
     def convert_hourly_to_15min(df: pd.DataFrame) -> pd.DataFrame:
         """
-        Converts hourly data to 15-minute data by duplicating rows for each 15-minute interval.
-        Hourly data has to be in utc format
+        Converts hourly data to 15-minute data using vectorized operations.
+        Assumes input DataFrame has hourly frequency and 'datetime_utc' column.
         
         Args:
-            df (pd.Series): Series containing hourly data
+            df (pd.DataFrame): DataFrame containing hourly data, including a 'datetime_utc' column.
 
         Returns:
-            pd.DataFrame: DataFrame containing 15-minute data
-       
-
-        # Extract data on change date and modify hour format to 15-min format
-        change_date_data = df_before[df_before['datetime_utc'].dt.date == change_date.date()].copy()
-
-        # Map each hour to its corresponding 15-min format
-        minute_map = {0: '00', 1: '15', 2: '30', 3: '45'}
-        change_date_data['hora'] = change_date_data.apply(
-            lambda row: f"{row['datetime'].hour:02d}:{minute_map[row.name % 4]}:00", 
-            axis=1  # Change data to format 00:00:00, 00:15:00, 00:30:00, 00:45:00
-        )
+            pd.DataFrame: DataFrame containing 15-minute data.
         """
+        # Sort by datetime_utc to ensure proper ordering
+        df = df.sort_values(by='datetime_utc').reset_index(drop=True)
+
+        # Ensure 'datetime_utc' is in datetime format
+        df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
+
+        # Repeat each row 4 times
+        expanded_df = df.loc[df.index.repeat(4)].reset_index(drop=True)
         
-        pass
+        # Create the minute offsets [0, 15, 30, 45] for each original row
+        # Calculate the number of original rows before repeating
+        num_original_rows = len(df)
+        minute_offsets = pd.Series([0, 15, 30, 45] * num_original_rows)
+        
+        # Convert offsets to Timedelta and add to the datetime
+        expanded_df['datetime_utc'] = expanded_df['datetime_utc'] + pd.to_timedelta(minute_offsets, unit='m')
+        
+        return expanded_df
+
+    @staticmethod
+    def convert_15min_to_hourly(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Converts 15-minute data to hourly data by aggregating within each hour and
+        combinations of specified ID columns (id_mercado, up_id, tecnologia_id if present).
+        Averages numeric values and keeps the first value for non-numeric columns within each group.
+        Assumes input DataFrame has 15-minute frequency and a 'datetime_utc' column.
+
+        Args:
+            df (pd.DataFrame): DataFrame containing 15-minute data, including a 'datetime_utc' column
+                               and potentially 'id_mercado', 'up_id', 'tecnologia_id'.
+
+        Returns:
+            pd.DataFrame: DataFrame containing hourly aggregated data, grouped by time and ID columns.
+        """
+        # Ensure 'datetime_utc' is in datetime format and UTC
+        df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
+
+        # Define potential grouping columns
+        potential_id_cols = ['id_mercado', 'up_id', 'tecnologia_id']
+        grouping_cols = ['datetime_utc'] # Start with time column
+
+        # Add existing ID columns to the grouping list
+        for col in potential_id_cols:
+            if col in df.columns:
+                grouping_cols.append(col)
+
+        # Sort by all grouping columns (time first) to ensure 'first' aggregation is consistent
+        df = df.sort_values(by=grouping_cols).reset_index(drop=True)
+
+        # Create the hourly grouping key based on the datetime
+        hourly_group_key = df['datetime_utc'].dt.floor('H')
+
+        # Replace the original datetime_utc with the hourly key for grouping
+        df_for_grouping = df.copy()
+        df_for_grouping['datetime_utc'] = hourly_group_key
+
+        # Identify columns for aggregation (exclude all grouping columns)
+        cols_to_aggregate = df.columns.drop(grouping_cols).tolist()
+
+        # Handle case where there are no columns left to aggregate
+        if not cols_to_aggregate:
+            print("No columns to aggregate, returning unique hourly timestamps")
+            # Group by all grouping columns and keep the unique combinations
+            # The 'first' datetime_utc within each group will be the floored hourly timestamp
+            df_hourly = df_for_grouping[grouping_cols].drop_duplicates().sort_values(by=grouping_cols).reset_index(drop=True)
+            return df_hourly
+
+        # Identify numeric and non-numeric columns among those to be aggregated
+        numeric_cols = df[cols_to_aggregate].select_dtypes(include=np.number).columns.tolist()
+        non_numeric_cols = df[cols_to_aggregate].select_dtypes(exclude=np.number).columns.tolist()
+
+        # Create aggregation dictionary for the columns to aggregate
+        agg_dict = {}
+        for col in numeric_cols:
+            agg_dict[col] = 'mean'
+        for col in non_numeric_cols:
+            agg_dict[col] = 'first'
+
+        # Perform the groupby aggregation using all grouping columns
+        df_hourly = df_for_grouping.groupby(grouping_cols).agg(agg_dict)
+
+        # The grouping columns become the index, reset it
+        df_hourly = df_hourly.reset_index()
+
+        # Reorder columns: grouping columns first, then aggregated columns
+        # Ensure the order of grouping columns is preserved
+        final_cols_order = grouping_cols + [col for col in df.columns if col in agg_dict]
+        # Filter df_hourly columns to only include those that exist
+        final_cols = [col for col in final_cols_order if col in df_hourly.columns]
+        df_hourly = df_hourly[final_cols]
+
+        return df_hourly
+        
     
 def DateUtilsETL_example_usage():
     """Example usage of DateUtilsETL class
@@ -593,6 +674,19 @@ def DateUtilsETL_example_usage():
     "2025-10-26 03:01:00"   # After fall back
     ])
 
+    utc_series = pd.Series([
+    "2025-07-01 12:00:00+00:00",  # Regular summer time
+    "2025-03-30 02:00:00+00:00",  # Just before spring forward
+    "2025-03-30 03:00:00+00:00",  # Adjusted to exact hour during spring forward gap
+    "2025-10-26 02:00:00+00:00",  # Before fall back
+    "2025-10-26 03:00:00+00:00",  # Adjusted to exact hour during fall back (ambiguous)
+    "2025-10-27 02:00:00+00:00"   # Adjusted to exact hour during fall back (ambiguous)
+    ])
+
+    price_series = pd.Series([100, 101, 102, 103, 104, 105])
+
+    df = pd.DataFrame({'datetime_utc': utc_series, 'price': price_series})
+
     result = DateUtilsETL.convert_naive_to_local(naive_series, 'Europe/Madrid')
     print("\nNaive to Local Conversion:")
     print(result)
@@ -610,7 +704,12 @@ def DateUtilsETL_example_usage():
     result_naive= DateUtilsETL.convert_local_to_naive(result_utc['datetime'])
     print("\nUTC to Local to Naive Conversion:")
     print(result_naive)
-    
+
+    result_15min = DateUtilsETL.convert_hourly_to_15min(df)
+    print("\nOriginal DataFrame:")
+    print(df)
+    print("\nHourly to 15-minute Conversion:")
+    print(result_15min)
     
 
 if __name__ == "__main__":

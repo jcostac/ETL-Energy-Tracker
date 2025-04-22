@@ -414,11 +414,7 @@ class ProcessedFileUtils(StorageFileUtils):
         
         return df
 
-    def write_processed_parquet(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
-        """
-        Processes a DataFrame and saves/appends it as a parquet file in the appropriate directory structure.
-        """
-
+    def write_processed_parquet(self, df: pd.DataFrame) -> None:
         """
         Processes a DataFrame and saves/appends it as a parquet file in the appropriate directory structure.
         
@@ -432,71 +428,64 @@ class ProcessedFileUtils(StorageFileUtils):
         Returns:
             None
         """
-        try:
-            # Skip if DataFrame is empty
-            if df.empty:
-                print(f"No data to write for {dataset_type}/{mercado}/{year}/{month}")
-                return
-            
-            # Create directory structure if it doesn't exist
-            output_dir = self.processed_path / dataset_type / mercado
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Ensure year and month are available as columns for partitioning
-            if 'datetime_utc' not in df.columns:
-                df['year'] = year
-            if 'month' not in df.columns:
-                df['month'] = month
 
+        # Convert to PyArrow Table
+        table = pa.Table.from_pandas(df)
+
+        # Define partitioning columns
+        partition_cols = ['mercado', 'id_mercado', 'year', 'month']
+        partitioned_df= df[partition_cols].drop_duplicates()
+
+        # Output directory
+        output_dir = self.processed_path
+
+        # Write partitioned Parquet files
+        for _, partition in partitioned_df.iterrows():
+            # Create a mask to filter the data for the current partition
+            mask = True
+            # Iterate over each column defined in partition_cols
+            for col in partition_cols:
+                # Update the mask to include only rows that match the current partition's value for this column
+                mask = mask & (table[col] == partition[col])
+
+            # Apply the mask to filter the table, resulting in a partitioned table
+            partition_table = table.filter(mask)
+
+            # Sort by datetime_utc
+            partition_table = partition_table.sort_by('datetime_utc')
             
-            # Check if directory already has data
-            if any(output_dir.glob('*.parquet')) or any(output_dir.glob('*/')):
-                # Read existing data
-                try:
-                    # Read existing dataset into a DataFrame
-                    existing_df = pd.read_parquet(output_dir)
-                    
-                    # Concatenate with new data
-                    combined_df = pd.concat([existing_df, df], ignore_index=True)
-                    
-                    # Drop duplicates based on dataset type
-                    combined_df = self.drop_duplicates(combined_df, dataset_type)
-                    
-                    # Convert to PyArrow Table and write with partitioning
-                    table = pa.Table.from_pandas(combined_df)
-                    
-                    # Remove existing partitioned dataset
-                    import shutil
-                    shutil.rmtree(output_dir)
-                    output_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    # Write to partitioned dataset
-                    pq.write_to_dataset(
-                        table, 
-                        root_path=str(output_dir),
-                        partition_cols=["year", "month"],
-                        row_group_size=self.row_group_size
-                    )
-                    print(f"Successfully updated partitioned dataset for {dataset_type}/{mercado}")
-                    
-                except Exception as e:
-                    print(f"Error reading existing dataset for {dataset_type}/{mercado}: {str(e)}")
-                    raise
-            else:
-                # Create new partitioned dataset
-                table = pa.Table.from_pandas(df)
-                pq.write_to_dataset(
-                    table, 
-                    root_path=str(output_dir),
-                    partition_cols=["datetime_utc"],
-                    row_group_size=self.row_group_size
-                )
-                print(f"Created new partitioned dataset for {dataset_type}/{mercado}")
-                
-        except Exception as e:
-            print(f"Error processing parquet dataset for {dataset_type}/{mercado}: {str(e)}")
-            raise
-        pass
+            # Drop partitioning columns (year, month, mercado) to exclude from Parquet to avoid unnecessary storage
+            partition_table = partition_table.drop(['year', 'month', 'mercado'])
+            
+            # Define output path ie mercado/id_mercado/year/month/data.parquet -> secundaria/1/2025/04/data.parquet
+
+            partition_path = os.path.join(
+                output_dir,
+                f"{partition['mercado']}",
+                f"{partition['id_mercado']}",
+                f"{partition['year']}",
+                f"{partition['month']:02d}"
+            ) 
+            os.makedirs(partition_path, exist_ok=True)
+            
+            # Write with ParquetWriter for column-specific statistics
+            schema = partition_table.schema
+            writer = pq.ParquetWriter(
+                os.path.join(partition_path, 'data.parquet'),
+                schema,
+                use_dictionary=['id_mercado'],  # Dictionary encoding for id_mercado
+                compression='zstd',
+                write_statistics=['datetime_utc', 'price'],  # Stats for datetime_utc, price only
+                data_page_size=64 * 1024,  # 64 KB pages
+                data_page_version='2.0',
+                row_group_size= self.row_group_size # 2880 rows per partition
+            )
+            writer.write_table(partition_table)
+            writer.close()
+
+        print(f"Partitioned Parquet files written to {self.processed_path}")
+
+        return
 
 
 if __name__ == "__main__":
