@@ -1,432 +1,234 @@
-class SecundariaTransform:
-    def __init__(self):
-        pass
+import pandas as pd
+from typing import Dict, List, Optional, Any
+import sys
+from pathlib import Path
 
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        pass
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
+# Import actual config classes from configs.i90_config
+from configs.i90_config import (
+        I90Config, # Base might be useful too
+        DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig,
+        CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
+    )
+from utilidades.etl_date_utils import DateUtilsETL
+from utilidades.data_validation_utils import DataValidationUtils
 
 
-    def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None, 
-                        sentidos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:
-            """
-            Get tertiary regulation volume data for a specific day.
-            
-            Args:
-                day (datetime): Day to download data for
-                bbdd_engine: Database engine connection
-                UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-                sentidos (Optional[List[str]]): List of directions to filter ['Subir', 'Bajar', 'Directa']
-                
-            Returns:
-                List[Tuple[pd.DataFrame, str]]: List of tuples with (DataFrame, direction)
-            """
-            # Set default sentidos if None
-            if sentidos is None:
-                sentidos = ['Subir', 'Bajar', 'Directa']
-            
-            # Get Programming Units
-            unidades, dict_unidades = self.get_programming_units(bbdd_engine, UP_ids)
-            
-            # Download I90 file
-            file_name, file_name_2 = self.download_i90_file(day)
-            
-            # Get transition dates
-            filtered_transition_dates = self.get_transition_dates(day, day + timedelta(days=1))
-            day_datef = day.date()
-            is_special_date = day_datef in filtered_transition_dates
-            tipo_cambio_hora = filtered_transition_dates.get(day_datef, 0)
-            
-            # Get error data
-            df_errores = self.get_error_data(bbdd_engine)
-            df_errores_dia = df_errores[df_errores['fecha'] == day.date()]
-            pestañas_con_error = df_errores_dia['tipo_error'].values
-            
-            results = []
-            
-            # Check if the sheet has errors
-            if self.sheet_id not in pestañas_con_error:
-                sheet = str(self.sheet_id).zfill(2)
-                
-                # Load sheet data
-                df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
-                
-                # Filter by programming units
-                df = df[df['Unidad de Programación'].isin(unidades)]
-                
-                # Process for each direction
-                for sentido in sentidos:
-                    df_sentido = df.copy()
-                    
-                    # Apply direction filter
-                    if sentido == 'Subir':
-                        df_sentido = df_sentido[df_sentido['Sentido'] == 'Subir']
-                        df_sentido = df_sentido[df_sentido['Redespacho'] != 'TERDIR']
-                    elif sentido == 'Bajar':
-                        df_sentido = df_sentido[df_sentido['Sentido'] == 'Bajar']
-                        df_sentido = df_sentido[df_sentido['Redespacho'] != 'TERDIR']
-                    elif sentido == 'Directa':
-                        df_sentido = df_sentido[df_sentido['Redespacho'] == 'TERDIR']
-                    
-                    # Filter columns to keep only programming unit and value columns
-                    if not df_sentido.empty:
-                        total_col = df_sentido.columns.get_loc("Total")
-                        cols_to_drop = list(range(0, total_col+1))
-                        up_col = df_sentido.columns.get_loc("Unidad de Programación")
-                        cols_to_drop.remove(up_col)
-                        df_sentido = df_sentido.drop(df_sentido.columns[cols_to_drop], axis=1)
-                        
-                        # Melt the dataframe to convert from wide to long format
-                        hora_colname = df_sentido.columns[1]
-                        df_sentido = df_sentido.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="volumen")
-                        
-                        # Apply time adjustments
-                        if hora_colname == 1:
-                            df_sentido['hora'] = df_sentido.apply(self.ajuste_quinceminutal, axis=1, 
-                                                                is_special_date=is_special_date, 
-                                                                tipo_cambio_hora=tipo_cambio_hora)
-                        else:
-                            df_sentido['hora'] = df_sentido.apply(self.ajuste_horario, axis=1, 
-                                                                is_special_date=is_special_date, 
-                                                                tipo_cambio_hora=tipo_cambio_hora)
-                        
-                        # Aggregate data
-                        df_sentido = df_sentido.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                        df_sentido = df_sentido[df_sentido['volumen'] != 0.0]
-                        
-                        # Add date and rename columns
-                        df_sentido['fecha'] = day
-                        df_sentido = df_sentido.rename(columns={"Unidad de Programación": "UP"})
-                        
-                        # Add UP_id from dict_unidades
-                        df_sentido['UP_id'] = df_sentido['UP'].map(dict_unidades)
-                        
-                        # Store the result
-                        results.append((df_sentido, sentido))
-            
-            # Clean up files
-            self.cleanup_files(file_name, file_name_2)
-            
-            return results
-    
-
-class TerciariaTransform:
-    def __init__(self):
-        pass
-
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        pass
-
-    def get_i90_precios(self, day: datetime) -> pd.DataFrame:
-        """
-        Get precios terciaria data for a specific day. 
-
-        Note: 
-            - not implemented sicne we take precios from the ESIOS API
-        """
-        return super().get_i90_data(day, precios_sheets = self.precios_sheets)
-
-        pass
-        
-
-class SecundariaDL(I90DownloaderDL):
+class I90Processor:
     """
-    Specialized class for downloading and processing secondary regulation volume data from I90 files.
+    Processor class for I90 data (Volumenes and Precios).
+    Handles data cleaning, validation, filtering, and transformation.
     """
-    
     def __init__(self):
-        """Initialize the secondary regulation downloader"""
-        super().__init__()
-
-        #initialize config
-        self.config = SecundariaConfig()
-
-        #get sheets of interest
-        self.sheets_of_interest = self.config.sheets_of_interest
-        
-    def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None, 
-                    sentidos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:
         """
-        Get secondary regulation volume data for a specific day.
+        Initialize the processor.
+        """
+        self.date_utils = DateUtilsETL()
+        # Potential future enhancements: Load all configs at init if needed
+
+    # === MAIN PIPELINE ===
+    def transform_data(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
+        """
+        Main transformation pipeline for I90 data.
+        """
+        if df.empty:
+            print("Input DataFrame is empty. Skipping transformation.")
+            return self._empty_output_df(dataset_type)
+
+        try:
+            df = self._apply_market_filters_and_id(df, market_config)
+            if df.empty: raise ValueError("DataFrame empty after applying market filters.")
+
+            df = self._standardize_datetime(df)
+            if df.empty: raise ValueError("DataFrame empty after standardizing datetime.")
+
+            df = self._select_and_finalize_columns(df, dataset_type)
+            if df.empty: raise ValueError("DataFrame empty after selecting final columns.")
+
+            df = self._validate_final_data(df, dataset_type)
+            print("I90 transformation pipeline completed successfully.")
+            return df
+
+        except Exception as e:
+            print(f"Error during I90 transformation pipeline: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return self._empty_output_df(dataset_type)
+
+    # === FILTERING ===
+    def _apply_market_filters_and_id(self, df: pd.DataFrame, market_config: I90Config) -> pd.DataFrame:
+        """
+        Filters the DataFrame based on market config and adds id_mercado.
         
         Args:
-            day (datetime): Day to download data for
-            bbdd_engine: Database engine connection
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            sentidos (Optional[List[str]]): List of directions to filter ['Subir', 'Bajar']
+            df (pd.DataFrame): Input DataFrame (potentially pre-processed by extractor).
+                               Expected columns might include 'Sentido', 'Redespacho', 'UP', 'hora', 'volumen'/'precio', 'fecha'/'datetime_utc'.
+            market_config (I90Config): The configuration object instance for the specific market
+                                     (e.g., SecundariaConfig(), RestriccionesConfig()).
             
         Returns:
-            List[Tuple[pd.DataFrame, str]]: List of tuples with (DataFrame, direction)
+            pd.DataFrame: DataFrame filtered and augmented with 'id_mercado',
+                          or an empty DataFrame if no data matches.
         """
-        # Set default sentidos if None
-        if sentidos is None:
-            sentidos = ['Subir', 'Bajar']
-        
-        # Get Programming Units
-        unidades, dict_unidades = self.get_programming_units(bbdd_engine, UP_ids)
-        
-        # Download I90 file
-        file_name, file_name_2 = self.download_i90_file(day)
-        
-        # Get transition dates
-        filtered_transition_dates = self.get_transition_dates(day, day + timedelta(days=1))
-        day_datef = day.date()
-        is_special_date = day_datef in filtered_transition_dates
-        tipo_cambio_hora = filtered_transition_dates.get(day_datef, 0)
-        
-        # Get error data
-        df_errores = self.get_error_data(bbdd_engine)
-        df_errores_dia = df_errores[df_errores['fecha'] == day.date()]
-        pestañas_con_error = df_errores_dia['tipo_error'].values
-        
-        results = []
-        
-        # Check if the sheet has errors
-        if self.sheet_id not in pestañas_con_error:
-            sheet = str(self.sheet_id).zfill(2)
-            
-            # Load sheet data
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
-            
-            # Filter by programming units
-            df = df[df['Unidad de Programación'].isin(unidades)]
-            
-            # Process for each direction
-            for sentido in sentidos:
-                df_sentido = df.copy()
-                
-                # Apply direction filter
-                if sentido == 'Subir':
-                    df_sentido = df_sentido[df_sentido['Sentido'] == 'Subir']
-                elif sentido == 'Bajar':
-                    df_sentido = df_sentido[df_sentido['Sentido'] == 'Bajar']
-                
-                # Filter columns to keep only programming unit and value columns
-                if not df_sentido.empty:
-                    total_col = df_sentido.columns.get_loc("Total")
-                    cols_to_drop = list(range(0, total_col+1))
-                    up_col = df_sentido.columns.get_loc("Unidad de Programación")
-                    cols_to_drop.remove(up_col)
-                    df_sentido = df_sentido.drop(df_sentido.columns[cols_to_drop], axis=1)
-                    
-                    # Melt the dataframe to convert from wide to long format
-                    hora_colname = df_sentido.columns[1]
-                    df_sentido = df_sentido.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="volumen")
-                    
-                    # Apply time adjustments
-                    if hora_colname == 1:
-                        df_sentido['hora'] = df_sentido.apply(self.ajuste_quinceminutal, axis=1, 
-                                                             is_special_date=is_special_date, 
-                                                             tipo_cambio_hora=tipo_cambio_hora)
-                    else:
-                        df_sentido['hora'] = df_sentido.apply(self.ajuste_horario, axis=1, 
-                                                             is_special_date=is_special_date, 
-                                                             tipo_cambio_hora=tipo_cambio_hora)
-                    
-                    # Aggregate data
-                    df_sentido = df_sentido.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                    df_sentido = df_sentido[df_sentido['volumen'] != 0.0]
-                    
-                    # Add date and rename columns
-                    df_sentido['fecha'] = day
-                    df_sentido = df_sentido.rename(columns={"Unidad de Programación": "UP"})
-                    
-                    # Add UP_id from dict_unidades
-                    df_sentido['UP_id'] = df_sentido['UP'].map(dict_unidades)
-                    
-                    # Store the result
-                    results.append((df_sentido, sentido))
-        
-        # Clean up files
-        self.cleanup_files(file_name, file_name_2)
-        
-        return results
+        if df.empty:
+            return pd.DataFrame() # Return empty if input is empty
 
-class RRTransform:
- def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None) -> pd.DataFrame:
+        all_market_dfs = []
+
+        required_cols = ['volumen'] # Base columns often present
+        if 'Sentido' in df.columns: required_cols.append('Sentido')
+        if 'Redespacho' in df.columns: required_cols.append('Redespacho')
+
+        # Ensure required columns exist
+        if not all(col in df.columns for col in required_cols if col in ['Sentido', 'Redespacho']):
+             print(f"Warning: Input DataFrame for market transformation might be missing 'Sentido' or 'Redespacho' columns if required by config.")
+             # Decide if this is fatal or if filtering can proceed partially
+
+        # Ensure market_config has the necessary attributes
+        if not hasattr(market_config, 'market_ids') or not hasattr(market_config, 'sentido_map') or not hasattr(market_config, 'get_redespacho_filter'):
+             print(f"Error: Provided market_config object ({type(market_config).__name__}) is missing required attributes/methods (market_ids, sentido_map, get_redespacho_filter).")
+             return pd.DataFrame()
+
+        for market_id in market_config.market_ids:
+            # market_id from config is already a string
+            sentido = market_config.sentido_map.get(market_id) # Use market_id directly
+            redespacho_filter = market_config.get_redespacho_filter(market_id) # Use market_id directly
+
+            filtered_df = df.copy() # Start with the full data for this specific market_id iteration
+
+            # Apply sentido filter
+            if sentido and 'Sentido' in filtered_df.columns:
+                 # Ensure consistent comparison (e.g., handle case sensitivity if needed)
+                 # Assuming Sentido in DataFrame and config map are comparable (e.g., 'Subir', 'Bajar', None)
+                filtered_df = filtered_df[filtered_df['Sentido'] == sentido]
+            elif sentido and 'Sentido' not in filtered_df.columns:
+                 print(f"Warning: Config requires filtering by Sentido='{sentido}' for market_id {market_id}, but 'Sentido' column is missing.")
+                 # If sentido filter is required but column missing, no rows will match
+                 filtered_df = pd.DataFrame() # Clear DF
+
+            # Apply redespacho filter
+            if redespacho_filter and 'Redespacho' in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df['Redespacho'].isin(redespacho_filter)]
+            elif redespacho_filter and 'Redespacho' not in filtered_df.columns:
+                 print(f"Warning: Config requires filtering by Redespacho='{redespacho_filter}' for market_id {market_id}, but 'Redespacho' column is missing.")
+                 # If redespacho filter is required but column missing, no rows will match
+                 filtered_df = pd.DataFrame() # Clear DF
+
+
+            if not filtered_df.empty:
+                # Add the market_id (which is already a string from the config)
+                filtered_df['id_mercado'] = market_id
+                all_market_dfs.append(filtered_df)
+                print(f"Processed Market ID: {market_id}, Filtered rows: {len(filtered_df)}")
+            else:
+                 print(f"No data matched filters for Market ID: {market_id}")
+
+
+        if not all_market_dfs:
+            return pd.DataFrame() # Return empty if no market_id yielded data
+
+        # Combine results for all market_ids handled by this config
+        final_df = pd.concat(all_market_dfs, ignore_index=True)
+        # Ensure id_mercado is string type after concat (should be if added as string)
+        if 'id_mercado' in final_df.columns:
+             final_df['id_mercado'] = final_df['id_mercado'].astype(str)
+        return final_df
+
+    # === DATETIME HANDLING ===
+    def _standardize_datetime(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Ensures a standard UTC datetime column."""
+        if df.empty: return df
+
+        if 'hora' in df.columns and 'fecha' in df.columns:
+             # Combine fecha and hora, assuming 'hora' might need adjustment (e.g., from 1-24 to 0-23)
+             # The extractor might already handle this; this is a fallback/standardization step.
+             # This logic needs refinement based on the exact output of the extractor.
+             # For now, assume 'hora' is datetime.time or similar and 'fecha' is datetime.date/datetime
+             # Handle potential errors during combination
+             try:
+                df['datetime_local'] = df.apply(lambda row: pd.Timestamp.combine(row['fecha'].date(), row['hora']), axis=1)
+                df['datetime_utc'] = self.date_utils.convert_local_to_utc(df['datetime_local']) # Assumes local is Europe/Madrid
+                df = df.drop(columns=['datetime_local', 'fecha', 'hora'], errors='ignore')
+             except Exception as e:
+                 print(f"Error combining 'fecha' and 'hora': {e}. Cannot create 'datetime_utc'.")
+                 # Decide handling: return empty or raise? Returning df without datetime_utc for now.
+                 if 'datetime_utc' not in df.columns: # Ensure it doesn't exist if creation failed
+                     pass # Or add an empty column: df['datetime_utc'] = pd.NaT
+                 return df.drop(columns=['fecha', 'hora'], errors='ignore') # Drop original cols
+
+        elif 'datetime_utc' in df.columns:
+             try:
+                df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
+             except Exception as e:
+                print(f"Error converting existing 'datetime_utc' column: {e}. Setting to NaT.")
+                df['datetime_utc'] = pd.NaT
+        elif 'datetime' in df.columns: # If extractor provides a generic datetime
+             try:
+                df['datetime_utc'] = pd.to_datetime(df['datetime'], utc=True)
+                if 'datetime' != 'datetime_utc':
+                    df = df.drop(columns=['datetime'], errors='ignore')
+             except Exception as e:
+                 print(f"Error converting existing 'datetime' column: {e}. Setting to NaT.")
+                 df['datetime_utc'] = pd.NaT
+                 if 'datetime' != 'datetime_utc': df = df.drop(columns=['datetime'], errors='ignore')
+                    
+             print("Warning: Could not find suitable columns ('fecha'/'hora', 'datetime_utc', 'datetime') to create standardized 'datetime_utc'.")
+             # Decide handling: error or return df as is? Returning as is for now.
+             return df
+
+        # Drop rows where datetime conversion might have failed
+        df = df.dropna(subset=['datetime_utc'])
+
+        return df
+
+    # === COLUMN FINALIZATION ===
+    def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+        """Selects, orders, and standardizes final columns, outputting 'up' for unit identifier."""
+       
+        pass
+
+    def _get_value_col(self, dataset_type: str) -> Optional[str]:
+        if dataset_type == 'volumenes_i90':
+            return 'volumen'
+        elif dataset_type == 'precios_i90':
+            return 'precio'
+        return None
+
+    # === VALIDATION ===
+    def _validate_final_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+        """Validate final data structure."""
+        if not df.empty:
+            validation_schema_type = "volumenes_i90" if dataset_type == 'volumenes_i90' else "precios_i90" # Map to validation schema names more specifically
+            try:
+                 # Assuming DataValidationUtils.validate_data expects specific schema names
+                 DataValidationUtils.validate_data(df, validation_schema_type)
+                 print("Final data validation successful.")
+            except KeyError as e:
+                 print(f"Validation Error: Schema '{validation_schema_type}' not found in DataValidationUtils. Skipping validation. Error: {e}")
+            except Exception as e:
+                 print(f"Error during final data validation: {e}")
+                 # Decide if this should return empty df or raise
+                 # Raising allows the error to propagate up
+                 raise # Reraise validation error
+            
+            print("Skipping validation for empty DataFrame.")
+        return df
+
+    # === UTILITY ===
+    def _empty_output_df(self, dataset_type: str) -> pd.DataFrame:
         """
-        Get RR volume data for a specific day.
-        
-        Args:
-            day (datetime): Day to download data for
-            bbdd_engine: Database engine connection
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            
-        Returns:
-            pd.DataFrame: DataFrame with RR volume data
+        Returns an empty DataFrame with the expected columns for the dataset_type.
         """
-        # Get Programming Units
-        unidades, dict_unidades = self.get_programming_units(bbdd_engine, UP_ids)
-        
-        # Download I90 file
-        file_name, file_name_2 = self.download_i90_file(day)
-        
-        # Get transition dates
-        filtered_transition_dates = self.get_transition_dates(day, day + timedelta(days=1))
-        day_datef = day.date()
-        is_special_date = day_datef in filtered_transition_dates
-        tipo_cambio_hora = filtered_transition_dates.get(day_datef, 0)
-        
-        # Get error data
-        df_errores = self.get_error_data(bbdd_engine)
-        df_errores_dia = df_errores[df_errores['fecha'] == day.date()]
-        pestañas_con_error = df_errores_dia['tipo_error'].values
-        
-        result_df = pd.DataFrame()
-        
-        # Check if the sheet has errors
-        if self.sheet_id not in pestañas_con_error:
-            sheet = str(self.sheet_id).zfill(2)
-            
-            # Load sheet data
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
-            
-            # Filter by programming units
-            df = df[df['Unidad de Programación'].isin(unidades)]
-            
-            # Filter for RR data - exclude indisponibilidades
-            df = df[df['Redespacho'] == 'Restricciones Técnicas']
-            
-            # Filter columns to keep only programming unit and value columns
-            if not df.empty:
-                total_col = df.columns.get_loc("Total")
-                cols_to_drop = list(range(0, total_col+1))
-                up_col = df.columns.get_loc("Unidad de Programación")
-                cols_to_drop.remove(up_col)
-                df = df.drop(df.columns[cols_to_drop], axis=1)
-                
-                # Melt the dataframe to convert from wide to long format
-                hora_colname = df.columns[1]
-                df = df.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="volumen")
-                
-                # Apply time adjustments
-                if hora_colname == 1:
-                    df['hora'] = df.apply(self.ajuste_quinceminutal, axis=1, 
-                                         is_special_date=is_special_date, 
-                                         tipo_cambio_hora=tipo_cambio_hora)
-                else:
-                    df['hora'] = df.apply(self.ajuste_horario, axis=1, 
-                                         is_special_date=is_special_date, 
-                                         tipo_cambio_hora=tipo_cambio_hora)
-                
-                # Aggregate data
-                df = df.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                df = df[df['volumen'] != 0.0]
-                
-                # Add date and rename columns
-                df['fecha'] = day
-                df = df.rename(columns={"Unidad de Programación": "UP"})
-                
-                # Add UP_id from dict_unidades
-                df['UP_id'] = df['UP'].map(dict_unidades)
-                
-                result_df = df
-        
-        # Clean up files
-        self.cleanup_files(file_name, file_name_2)
-        
-        return result_df
+        value_col = self._get_value_col(dataset_type)
+        cols = ['id_mercado', 'datetime_utc', value_col]
+        if dataset_type == 'volumenes_i90':
+            cols.append('up')
+        df = pd.DataFrame(columns=cols)
+        df.index.name = 'id'
+        return df
+
  
- class CurtailmentTransform:
-    def __init__(self):
-        pass
-
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        pass
-    
-    def get_volumenes(self, day: datetime, bbdd_engine, UP_ids: Optional[List[int]] = None,
-                     tipos: Optional[List[str]] = None) -> List[Tuple[pd.DataFrame, str]]:
-        """
-        Get curtailment volume data for a specific day.
-        
-        Args:
-            day (datetime): Day to download data for
-            bbdd_engine: Database engine connection
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            tipos (Optional[List[str]]): List of curtailment types to filter ['Curtailment', 'Curtailment demanda']
-            
-        Returns:
-            List[Tuple[pd.DataFrame, str]]: List of tuples with (DataFrame, curtailment type)
-        """
-        # Set default tipos if None
-        if tipos is None:
-            tipos = ['Curtailment', 'Curtailment demanda']
-        
-        # Get Programming Units
-        unidades, dict_unidades = self.get_programming_units(bbdd_engine, UP_ids)
-        
-        # Download I90 file
-        file_name, file_name_2 = self.download_i90_file(day)
-        
-        # Get transition dates
-        filtered_transition_dates = self.get_transition_dates(day, day + timedelta(days=1))
-        day_datef = day.date()
-        is_special_date = day_datef in filtered_transition_dates
-        tipo_cambio_hora = filtered_transition_dates.get(day_datef, 0)
-        
-        # Get error data
-        df_errores = self.get_error_data(bbdd_engine)
-        df_errores_dia = df_errores[df_errores['fecha'] == day.date()]
-        pestañas_con_error = df_errores_dia['tipo_error'].values
-        
-        results = []
-        
-        # Check if the sheet has errors
-        if self.sheet_id not in pestañas_con_error:
-            sheet = str(self.sheet_id).zfill(2)
-            
-            # Load sheet data
-            df = pd.read_excel(f"./I90DIA_{file_name_2}.xls", sheet_name=f'I90DIA{sheet}', skiprows=2)
-            
-            # Filter by programming units
-            df = df[df['Unidad de Programación'].isin(unidades)]
-            
-            # Process for each tipo
-            for tipo in tipos:
-                df_tipo = df.copy()
-                
-                # Apply curtailment type filter
-                if tipo == 'Curtailment':
-                    df_tipo = df_tipo[df_tipo['Redespacho'].isin(['UPLPVPV', 'UPLPVPCBN'])]
-                elif tipo == 'Curtailment demanda':
-                    df_tipo = df_tipo[df_tipo['Redespacho'] == 'UPOPVPB']
-                
-                # Filter columns to keep only programming unit and value columns
-                if not df_tipo.empty:
-                    total_col = df_tipo.columns.get_loc("Total")
-                    cols_to_drop = list(range(0, total_col+1))
-                    up_col = df_tipo.columns.get_loc("Unidad de Programación")
-                    cols_to_drop.remove(up_col)
-                    df_tipo = df_tipo.drop(df_tipo.columns[cols_to_drop], axis=1)
-                    
-                    # Melt the dataframe to convert from wide to long format
-                    hora_colname = df_tipo.columns[1]
-                    df_tipo = df_tipo.melt(id_vars=["Unidad de Programación"], var_name="hora", value_name="volumen")
-                    
-                    # Apply time adjustments
-                    if hora_colname == 1:
-                        df_tipo['hora'] = df_tipo.apply(self.ajuste_quinceminutal, axis=1, 
-                                                       is_special_date=is_special_date, 
-                                                       tipo_cambio_hora=tipo_cambio_hora)
-                    else:
-                        df_tipo['hora'] = df_tipo.apply(self.ajuste_horario, axis=1, 
-                                                       is_special_date=is_special_date, 
-                                                       tipo_cambio_hora=tipo_cambio_hora)
-                    
-                    # Aggregate data
-                    df_tipo = df_tipo.groupby(['Unidad de Programación', 'hora']).sum().reset_index()
-                    df_tipo = df_tipo[df_tipo['volumen'] != 0.0]
-                    
-                    # Add date and rename columns
-                    df_tipo['fecha'] = day
-                    df_tipo = df_tipo.rename(columns={"Unidad de Programación": "UP"})
-                    
-                    # Add UP_id from dict_unidades
-                    df_tipo['UP_id'] = df_tipo['UP'].map(dict_unidades)
-                    
-                    # Store the result
-                    results.append((df_tipo, tipo))
-        
-        # Clean up files
-        self.cleanup_files(file_name, file_name_2)
-        
-        return results
+ 

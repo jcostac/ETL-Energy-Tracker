@@ -33,7 +33,7 @@ class TransformadorESIOS:
         self.dataset_type = 'precios'
         self.transform_types = ['latest', 'batch', 'single', 'multiple']
     
-    def transform_data(self, start_date: str = None, end_date: str = None, mercados: list[str] = None, transform_type: str = 'latest') -> None:
+    def transform_data_for_all_markets(self, start_date: str = None, end_date: str = None, mercados: list[str] = None, transform_type: str = 'latest') -> None:
         """
         Transforms data for all specified markets based on the transform_type.
         
@@ -57,6 +57,8 @@ class TransformadorESIOS:
                 self._transform_latest(mercado)
             elif transform_type == 'multiple':
                 self._transform_multiple(mercado, start_date, end_date)
+
+        return print(f"✅Successfully transformed data for all markets✅")
 
     def transform_diario(self, raw_df: pd.DataFrame) -> pd.DataFrame:
         mercado = 'diario'
