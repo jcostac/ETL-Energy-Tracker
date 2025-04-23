@@ -10,8 +10,8 @@ result = load_dotenv()
 
 #Data lake base path
 #DATA_LAKE_BASE_PATH_DEV = "C:\\Users\\Usuario\\OneDrive - OPTIMIZE ENERGY\\Escritorio\\Optimize Energy\\timescale_v_duckdb_testing\\data"
-DATA_LAKE_BASE_PATH_DEV= "/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data"
-DATA_LAKE_BASE_PATH_PROD = ""
+DATA_LAKE_BASE_PATH_DEV= os.getenv('DATA_LAKE_BASE_PATH_DEV')
+DATA_LAKE_BASE_PATH_PROD = os.getenv('DATA_LAKE_BASE_PATH_PROD')
 
 # Add a default value in case ENV is None
 DATA_LAKE_BASE_PATH = DATA_LAKE_BASE_PATH_DEV if os.getenv('DEV') == 'True' else DATA_LAKE_BASE_PATH_PROD
