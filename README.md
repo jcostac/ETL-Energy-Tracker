@@ -1,2 +1,2 @@
-# timescale_v_duckdb_testing
-Testing database performance of TImescale vs duckdb
+# ETL Energy Trackjer Pipeline
+Proof of concept for tracking of energy prices and volumes for REE. 
