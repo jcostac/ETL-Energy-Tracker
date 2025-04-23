@@ -14,10 +14,14 @@ class EnvUtils:
         prod = os.getenv('PROD') == 'True'
         
         if dev:
+            print("--------------------------------")
             print("Working in development environment.")
+            print("--------------------------------")
             return dev, prod
         elif prod:
+            print("--------------------------------")
             print("Working in production environment.")
+            print("--------------------------------")
             return dev, prod
         else:
             raise ValueError("Environment not set. Please check your .env file for DEV and PROD variables.")
