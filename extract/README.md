@@ -121,7 +121,7 @@ print("Extraction complete.")
 
 ## Interdependencies & Workflow
 
-1.  **Configuration:** Load API keys from `.env` and market/file settings from `configs/*.py`.
+1.  **Configuration:** Load API keys from `.env` and market/file settings from `configs/*.py`. Set datalake path in the `.env` as well
 2.  **Execution Start:** Instantiate an extractor class (`ESIOSPreciosExtractor`, `I90VolumenesExtractor`, etc.).
 3.  **Extractor Layer:** The extractor validates input (dates) and iterates through the requested period.
 4.  **Downloader Layer:** For each day/request, the extractor calls the relevant downloader class (`descargador_esios.py` or `descargador_i90.py`).

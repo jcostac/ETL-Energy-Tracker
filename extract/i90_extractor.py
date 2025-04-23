@@ -353,7 +353,7 @@ class I90PreciosExtractor(I90Extractor):
             if df_precios is not None and not df_precios.empty:
                 year = day.year
                 month = day.month
-                dataset_type = 'precios' # Consistent dataset type for prices
+                dataset_type = 'precios_i90' # Consistent dataset type for prices
 
                 # Use appropriate saving method based on dev flag
                 # Assuming write_raw_csv for consistency, adjust if needed (e.g., parquet)
