@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.storage_file_utils import RawFileUtils, ProcessedFileUtils
-from procesador_esios import ESIOSProcessor
+from transform._procesador_esios import ESIOSProcessor
 from configs.esios_config import ESIOSConfig
 from utilidades.etl_date_utils import DateUtilsETL
 

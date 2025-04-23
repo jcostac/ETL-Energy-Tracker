@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.db_utils import DatabaseUtils # If needed for configs or validation
 from utilidades.storage_file_utils import RawFileUtils, ProcessedFileUtils
-from transform.procesador_i90 import I90Processor # Import the new processor
+from transform._procesador_i90 import I90Processor # Import the new processor
 from configs.i90_config import (
         I90Config, # Base class
         DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig,
