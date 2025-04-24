@@ -472,7 +472,7 @@ class ProcessedFileUtils(StorageFileUtils):
 
         return df
         
-    def write_processed_parquet(self, df: pd.DataFrame, mercado: str) -> None:
+    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_col: str) -> None:
         """
         Processes a DataFrame and saves/appends it as a parquet file in the appropriate directory structure.
         
@@ -533,7 +533,7 @@ class ProcessedFileUtils(StorageFileUtils):
                 schema,
                 use_dictionary=['id_mercado'],  # Dictionary encoding for id_mercado
                 compression='zstd',
-                write_statistics=['datetime_utc', 'price'],  # Stats for datetime_utc, price only
+                write_statistics=['datetime_utc', value_col],  # Stats for datetime_utc, price only
                 data_page_size=64 * 1024,  # 64 KB pages
                 data_page_version='2.0',
                 row_group_size= self.row_group_size # 2880 rows per partition

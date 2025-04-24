@@ -1,4 +1,3 @@
-# esios_precios_transform.py
 from typing import Dict, List, Optional, Union
 import pandas as pd
 from datetime import datetime
@@ -29,6 +28,7 @@ class ESIOSProcessor:
             config (ESIOSConfig): An instance of ESIOSConfig containing market mappings.
         """
         self.config = ESIOSConfig()
+        self.data_validatior = DataValidationUtils()
         self.indicators_to_filter = [600, 612, 613, 614, 615, 616, 617, 618, 1782]
         self.geo_names = []# List of unique geo_name values in indicators_to_filter
 
@@ -59,7 +59,7 @@ class ESIOSProcessor:
         
         unique_geo_names = df['geo_name'].unique()
 
-        print(f"Unique geo_names: {unique_geo_names}")
+        print(f"Geo names in dataset: {unique_geo_names}")
 
         self.geo_names = unique_geo_names
 
@@ -68,39 +68,38 @@ class ESIOSProcessor:
     def _filter_by_geo_name(self, df: pd.DataFrame, geo_name: str) -> pd.DataFrame:
         """
         Filter data based on geo_name for specific indicators.
-
-        This method filters the DataFrame to include only the rows where the 'indicador_id'
-        matches the specified geo_name and is part of the indicators to filter. If the 
-        'geo_name' column is not present, it will still ensure that 'indicador_id' is 
-        converted to string type.
-
-        Args:
-            df (pd.DataFrame): The input DataFrame containing the data to be filtered.
-            geo_name (str): The geo_name to filter the DataFrame by.
-
-        Returns:
-            pd.DataFrame: The filtered DataFrame.
         """
         self.unique_geo_names(df)
+
+        
         if geo_name not in self.geo_names:
             raise ValueError(f"Error: Geo_name {geo_name} not found in the DataFrame. Aborting.")
         
         # Convert indicators to filter into string format for comparison
         indicators_to_filter_str = [str(i) for i in self.indicators_to_filter]
-
-        # Check if both 'indicador_id' and 'geo_name' columns exist in the DataFrame
+        
+        # Ensure 'indicador_id' is of string type
+        if 'indicador_id' in df.columns:
+            df['indicador_id'] = df['indicador_id'].astype(str)
+        
+        # Create and apply the filter
         if 'indicador_id' in df.columns and 'geo_name' in df.columns:
-            # Ensure 'indicador_id' is of string type
-            df['indicador_id'] = df['indicador_id'].astype(str)
-            # Create masks for filtering
-            mask_indicator_match = df['indicador_id'].isin(indicators_to_filter_str)
-            mask_geo_match = df['geo_name'] == geo_name
-            # Filter the DataFrame based on the masks
-            df = df[~mask_indicator_match | (mask_indicator_match & mask_geo_match)].copy()
-
-        elif 'indicador_id' in df.columns:
-            # Ensure 'indicador_id' is of string type even if 'geo_name' is missing
-            df['indicador_id'] = df['indicador_id'].astype(str)
+            # Print debug information
+            print(f"Before filtering - Shape: {df.shape}")
+            print(f"Unique indicator IDs: {df['indicador_id'].unique()}")
+            print(f"Unique geo_names: {df['geo_name'].unique()}")
+            
+            
+            # Apply filters
+            mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'] == geo_name)
+            df_filtered = df[mask]
+            
+            # Print debug information
+            print(f"After filtering - Shape: {df_filtered.shape}")
+            print(f"Remaining indicator IDs: {df_filtered['indicador_id'].unique()}")
+            print(f"Remaining geo_names: {df_filtered['geo_name'].unique()}")
+            
+            return df_filtered
         
         return df
 
@@ -124,33 +123,6 @@ class ESIOSProcessor:
             df = df.rename(columns={'value': 'precio'})
         elif 'precio' not in df.columns:
             raise ValueError("Neither 'value' nor 'precio' column found.")
-        
-        return df
-
-    def _ensure_datetime_utc(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Ensure 'datetime_utc' column exists and is timezone-aware datetime.
-
-        This method checks for the presence of the 'datetime_utc' column in the DataFrame.
-        If it exists, it attempts to convert it to a timezone-aware datetime. If the conversion
-        fails, it raises a ValueError. If the column is missing, it also raises a ValueError.
-
-        Args:
-            df (pd.DataFrame): The input DataFrame to be checked and modified.
-
-        Returns:
-            pd.DataFrame: The modified DataFrame with 'datetime_utc' as timezone-aware datetime.
-
-        Raises:
-            ValueError: If 'datetime_utc' column is not found or if conversion fails.
-        """
-        if 'datetime_utc' in df.columns:
-            try:
-                df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
-            except Exception as e:
-                raise ValueError(f"Error converting 'datetime_utc' to datetime: {e}. Aborting.") from e
-        else:
-            raise ValueError("Error: 'datetime_utc' column not found. Aborting.")
         
         return df
 
@@ -252,7 +224,7 @@ class ESIOSProcessor:
             empty_df.index.name = 'id'  # Set the index name
             return empty_df
 
-    def _validate_final_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _validate_data(self, df: pd.DataFrame, type: str) -> pd.DataFrame:
         """
         Validate the final DataFrame structure and content.
 
@@ -266,7 +238,10 @@ class ESIOSProcessor:
             pd.DataFrame: The original DataFrame after validation.
         """
         if not df.empty:  # Only validate if there's data
-            DataValidationUtils.validate_data(df, "precios")  # Validate the data
+            if type == "processed":
+                df = self.data_validatior.validate_processed_data(df, data="precios")  # Validate the data
+            elif type == "raw":
+                df = self.data_validatior.validate_raw_data(df, data="precios")  # Validate the data
         else:
             print("Skipping validation for empty DataFrame.")  # Skip validation for empty DataFrame
         return df
@@ -295,19 +270,19 @@ class ESIOSProcessor:
             empty_df.index.name = 'id'
             return empty_df
 
-        df_processed = df.copy()
+        df_raw = df.copy()
         geo_name = geo_name if geo_name else "España"
 
         # Define the standard processing pipeline
         # In the future, this could be made configurable
         pipeline = [
             (self._filter_by_geo_name, {'geo_name': geo_name}),
+            (self._validate_data, {"type": "raw"}), #validate raw data
             (self._rename_value_to_precio, {}),
-            (self._ensure_datetime_utc, {}),
             (self._map_id_mercado, {}),
             (self._handle_granularity, {}),
             (self._select_and_finalize_columns, {}),
-            (self._validate_final_data, {})
+            (self._validate_data, {"type": "processed"}) #validate processed data
         ]
 
         # Execute the pipeline
@@ -316,7 +291,8 @@ class ESIOSProcessor:
             for step_func, step_kwargs in pipeline:
                 print(f"Applying step: {step_func.__name__}...")
                 #use  function and necessary kwargs of the corresponding step
-                df_processed = step_func(df_processed, **step_kwargs)
+                df_processed = step_func(df_raw, **step_kwargs)
+                print(f"DataFrame shape after step: {df_processed.shape}")
 
                 #if the dataframe is empty and the step is not the final validation step, raise an error
                 if df_processed.empty and step_func.__name__ != '_validate_final_data':

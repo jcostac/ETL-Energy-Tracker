@@ -9,7 +9,6 @@ result = load_dotenv()
 #print(f"Loaded .env file: {result}")  # Should print True if .env was found and loaded
 
 #Data lake base path
-#DATA_LAKE_BASE_PATH_DEV = "C:\\Users\\Usuario\\OneDrive - OPTIMIZE ENERGY\\Escritorio\\Optimize Energy\\timescale_v_duckdb_testing\\data"
 DATA_LAKE_BASE_PATH_DEV= os.getenv('DATA_LAKE_BASE_PATH_DEV')
 DATA_LAKE_BASE_PATH_PROD = os.getenv('DATA_LAKE_BASE_PATH_PROD')
 
