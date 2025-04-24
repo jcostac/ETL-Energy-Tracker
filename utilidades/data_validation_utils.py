@@ -7,64 +7,59 @@ class DataValidationUtils:
     def __init__(self):
 
         #processed data structure requirements
-        self.processed_price_required_cols = ['datetime_utc', 'price', 'id_mercado']
+        self.processed_price_required_cols = ['datetime_utc', 'precio', 'id_mercado']
         self.processed_volumenesi90_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "up_id"]
         self.processed_volumenesi3_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "tecnologia_id"]
 
         #raw data structure requirements
-        self.raw_price_required_cols = ['datetime_utc', 'value', 'indicador_id', 'id_mercado']
+        self.raw_price_required_cols = ['datetime_utc', 'value', 'indicador_id']
         self.raw_precios_i90_required_cols = []
         self.raw_volumenes_required_cols = []
 
+    def _validate_data_common(self, df: pd.DataFrame, type: str, data: str) -> pd.DataFrame:
+        """
+        Common validation logic for both raw and processed data.
+
+        Args:
+            df (pd.DataFrame): Input DataFrame.
+            type (str): Type of data ('raw' or 'processed').
+            data (str): Specific dataset type ('precios', 'volumenes_i90', etc.).
+
+        Returns:
+            pd.DataFrame: Validated DataFrame.
+        """
+        print(f"Debug - Before dtype validation: {len(df)} rows")
+        df = self._validate_dtypes(df, type, data)
+        print(f"Debug - After dtype validation: {len(df)} rows")
+        df = self._validate_columns(df, type, data)
+        print(f"Debug - After column validation: {len(df)} rows")
+        return df
+
     def validate_processed_data(self, df: pd.DataFrame, data: str) -> pd.DataFrame:
         """
-        Validate price data for structural and data types issues.
-        
+        Validate processed data for structural and data types issues.
+
         Args:
-            df (pd.DataFrame): Input DataFrame with price data
-            type (str): Type of data to validate (raw or processed)
-            data (str): the datat that will be validated(price, volumenes_i90, volumenes_i3, precios_i90)
+            df (pd.DataFrame): Input DataFrame with processed data.
+            data (str): The dataset that will be validated (e.g., 'precios', 'volumenes_i90').
+
+        Returns:
+            pd.DataFrame: Validated DataFrame.
         """
-        type = "processed"
+        return self._validate_data_common(df, "processed", data)
 
-        if data == 'precios':
-            df = self._validate_dtypes(df, type, data)
-            df = self._validate_columns(df, type, data)
-        elif data == 'volumenes_i90':
-            df = self._validate_dtypes(df, type, data)
-            df = self._validate_columns(df, type, data)
-        elif data == 'volumenes_i3':
-            df = self._validate_dtypes(df, type, data)
-            df = self._validate_columns(df, type, data)
-        elif data == 'precios_i90':
-            df = self._validate_dtypes(df, type, "precios_i90")
-            df = self._validate_columns(df, type, "precios_i90")
-
-        return df
-
-    def validate_raw_data(self, df, data):
+    def validate_raw_data(self, df: pd.DataFrame, data: str) -> pd.DataFrame:
         """
         Validate raw data for structural and data types issues.
-        
+
         Args:
-            df: Input DataFrame with raw data
+            df (pd.DataFrame): Input DataFrame with raw data.
+            data (str): The dataset that will be validated (e.g., 'precios').
+
+        Returns:
+            pd.DataFrame: Validated DataFrame.
         """
-        type = "raw"
-
-        if data == 'precios':
-            df = self._validate_dtypes(df, type, data)
-            df = self._validate_columns(df, type, data)
-        elif data == 'volumenes_i90':
-            df = self._validate_dtypes(df, type, data)
-            df = self._validate_columns(df, type, data)
-        elif data == 'volumenes_i3':
-            df = self._validate_dtypes(df, type, data)
-            df = self._validate_columns(df, type, data)
-        elif data == 'precios_i90':
-            df = self._validate_dtypes(df, type, "precios_i90")
-            df = self._validate_columns(df, type, "precios_i90")
-
-        return df
+        return self._validate_data_common(df, "raw", data)
                
     def _validate_dtypes(self, df: pd.DataFrame, type: str, data: str) -> pd.DataFrame:
         """
@@ -73,17 +68,22 @@ class DataValidationUtils:
         Args:
             df: Input DataFrame with data
             dataset_type: Either 'raw' or 'processed'
-            data_type: Type of data (price, volumenes_i90, volumenes_i3)
+            data_type: Type of data (precio, volumenes_i90, volumenes_i3)
         """
         try:
+            print(f"Debug - Start of dtype validation: {len(df)} rows")
+            # Create a copy to avoid modifying the original
+            df = df.copy()
+            
             df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
+            print(f"Debug - After datetime conversion: {len(df)} rows")
             
             #for processed data
             if type == "processed":
                 #for the different datasets that can be processed
                 if data == "precios":
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
-                    df['price'] = df['price'].astype('float32')
+                    df['precio'] = df['precio'].astype('float32')
                 
                 elif data in ["volumenes_i90", "volumenes_i3"]:
                     # Add volumenes validation here
@@ -98,9 +98,10 @@ class DataValidationUtils:
             elif type == "raw":
                 #for the different datasets that can be raw
                 if data == "precios":
-                    df['id_mercado'] = df['id_mercado'].astype('str')
-                    df['precio'] = df['precio'].astype('float32')
+                    df['value'] = df['value'].astype('float32')
+                    print(f"Debug - After value conversion: {len(df)} rows")
                     df['indicador_id'] = df['indicador_id'].astype('str')
+                    print(f"Debug - After indicador_id conversion: {len(df)} rows")
 
                 elif data == "precios_i90":
                     pass
@@ -110,6 +111,8 @@ class DataValidationUtils:
                 
                 print(f"Raw {data} {type} data types validated successfully. {df.dtypes}")
                 
+            print(f"Debug - End of dtype validation: {len(df)} rows")
+            
         except Exception as e:
             print(f"Debug - DataFrame columns: {df.columns}")
             print(f"Debug - DataFrame dtypes before conversion: {df.dtypes}")
@@ -124,17 +127,18 @@ class DataValidationUtils:
         Args:
             df: Input DataFrame with data
             dataset_type: Either 'raw' or 'processed'
-            data_type: Type of data (price, volumenes_i90, volumenes_i3)
+            data_type: Type of data (precio, volumenes_i90, volumenes_i3)
         """
         required_cols = None
         
         if type == "processed":
-            if data == "price":
+            if data == "precios":
                 required_cols = self.processed_price_required_cols
             elif data == "volumenes_i90":
                 required_cols = self.processed_volumenesi90_required_cols
             elif data == "volumenes_i3":
                 required_cols = self.processed_volumenesi3_required_cols
+
         elif type == "raw":
             if data == "precios":
                 required_cols = self.raw_price_required_cols

@@ -120,7 +120,7 @@ class ESIOSProcessor:
             ValueError: If neither 'value' nor 'precio' column is found in the DataFrame.
         """
         if 'value' in df.columns:
-            df = df.rename(columns={'value': 'precio'})
+            df = df.rename(columns={'value': 'precio'}, inplace=True)
         elif 'precio' not in df.columns:
             raise ValueError("Neither 'value' nor 'precio' column found.")
         
@@ -304,10 +304,10 @@ class ESIOSProcessor:
             return df_processed
 
         except ValueError as e:
-            print(f"Error during transformation pipeline step: {e}")
             # Return an empty DataFrame with the expected final structure on error
             empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
             empty_df.index.name = 'id'
+            raise ValueError(f"Error during transformation pipeline step: {e}")
             return empty_df
         
         except Exception as e: # Catch any other unexpected error
