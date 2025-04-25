@@ -86,6 +86,7 @@ class DescargadorESIOS:
             
             # Request timeout handling (10 seconds connection, 30 seconds read)
             response = requests.get(url, headers=headers, params=params, timeout=(20, 40))
+
             
             # Check HTTP status code
             if response.status_code != 200:

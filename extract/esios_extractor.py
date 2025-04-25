@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import sys
 import os
-
+import time
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
@@ -120,6 +120,10 @@ class ESIOSPreciosExtractor:
                     fecha_fin_carga=day_str,
                     **kwargs # Pass any additional market-specific arguments (for terciaria, secundaria, intras)
                 )
+
+
+                #sleep for 1 second to avoid rate limit
+                time.sleep(1)
 
                 if df is not None and not df.empty:
                     # Determine file format based on self.dev flag
