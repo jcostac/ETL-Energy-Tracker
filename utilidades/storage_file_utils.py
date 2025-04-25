@@ -516,13 +516,14 @@ class ProcessedFileUtils(StorageFileUtils):
                 # Drop partition columns from the file (Hive will infer from path)
                 partition_table_final = self._drop_partition_cols(partition_table, partition_cols)
                 # Build output file path for this partition
-                output_file = self._build_partition_path(partition, partition_cols)
+                output_file = self._build_partition_path(partition, partition_cols, value_col)
                 # Write the partitioned Parquet file
+                row_group_size = min(self.row_group_size, len(df))
                 self._write_parquet_file(
-                    partition_table_final,
-                    output_file,
-                    value_col,
-                    is_precios_data=(value_col == 'precio')
+                    table=partition_table_final,
+                    output_path=output_file,
+                    value_col=value_col,
+                    row_group_size=row_group_size
                 )
             except Exception as e:
                 print(f"[ERROR] Failed to process partition {partition.to_dict()}: {e}")
@@ -612,7 +613,7 @@ class ProcessedFileUtils(StorageFileUtils):
             return table
         return table.drop(cols_to_drop)
 
-    def _build_partition_path(self, partition, partition_cols: list) -> str:
+    def _build_partition_path(self, partition, partition_cols: list, value_col: str) -> str:
         """
         Builds the output file path for a given partition using Hive-style key=value directories.
         Hive-style: key=value for each partition column
@@ -639,7 +640,7 @@ class ProcessedFileUtils(StorageFileUtils):
             path_segments.append(segment)
         partition_path_str = os.path.join(*path_segments) #kwargs, join path segments ie> processed/mercado=BTC/id_mercado=BTC/year=2024/month=01
         os.makedirs(partition_path_str, exist_ok=True) #create directory if it doesn't exist
-        return os.path.join(partition_path_str, 'data.parquet')
+        return os.path.join(partition_path_str, f"{value_col}.parquet")
 
     def _set_stats_cols(self, value_col: str, schema: pa.Schema) -> list[str]:
         """
@@ -665,7 +666,7 @@ class ProcessedFileUtils(StorageFileUtils):
 
         return dict_cols
 
-    def _write_parquet_file(self, table: pa.Table, output_file: str, value_col: str, is_precios_data: bool) -> None:
+    def _write_parquet_file(self, table: pa.Table, output_file: str, value_col: str, row_group_size: int) -> None:
         """
         Writes a PyArrow Table to a Parquet file with appropriate compression, statistics, and dictionary encoding.
 
@@ -689,10 +690,9 @@ class ProcessedFileUtils(StorageFileUtils):
                 write_statistics=stats_cols,
                 use_dictionary=dict_cols,
                 data_page_size=64 * 1024,
-                data_page_version='2.0',
-                row_group_size=self.row_group_size
+                data_page_version='2.0'
             )
-            writer.write_table(table)
+            writer.write_table(table, row_group_size)
             writer.close()
             print(f"[DEBUG] Successfully wrote {output_file}")
         except Exception as e:

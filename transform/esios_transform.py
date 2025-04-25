@@ -150,13 +150,12 @@ class TransformadorESIOS:
                 max_date = unique_dates.max()
                 date_range = f"dates in range: {min_date} to {max_date}"
 
-            print(f"Successfully saved processed {mercado} data for {date_range}.")
 
         except Exception as e:
             print(f"Error saving processed data for {mercado}: {e}")
             return
 
-    def _route_to_market_processor(self, raw_df: pd.DataFrame, mercado: str):
+    def _route_to_market_saver(self, raw_df: pd.DataFrame, mercado: str):
         """Routes the data to appropriate market-specific processor based on market type."""
         if mercado not in ESIOSConfig().esios_precios_markets:
             raise ValueError(f"Invalid market: {mercado}. Must be one of: {ESIOSConfig().esios_precios_markets}")
@@ -184,7 +183,7 @@ class TransformadorESIOS:
                     print(f"Processing {mercado} for {year}-{month:02d}")
                     raw_df = self.raw_file_utils.read_raw_file(year, month, self.dataset_type, mercado)
                     raw_df = self._filter_data_by_mode(raw_df, 'batch')
-                    self._route_to_market_processor(raw_df, mercado)
+                    self._route_to_market_saver(raw_df, mercado)
                     print(f"Successfully processed {mercado} for {year}-{month:02d}")
 
 
@@ -237,8 +236,11 @@ class TransformadorESIOS:
                 print(f"- {raw_df['datetime_utc'].dt.date.min()} to {raw_df['datetime_utc'].dt.date.max()}")
                 print("--------------------------------")
                 return
+            
+            breakpoint()
 
-            self._route_to_market_processor(filtered_df, mercado)
+            #save data
+            self._route_to_market_saver(filtered_df, mercado)
 
         except FileNotFoundError:
              print(f"Raw file not found for {mercado} for {target_year}-{target_month:02d}.")
@@ -274,7 +276,9 @@ class TransformadorESIOS:
             print("--------------------------------")
 
             raw_df = self._filter_data_by_mode(raw_df, 'latest')
-            self._route_to_market_processor(raw_df, mercado)
+
+            #save data
+            self._route_to_market_saver(raw_df, mercado)
 
         except Exception as e:
             print(f"Error processing latest data for {mercado}: {e}")
@@ -351,9 +355,9 @@ class TransformadorESIOS:
 
             print(f"Filtered data shape for transformation: {processed_df.shape}")
 
-            # Apply the final transformation and save (assuming _route_to_market_processor handles this)
+            # Apply the final transformation and save (assuming _route_to_market_saver handles this)
             print(f"Applying market transformation for {mercado}...")
-            self._route_to_market_processor(processed_df, mercado)
+            self._route_to_market_saver(processed_df, mercado)
             print(f"Successfully processed and saved data for {mercado} from {start_date} to {end_date}")
 
         except ValueError as ve:
