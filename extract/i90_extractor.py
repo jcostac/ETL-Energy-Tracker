@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import sys
 import os
 import re
-
+import time 
 
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
@@ -116,6 +116,9 @@ class I90Extractor:
              raise AttributeError("Downloader instance 'self.i90_downloader' not found.")
 
         zip_file_name, excel_file_name, pestañas_con_error = self.i90_downloader.download_i90_file(day)
+        
+        #sleep for 1 second to avoid rate limit
+        time.sleep(1)
         print(f"Downloaded I90 data for {day.date()}: Zip='{zip_file_name}', Excel='{excel_file_name}', Errors='{pestañas_con_error}'")
 
         #update latest i90 data
