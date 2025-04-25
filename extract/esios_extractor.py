@@ -161,6 +161,9 @@ class ESIOSPreciosExtractor:
         except Exception as e:
             print(f"Error extracting data: {e}")
 
+        finally:
+            print("Data extraction pipeline finished.")
+
     def extract_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
         Extract daily market prices from ESIOS.
@@ -296,4 +299,10 @@ class ESIOSPreciosExtractor:
         return
 
 
-   
+def example_usage():
+    esios_extractor = ESIOSPreciosExtractor()
+    esios_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
+
+
+
+

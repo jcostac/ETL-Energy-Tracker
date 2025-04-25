@@ -228,7 +228,6 @@ class I90Extractor:
                 print(f"Error during extraction for {day.date()}: {e}")
 
             finally:
-
                 #clean up files in the temporary download path
                 self.i90_downloader.cleanup_files(self.latest_i90_zip_file_name, self.latest_i90_excel_file_name)
 
@@ -236,6 +235,9 @@ class I90Extractor:
                 self.latest_i90_zip_file_name = None
                 self.latest_i90_excel_file_name = None
                 self.latest_i90_pestañas_con_error = None
+
+                print(f"Extraction for {day.date()} finished.")
+                print("--------------------------------")
 
     def _extract_data_per_day_all_markets(self, day: datetime):
         """
@@ -436,5 +438,15 @@ class I90PreciosExtractor(I90Extractor):
         except Exception as e:
             print(f"Error extracting data: {e}")
 
+
         # Note: Diario prices come from API, not I90 file typically.
         # Curtailment and P48 downloaders don't define get_i90_precios.
+
+
+def example_usage():
+    i90_volumenes_extractor = I90VolumenesExtractor()
+    i90_precios_extractor = I90PreciosExtractor()
+
+    i90_volumenes_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
+    i90_precios_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
+
