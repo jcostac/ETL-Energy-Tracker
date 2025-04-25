@@ -73,6 +73,7 @@ class ESIOSProcessor:
 
         
         if geo_name not in self.geo_names:
+            print(f"Debug - Geo names in dataset: {self.geo_names}")
             raise ValueError(f"Error: Geo_name {geo_name} not found in the DataFrame. Aborting.")
         
         # Convert indicators to filter into string format for comparison
@@ -84,21 +85,9 @@ class ESIOSProcessor:
         
         # Create and apply the filter
         if 'indicador_id' in df.columns and 'geo_name' in df.columns:
-            # Print debug information
-            print(f"Before filtering - Shape: {df.shape}")
-            print(f"Unique indicator IDs: {df['indicador_id'].unique()}")
-            print(f"Unique geo_names: {df['geo_name'].unique()}")
-            
-            
             # Apply filters
             mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'] == geo_name)
             df_filtered = df[mask]
-            
-            # Print debug information
-            print(f"After filtering - Shape: {df_filtered.shape}")
-            print(f"Remaining indicator IDs: {df_filtered['indicador_id'].unique()}")
-            print(f"Remaining geo_names: {df_filtered['geo_name'].unique()}")
-            
             return df_filtered
         
         return df
@@ -121,7 +110,9 @@ class ESIOSProcessor:
         """
         if 'value' in df.columns:
             df = df.rename(columns={'value': 'precio'}, inplace=True)
+            
         elif 'precio' not in df.columns:
+            print(f"Debug - Columns in DataFrame: {df.columns}")
             raise ValueError("Neither 'value' nor 'precio' column found.")
         
         return df
@@ -292,7 +283,7 @@ class ESIOSProcessor:
                 print(f"Applying step: {step_func.__name__}...")
                 #use  function and necessary kwargs of the corresponding step
                 df_processed = step_func(df_raw, **step_kwargs)
-                print(f"DataFrame shape after step: {df_processed.shape}")
+                print(f"DataFrame shape after step {step_func.__name__}	: {df_processed.shape}")
 
                 #if the dataframe is empty and the step is not the final validation step, raise an error
                 if df_processed.empty and step_func.__name__ != '_validate_final_data':
@@ -300,14 +291,12 @@ class ESIOSProcessor:
                     print(f"DataFrame became empty after step: {step_func.__name__}. Stopping pipeline.")
                     raise ValueError(f"Error: DataFrame became empty after step: {step_func.__name__}. Stopping pipeline.")
 
-            print("Transformation pipeline completed successfully.")
             return df_processed
 
         except ValueError as e:
             # Return an empty DataFrame with the expected final structure on error
             empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
             empty_df.index.name = 'id'
-            raise ValueError(f"Error during transformation pipeline step: {e}")
             return empty_df
         
         except Exception as e: # Catch any other unexpected error
@@ -316,3 +305,6 @@ class ESIOSProcessor:
             empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
             empty_df.index.name = 'id'
             return empty_df
+        
+        finally:
+            print("Transformation pipeline ended.")

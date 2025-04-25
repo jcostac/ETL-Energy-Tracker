@@ -97,9 +97,8 @@ class DataValidationUtils:
                 #for the different datasets that can be raw
                 if data == "precios":
                     df['value'] = df['value'].astype('float32')
-                    print(f"Debug - After value conversion: {len(df)} rows")
                     df['indicador_id'] = df['indicador_id'].astype('str')
-                    print(f"Debug - After indicador_id conversion: {len(df)} rows")
+                    
 
                 elif data == "precios_i90":
                     pass
