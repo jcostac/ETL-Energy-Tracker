@@ -16,16 +16,36 @@ sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
 from configs.esios_config import DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
+from utilidades.proxy_utils import ProxyManager
+import requests.exceptions
 
 class DescargadorESIOS:
     """
     Clase base para descargar datos de ESIOS.
     """
     def __init__(self):
-        self.esios_token = os.getenv('ESIOS_TOKEN')
-        self.download_window = 93
-        self.madrid_tz = pytz.timezone('Europe/Madrid')
+
+        #get esios token from environment variable
+        self.esios_token = os.getenv('ESIOS_API_KEY')
+        if not self.esios_token:
+            raise ValueError("ESIOS_API_KEY environment variable not set.")
         
+        #download window in days
+        self.download_window = 93
+
+        #madrid timezone
+        self.madrid_tz = pytz.timezone('Europe/Madrid')
+
+        # Set proxy usage directly to False
+        self.use_proxies = False
+        print(f"ESIOS Proxy Usage Enabled: {self.use_proxies}") # Log the setting
+
+        # Conditionally initialize proxy manager (used in make esios request)
+        if self.use_proxies:
+            self.proxy_manager = ProxyManager()
+        else:
+            self.proxy_manager = None
+
     def get_esios_data(self, indicator_id: str, fecha_inicio_carga: str = None, fecha_fin_carga: str = None) -> pd.DataFrame:
         """
         Downloads data from ESIOS for a specific indicator within a date range.
@@ -38,13 +58,12 @@ class DescargadorESIOS:
         Returns:
             pd.DataFrame: DataFrame containing the requested data with granularity information
         """
-        # Direct request to ESIOS API - no need to check granularity dates since 
-        # granularity is included in the response and stored in DataFrame
         return self._make_esios_request(indicator_id, fecha_inicio_carga, fecha_fin_carga)
 
     def _make_esios_request(self, indicator_id: str, fecha_inicio_carga: str, fecha_fin_carga: str) -> pd.DataFrame:
         """
         Internal method that handles the actual API call and data processing.
+        Can now run with or without proxies based on self.use_proxies.
 
         Args:
             indicator_id (str): The ID of the indicator for which data is being requested.
@@ -69,72 +88,145 @@ class DescargadorESIOS:
         start_utc = start_local.astimezone(pytz.UTC)
         end_utc = end_local.astimezone(pytz.UTC)
 
-        try:
-            # Download ESIOS data for each market of interest
-            url = f"http://api.esios.ree.es/indicators/{indicator_id}"
-            params = {
-                'start_date': start_utc.strftime('%Y-%m-%dT%H:%M:%SZ'), #convert to string format in UTC
-                'end_date': end_utc.strftime('%Y-%m-%dT%H:%M:%SZ') #convert to string format in UTC
-            }
-            headers = {
-                'x-api-key': self.esios_token,
-                'Authorization': f'Token token={self.esios_token}'
-            }
-            
-            # Log request information
-            print(f"Realizando solicitud API para indicador {indicator_id} desde {fecha_inicio_carga} hasta {fecha_fin_carga}")
-            
-            # Request timeout handling (10 seconds connection, 30 seconds read)
-            response = requests.get(url, headers=headers, params=params, timeout=(20, 40))
+        url = f"https://api.esios.ree.es/indicators/{indicator_id}"
+        params = {
+            'start_date': start_utc.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'end_date': end_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+        }
+        headers = {
+            'Accept': 'application/json; application/vnd.esios-api-v2+json',
+            'Content-Type': 'application/json',
+            'Host': 'api.esios.ree.es',
+            'x-api-key': self.esios_token,
+        }
 
-            
-            # Check HTTP status code
-            if response.status_code != 200:
-                if response.status_code == 401:
-                    raise ValueError(f"Error de autenticación (401): Token ESIOS no válido o expirado")
-                elif response.status_code == 403:
-                    raise ValueError(f"Error de permisos (403): No tiene acceso al indicador {indicator_id}")
-                elif response.status_code == 404:
-                    raise ValueError(f"Indicador no encontrado (404): El indicador {indicator_id} no existe en ESIOS")
-                elif response.status_code == 429:
-                    raise ValueError(f"Demasiadas solicitudes (429): Se ha excedido el límite de solicitudes a la API de ESIOS")
-                elif 500 <= response.status_code < 600:
-                    raise ConnectionError(f"Error del servidor ESIOS ({response.status_code}): Intente nuevamente más tarde")
-                else:
-                    raise ValueError(f"Error HTTP {response.status_code}: {response.text}")
-            
-            # Try to parse JSON response
+        if self.use_proxies:
+            # --- Proxy Logic ---
+            # Maximum number of proxy attempts before giving up
+            max_attempts = 10 
+            attempt = 0
+            last_exception = None
+
+            while attempt < max_attempts:
+                # Ensure proxy manager is initialized
+                if not self.proxy_manager:
+                    raise Exception("Proxy Manager not initialized, but use_proxies is True.")
+
+                # Get the next available proxy from the rotation
+                proxy = self.proxy_manager.get_next_proxy()
+                if not proxy:
+                    print("No available proxies left to try.")
+                    break
+                
+                # Format the proxy for requests library
+                proxies = self.proxy_manager.format_proxy(proxy)
+                
+                try:
+                    # Log the current attempt and proxy being used
+                    print(f"Attempt {attempt + 1}/{max_attempts}: API request for indicator {indicator_id} via proxy {proxies.get('http') or proxies.get('https')}")
+                    
+                    # Make the actual API request with the current proxy
+                    # Timeout: (connect timeout, read timeout) in seconds
+                    response = requests.get(url, headers=headers, params=params, timeout=(20, 40), proxies=proxies)
+
+                    # Check HTTP status code for proxy-specific issues first
+                    if response.status_code in [403, 407]:
+                        # 403: Forbidden, 407: Proxy Authentication Required
+                        print(f"Proxy {proxies.get('http') or proxies.get('https') } failed with status {response.status_code}, blacklisting and retrying...")
+                        self.proxy_manager.mark_bad_proxy(proxy)
+                        attempt += 1
+                        last_exception = requests.exceptions.RequestException(f"Proxy error: {response.status_code}")
+                        continue
+                    # Check for other errors after proxy check
+                    elif response.status_code != 200:
+                        self._handle_response_error(response, indicator_id)
+
+                    # Success path (process data)
+                    return self._process_response(response, indicator_id)
+
+                except (requests.exceptions.ProxyError, requests.exceptions.ConnectTimeout, 
+                        requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
+                    # Handle proxy-specific connection errors
+                    print(f"Proxy {proxies.get('http') or proxies.get('https') } connection failed: {e}, blacklisting and retrying...")
+                    self.proxy_manager.mark_bad_proxy(proxy)
+                    last_exception = e
+                    attempt += 1
+                    continue
+                except Exception as e:
+                    # For other exceptions, raise immediately
+                    raise Exception(f"Unexpected error during proxied ESIOS request for indicator {indicator_id}: {e}")
+
+            # If loop finishes without success (max attempts reached)
+            raise Exception(f"All proxy attempts failed for indicator {indicator_id}. Last error: {last_exception}")
+
+        else:
+            # --- Direct Logic (No Proxies) ---
             try:
-                data = response.json()
-            except ValueError as e:
-                raise ValueError(f"Error al parsear la respuesta JSON: {e}. Contenido: {response.text[:200]}...")
-            
-            #extract granularity from json data -> can be "Quince minutos" or "Hora"
-            granularidad = data["indicator"]["tiempo"][0]["name"].strip()
+                print(f"Direct API request for indicator {indicator_id} from {fecha_inicio_carga} to {fecha_fin_carga}")
+                response = requests.get(url, headers=headers, params=params, timeout=(20, 40))
 
+                if response.status_code != 200:
+                    self._handle_response_error(response, indicator_id)
 
+                # Success path (process data)
+                return self._process_response(response, indicator_id)
 
-            #validate data structure
-            if not self.validate_data_structure(data, granularidad):
-                return pd.DataFrame() #return empty dataframe if no data found
-            
-            #if no errors, procesamos los datos de interés en un dataframe que se ecnuentran en el key values
-            df_data = pd.DataFrame(data['indicator']['values'])
-            df_data['granularidad'] = granularidad
-            df_data["indicador_id"] = indicator_id
+            except requests.exceptions.RequestException as e:
+                raise Exception(f"Direct ESIOS request failed for indicator {indicator_id}: {e}")
+            except Exception as e:
+                raise Exception(f"Unexpected error during direct ESIOS request for indicator {indicator_id}: {e}")
 
-            return df_data
+    def _handle_response_error(self, response: requests.Response, indicator_id: str):
+        """Helper method to raise appropriate errors based on status code."""
+        if response.status_code == 401:
+            raise ValueError(f"Authentication error (401): Invalid or expired ESIOS_TOKEN.")
+        elif response.status_code == 403:
+            raise ValueError(f"Forbidden (403): Check API token permissions or IP restrictions. Response: {response.text[:200]}")
+        elif response.status_code == 404:
+            raise ValueError(f"Indicator not found (404): Indicator {indicator_id} does not exist.")
+        elif response.status_code == 429:
+            raise ConnectionError(f"Too Many Requests (429): Rate limit exceeded.")
+        elif 500 <= response.status_code < 600:
+            raise ConnectionError(f"ESIOS Server Error ({response.status_code}): Try again later. Response: {response.text[:200]}")
+        else:
+            raise ValueError(f"HTTP Error {response.status_code}: {response.text[:200]}")
 
-        except requests.exceptions.ConnectTimeout:
-            raise ConnectionError(f"Tiempo de conexión agotado al intentar conectar con la API de ESIOS. Verifique su conexión a Internet.")
-        except requests.exceptions.ReadTimeout:
-            raise ConnectionError(f"Tiempo de espera agotado al leer datos de la API de ESIOS. El servidor puede estar sobrecargado.")
-        except requests.exceptions.ConnectionError as e:
-            raise ConnectionError(f"Error de conexión con la API de ESIOS: {e}. Verifique su conexión a Internet.")
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Error en la solicitud HTTP a la API de ESIOS: {e}")
-        except Exception as e:
-            raise Exception(f"Error inesperado al descargar los datos de ESIOS para el indicador {indicator_id}: {e}")
+    def _process_response(self, response: requests.Response, indicator_id: str) -> pd.DataFrame:
+        """Helper method to parse JSON and process the data. Extracts granularity and validates data structure.
+        Args:
+            response (requests.Response): The response from the ESIOS API.
+            indicator_id (str): The ID of the indicator for which data is being requested.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the requested data from the ESIOS API with an extra column for "granularidad".
+        """
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise ValueError(f"Failed to parse JSON response: {e}. Content: {response.text[:200]}...")
+
+        # Extract granularity
+        indicator_data = data.get('indicator', {})
+        time_info = indicator_data.get('tiempo', [])
+        granularidad = "Unknown" # Default
+        if time_info and isinstance(time_info, list) and len(time_info) > 0 and 'name' in time_info[0]: #defensive checks
+            granularidad = time_info[0]['name'].strip()
+        else:
+            print(f"Warning: Could not determine granularity for indicator {indicator_id}. Response structure: {data.keys()}")
+
+        if not self.validate_data_structure(data, granularidad):
+            # validate_data_structure prints message if no data found
+            return pd.DataFrame()
+
+        df_data = pd.DataFrame(indicator_data.get('values', []))
+        if df_data.empty:
+            print(f"No values found for indicator {indicator_id} in the response.")
+            return pd.DataFrame()
+
+        df_data['granularidad'] = granularidad
+        df_data["indicador_id"] = indicator_id
+
+        return df_data
 
     def validate_data_structure(self, data: dict, granularidad: str) -> bool:
         """
@@ -149,28 +241,30 @@ class DescargadorESIOS:
         """
         try:
             # Check if data has the expected structure
-            if 'indicator' not in data or 'values' not in data['indicator']:
-                raise ValueError(f"Formato de respuesta inesperado: {data.keys()}")
+            if 'indicator' not in data or 'values' not in data.get('indicator', {}):
+                # Allow empty 'values' list, but 'indicator' key must exist
+                indicator_present = 'indicator' in data
+                values_present = isinstance(data.get('indicator'), dict) and 'values' in data['indicator']
+                if not indicator_present or not values_present :
+                    raise ValueError(f"Unexpected response format. Keys: {data.keys()}. Indicator content: {data.get('indicator', 'Not Found')}")
 
-            else:
-                # Extract indicator name and ID for logging
-                indicator_name = data['indicator'].get('name', self.__class__.__name__)
+            indicator_name = data.get('indicator', {}).get('name', self.__class__.__name__)
+            values = data.get('indicator', {}).get('values', [])
 
-            # If values list is empty, return False instead of raising an error
-            if not data['indicator']['values']:
-                print(f"No se encontraron datos para el indicador: {indicator_name},  en el período solicitado")
-                return False #handled as an empty dataframe return in wrapper function get precios
-            
-            #validate granularidad
-            if granularidad != "Quince minutos" and granularidad != "Hora":
-                raise ValueError(f"Granularidad inesperada: {granularidad}")
-            
-            print(f"Validación de datos exitosa para el indicador: {indicator_name}")
-            
+            # If values list is None or empty, return False (no data)
+            if values is None or len(values) == 0 :
+                print(f"No data values found for indicator: {indicator_name} in the requested period.")
+                return False # Correctly indicates no data, not invalid structure
+
+            # Validate granularity if known
+            if granularidad not in ["Unknown", "Quince minutos", "Hora"]:
+                print(f"Warning: Unexpected granularity '{granularidad}' for indicator {indicator_name}")
+
         except Exception as e:
-            raise ValueError(f"Error al validar la estructura de los datos: {e}")
-        
-        # Return True if all checks pass and data exists
+            # Raise only if the structure is truly invalid, not just missing values
+            raise ValueError(f"Error validating data structure: {e}. Data snippet: {str(data)[:200]}")
+
+        # Return True if structure seems ok and data values exist
         return True
 
     @deprecated(action="error", reason="Method used in old ETL pipeline, now deprecated")
@@ -260,7 +354,6 @@ class DiarioPreciosDL(DescargadorESIOS):
 
     def __init__(self):
         super().__init__() 
-
         #get config from esios config file 
         self.config = DiarioConfig()
         self.indicator_id = self.config.indicator_id
