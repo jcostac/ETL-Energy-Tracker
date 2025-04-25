@@ -28,11 +28,10 @@ class DataValidationUtils:
         Returns:
             pd.DataFrame: Validated DataFrame.
         """
-        print(f"Debug - Before dtype validation: {len(df)} rows")
         df = self._validate_dtypes(df, type, data)
-        print(f"Debug - After dtype validation: {len(df)} rows")
+       
         df = self._validate_columns(df, type, data)
-        print(f"Debug - After column validation: {len(df)} rows")
+        
         return df
 
     def validate_processed_data(self, df: pd.DataFrame, data: str) -> pd.DataFrame:
@@ -71,13 +70,12 @@ class DataValidationUtils:
             data_type: Type of data (precio, volumenes_i90, volumenes_i3)
         """
         try:
-            print(f"Debug - Start of dtype validation: {len(df)} rows")
+            
             # Create a copy to avoid modifying the original
             df = df.copy()
             
             df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
-            print(f"Debug - After datetime conversion: {len(df)} rows")
-            
+           
             #for processed data
             if type == "processed":
                 #for the different datasets that can be processed
@@ -110,8 +108,7 @@ class DataValidationUtils:
                     pass
                 
                 print(f"Raw {data} {type} data types validated successfully. {df.dtypes}")
-                
-            print(f"Debug - End of dtype validation: {len(df)} rows")
+    
             
         except Exception as e:
             print(f"Debug - DataFrame columns: {df.columns}")
@@ -150,7 +147,7 @@ class DataValidationUtils:
         if not all(col in df.columns for col in required_cols):
             raise ValueError(f"Missing required columns. Expected: {required_cols}")
         
-        print(f"{data.capitalize()} {type} data structure validated successfully. {df.columns}")
+        print(f"{type.upper()} {data.upper()} data structure validated successfully.")
         
         return df
     
