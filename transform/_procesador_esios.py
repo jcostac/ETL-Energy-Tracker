@@ -30,7 +30,9 @@ class ESIOSProcessor:
         self.config = ESIOSConfig()
         self.data_validatior = DataValidationUtils()
         self.indicators_to_filter = [600, 612, 613, 614, 615, 616, 617, 618, 1782]
-        self.geo_names = []# List of unique geo_name values in indicators_to_filter
+        self.geo_names_in_raw_data = []# List of unique geo_name values in raw data
+        self.geo_names_of_interest = ["España"]# List of unique geo_name values of interest
+
 
     @staticmethod
     def standardize_prices(df: pd.DataFrame) -> pd.DataFrame:
@@ -61,7 +63,7 @@ class ESIOSProcessor:
 
         print(f"Geo names in dataset: {unique_geo_names}")
 
-        self.geo_names = unique_geo_names
+        self.geo_names_in_raw_data = unique_geo_names
 
         return
 
@@ -70,11 +72,6 @@ class ESIOSProcessor:
         Filter data based on geo_name for specific indicators.
         """
         self.unique_geo_names(df)
-
-        
-        if geo_name not in self.geo_names:
-            print(f"Debug - Geo names in dataset: {self.geo_names}")
-            raise ValueError(f"Error: Geo_name {geo_name} not found in the DataFrame. Aborting.")
         
         # Convert indicators to filter into string format for comparison
         indicators_to_filter_str = [str(i) for i in self.indicators_to_filter]
@@ -85,9 +82,11 @@ class ESIOSProcessor:
         
         # Create and apply the filter
         if 'indicador_id' in df.columns and 'geo_name' in df.columns:
-            # Apply filters
-            mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'] == geo_name)
+            # Apply both filters together
+            mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'].isin(self.geo_names_of_interest))
             df_filtered = df[mask]
+            print("After filtering:")
+            print(df_filtered.head())
             return df_filtered
         
         return df
@@ -109,7 +108,7 @@ class ESIOSProcessor:
             ValueError: If neither 'value' nor 'precio' column is found in the DataFrame.
         """
         if 'value' in df.columns:
-            df = df.rename(columns={'value': 'precio'}, inplace=True)
+            df = df.rename(columns={'value': 'precio'})
             
         elif 'precio' not in df.columns:
             print(f"Debug - Columns in DataFrame: {df.columns}")
@@ -261,13 +260,11 @@ class ESIOSProcessor:
             empty_df.index.name = 'id'
             return empty_df
 
-        df_raw = df.copy()
-        geo_name = geo_name if geo_name else "España"
 
         # Define the standard processing pipeline
         # In the future, this could be made configurable
         pipeline = [
-            (self._filter_by_geo_name, {'geo_name': geo_name}),
+            (self._filter_by_geo_name, {'geo_name': self.geo_names_of_interest}),
             (self._validate_data, {"type": "raw"}), #validate raw data
             (self._rename_value_to_precio, {}),
             (self._map_id_mercado, {}),
@@ -279,11 +276,17 @@ class ESIOSProcessor:
         # Execute the pipeline
         try:
             #iterate over pipeline steps
+            i = 0
+            df_processed = df.copy()
             for step_func, step_kwargs in pipeline:
-                print(f"Applying step: {step_func.__name__}...")
+                i += 1
+                print("--------------------------------")
+                print(f"Applying step {i} of {len(pipeline)}: {step_func.__name__}...")
                 #use  function and necessary kwargs of the corresponding step
-                df_processed = step_func(df_raw, **step_kwargs)
-                print(f"DataFrame shape after step {step_func.__name__}	: {df_processed.shape}")
+                df_processed = step_func(df_processed, **step_kwargs)
+                print(f"DataFrame shape after step {step_func.__name__}:")
+                print(f"Rows: {df_processed.shape[0]} Columns: {df_processed.shape[1]}")
+                print("--------------------------------")
 
                 #if the dataframe is empty and the step is not the final validation step, raise an error
                 if df_processed.empty and step_func.__name__ != '_validate_final_data':
@@ -307,4 +310,5 @@ class ESIOSProcessor:
             return empty_df
         
         finally:
+            print("--------------------------------")
             print("Transformation pipeline ended.")

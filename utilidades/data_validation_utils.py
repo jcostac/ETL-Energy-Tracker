@@ -90,7 +90,7 @@ class DataValidationUtils:
                 elif data == "precios_i90":
                     pass
                 
-                print(f"Processed {data} {type} data types validated successfully. {df.dtypes}")
+                print(f"{type.upper()} {data.upper()} data types validated successfully.")
             
             #for raw data
             elif type == "raw":
@@ -106,7 +106,7 @@ class DataValidationUtils:
                 elif data in ["volumenes_i90", "volumenes_i3"]:
                     pass
                 
-                print(f"Raw {data} {type} data types validated successfully. {df.dtypes}")
+                print(f"{type.upper()} {data.upper()} data types validated successfully.")
     
             
         except Exception as e:

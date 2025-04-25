@@ -120,11 +120,11 @@ class TransformadorESIOS:
             print("--------------------------------")
             print(f"Raw data loaded ({len(raw_df)} rows). Starting transformation...")
             print("--------------------------------")
-            print(f"Raw data head: {raw_df.head()}")
+            print(f"Raw data head: \n{raw_df.head()}")
             print("--------------------------------")
             processed_df = self.processor.transform_price_data(raw_df)
             print("--------------------------------")
-            print(f"Processed data head: {processed_df.head()}")
+            print(f"Processed data head: \n{processed_df.head()}")
             print("--------------------------------")
 
             if processed_df.empty:
@@ -136,10 +136,7 @@ class TransformadorESIOS:
             return
 
         try:
-             # Ensure the directory exists before saving
-            save_path = self.processed_file_utils.get_processed_file_path(mercado)
-            save_path.parent.mkdir(parents=True, exist_ok=True)
-            
+        
             # 3. Save Processed Data
             print(f"Transformation complete ({len(processed_df)} rows). Saving processed data...")
             self.processed_file_utils.write_processed_parquet(processed_df, mercado, value_col='precio')
@@ -227,8 +224,8 @@ class TransformadorESIOS:
             raw_df = self.raw_file_utils.read_raw_file(target_year, target_month, self.dataset_type, mercado)
             print("--------------------------------")
             print(f"Raw data before filtering by single day:")
-            print(raw_df.head())
-            print(raw_df.shape)
+            print("\n", raw_df.head())
+            print(f"Shape: \n{raw_df.shape}")
             print("--------------------------------")
 
             # Filter the DataFrame for the specific date and process
@@ -271,9 +268,15 @@ class TransformadorESIOS:
             
             print(f"Processing latest data for {mercado}: {latest_year}-{latest_month}")
             raw_df = self.raw_file_utils.read_raw_file(latest_year, latest_month, self.dataset_type, mercado)
+
+            print("--------------------------------")
+            print(f"Raw data before filtering by single day:")
+            print("\n", raw_df.head())
+            print(f"Shape: \n{raw_df.shape}")
+            print("--------------------------------")
+
             raw_df = self._filter_data_by_mode(raw_df, 'latest')
             self._route_to_market_processor(raw_df, mercado)
-            print(f"Successfully processed latest data for {mercado}: {latest_year}-{latest_month}")
 
         except Exception as e:
             print(f"Error processing latest data for {mercado}: {e}")
@@ -317,6 +320,7 @@ class TransformadorESIOS:
                         print(f"Successfully read raw file: {year}-{month:02d} for {mercado}")
                     else:
                         print(f"Raw file {year}-{month:02d} for {mercado} is empty. Skipping.")
+
                 except FileNotFoundError:
                     print(f"Warning: Raw file not found for {mercado} for {year}-{month:02d}. Skipping.")
                 except Exception as e:
@@ -395,8 +399,6 @@ class TransformadorESIOS:
                 elif mode == 'multiple':
                     self._process_date_range(mercado, start_date, end_date)
             
-            print(f"✅Successfully transformed data for all markets✅")
-
         except Exception as e:
             print(f"Error transforming data for {mercado}: {e}")
             return
