@@ -85,8 +85,6 @@ class ESIOSProcessor:
             # Apply both filters together
             mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'].isin(self.geo_names_of_interest))
             df_filtered = df[mask]
-            print("After filtering:")
-            print(df_filtered.head())
             return df_filtered
         
         return df

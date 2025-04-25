@@ -439,9 +439,8 @@ class ProcessedFileUtils(StorageFileUtils):
     def __init__(self, use_s3: bool = False) -> None:
         super().__init__(use_s3)
         self.processed_path = self.base_path / 'processed'
-        self.row_group_size = 2880 
+        self.row_group_size = 122880
 
-    
     @staticmethod
     def drop_processed_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
@@ -450,7 +449,7 @@ class ProcessedFileUtils(StorageFileUtils):
         # Then handle subset-based duplicates
         try:
             if dataset_type == 'volumenes_i90':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "UP"], keep='last')
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "up"], keep='last')
             elif dataset_type == 'volumenes_i3':
                 df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
             else:
@@ -474,76 +473,230 @@ class ProcessedFileUtils(StorageFileUtils):
         
     def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_col: str) -> None:
         """
-        Processes a DataFrame and saves/appends it as a parquet file in the appropriate directory structure.
-        
+        Processes a DataFrame and saves/appends it as partitioned parquet files using Hive partitioning.
+        The method is modular, with each step delegated to a helper for clarity and debuggability.
+
         Args:
-            year (int): The year for the data being processed
-            month (int): The month for the data being processed
-            df (pd.DataFrame): The DataFrame containing the data to be saved
-            dataset_type (str): The type of dataset (e.g., 'precios', 'demanda')
-            mercado (str): The market name (e.g., 'diario', 'intradiario')
-            
-        Returns:
-            None
+            df (pd.DataFrame): The DataFrame containing the data to be saved.
+            mercado (str): The market name (used for partitioning and added as a column).
+            value_col (str): The name of the main value column (e.g., 'precio', 'volumenes_i90').
         """
+        if df.empty:
+            print(f"[DEBUG] Input DataFrame for {mercado} is empty. Skipping parquet write.")
+            return
 
+        # Add partition columns (year, month, mercado)
         df = self.add_partition_cols(df, mercado)
+        # Ensure datetime_utc is timezone-naive for Parquet compatibility
+        df = self._ensure_datetime_utc_naive(df)
 
-        # Convert to PyArrow Table
-        table = pa.Table.from_pandas(df)
-
-        # Define partitioning columns
+        # Define partition columns and get unique partition combinations
         partition_cols = ['mercado', 'id_mercado', 'year', 'month']
-        partitioned_df= df[partition_cols].drop_duplicates()
+        unique_partitions_df = df[partition_cols].drop_duplicates()
 
+        print(f"[DEBUG] Writing {len(unique_partitions_df)} partition(s) for market '{mercado}'...")
 
-        # Write partitioned Parquet files
-        for _, partition in partitioned_df.iterrows():
-            # Create a mask to filter the data for the current partition
-            mask = True
-            # Iterate over each column defined in partition_cols
-            for col in partition_cols:
-                # Update the mask to include only rows that match the current partition's value for this column
-                mask = mask & (table[col] == partition[col])
+        # Convert DataFrame to PyArrow Table
+        table = self._to_pyarrow_table(df)
+        if table is None:
+            print("[ERROR] Could not convert DataFrame to PyArrow Table.")
+            return
 
-            # Apply the mask to filter the table, resulting in a partitioned table
-            partition_table = table.filter(mask)
+        # Iterate over each unique partition and write to Parquet
+        for _, partition in unique_partitions_df.iterrows():
+            try:
+                # Filter table for current partition
+                partition_table = self._filter_partition(table, partition, partition_cols)
+                if partition_table.num_rows == 0:
+                    print(f"[DEBUG] Skipping empty partition: {partition.to_dict()}")
+                    continue
 
-            # Sort by datetime_utc
-            partition_table = partition_table.sort_by('datetime_utc')
-            
-            # Drop partitioning columns (year, month, mercado) to exclude from Parquet to avoid unnecessary storage
-            partition_table = partition_table.drop(['year', 'month', 'mercado'])
-            
-            # Define output path ie mercado/id_mercado/year/month/data.parquet -> secundaria/1/2025/04/data.parquet
+                # Sort partition by datetime_utc
+                partition_table = self._sort_partition_table(partition_table, 'datetime_utc')
+                # Drop partition columns from the file (Hive will infer from path)
+                partition_table_final = self._drop_partition_cols(partition_table, partition_cols)
+                # Build output file path for this partition
+                output_file = self._build_partition_path(partition, partition_cols)
+                # Write the partitioned Parquet file
+                self._write_parquet_file(
+                    partition_table_final,
+                    output_file,
+                    value_col,
+                    is_precios_data=(value_col == 'precio')
+                )
+            except Exception as e:
+                print(f"[ERROR] Failed to process partition {partition.to_dict()}: {e}")
 
-            partition_path = os.path.join(
-                self.processed_path,
-                f"{partition['mercado']}",
-                f"{partition['id_mercado']}",
-                f"{partition['year']}",
-                f"{partition['month']:02d}"
-            ) 
-            os.makedirs(partition_path, exist_ok=True)
-            
-            # Write with ParquetWriter for column-specific statistics
-            schema = partition_table.schema
+        print(f"[DEBUG] Finished writing partitioned Parquet files for market '{mercado}' to {self.processed_path}")
+
+    def _ensure_datetime_utc_naive(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Ensures the 'datetime_utc' column is timezone-naive for Parquet compatibility.
+
+        Args:
+            df (pd.DataFrame): Input DataFrame.
+
+        Returns:
+            pd.DataFrame: DataFrame with 'datetime_utc' as timezone-naive.
+        """
+        if pd.api.types.is_datetime64_any_dtype(df['datetime_utc']) and df['datetime_utc'].dt.tz is not None:
+            print("Converting datetime_utc to UTC naive for Parquet compatibility...")
+            df['datetime_utc'] = df['datetime_utc'].dt.tz_convert(None)
+        return df
+
+    def _to_pyarrow_table(self, df: pd.DataFrame) -> Optional[pa.Table]:
+        """
+        Converts a pandas DataFrame to a PyArrow Table.
+
+        Args:
+            df (pd.DataFrame): Input DataFrame.
+
+        Returns:
+            pa.Table or None: PyArrow Table if successful, else None.
+        """
+        try:
+            return pa.Table.from_pandas(df, preserve_index=False)
+        except Exception as e:
+            print(f"[ERROR] Error converting DataFrame to PyArrow Table: {e}")
+            print(f"[DEBUG] DataFrame dtypes:\n{df.dtypes}")
+            return None
+
+    def _filter_partition(self, table: pa.Table, partition, partition_cols: list) -> pa.Table:
+        """
+        Filters a PyArrow Table for rows matching the given partition.
+
+        Args:
+            table (pa.Table): The full PyArrow Table.
+            partition (pd.Series): The partition values.
+            partition_cols (list): List of partition column names.
+
+        Returns:
+            pa.Table: Filtered PyArrow Table for the partition.
+        """
+        mask = True
+        for col in partition_cols:
+            mask = pa.compute.and_(mask, pa.compute.equal(table[col], partition[col]))
+        return table.filter(mask)
+
+    def _sort_partition_table(self, table: pa.Table, sort_col: str) -> pa.Table:
+        """
+        Sorts a PyArrow Table by the specified column.
+
+        Args:
+            table (pa.Table): The PyArrow Table to sort.
+            sort_col (str): The column name to sort by.
+
+        Returns:
+            pa.Table: Sorted PyArrow Table.
+        """
+        try:
+            return table.sort_by(sort_col)
+        except Exception as e:
+            print(f"[ERROR] Error sorting partition Table by {sort_col}: {e}")
+            return table
+
+    def _drop_partition_cols(self, table: pa.Table, partition_cols: list) -> pa.Table:
+        """
+        Drops partition columns from the PyArrow Table (they are encoded in the Hive path).
+
+        Args:
+            table (pa.Table): The PyArrow Table.
+            partition_cols (list): List of partition column names to drop.
+
+        Returns:
+            pa.Table: Table with partition columns dropped.
+        """
+        cols_to_drop = [col for col in partition_cols if col in table.column_names]
+        if not cols_to_drop:
+            print("[DEBUG] No partition columns found to drop.")
+            return table
+        return table.drop(cols_to_drop)
+
+    def _build_partition_path(self, partition, partition_cols: list) -> str:
+        """
+        Builds the output file path for a given partition using Hive-style key=value directories.
+        Hive-style: key=value for each partition column
+        ie mercado=diario/id_mercado=1/year=2024/month=01
+
+        Hive file partitioning is useful to optimzie queries for engines like Spark. DuckDB also supports it.
+
+        Args:
+            partition (pd.Series): The partition values.
+            partition_cols (list): List of partition column names.
+
+        Returns:
+            str: The full output file path for the partition.
+        """
+        # Hive-style: key=value for each partition column
+        path_segments = [str(self.processed_path)]
+        for col in partition_cols:
+            value = partition[col] 
+            # Format month as two digits, others as is
+            if col == 'month':
+                segment = f"{col}={value:02d}" #only month requieres 0 padding since there are single digitsfor months
+            else:
+                segment = f"{col}={value}"
+            path_segments.append(segment)
+        partition_path_str = os.path.join(*path_segments) #kwargs, join path segments ie> processed/mercado=BTC/id_mercado=BTC/year=2024/month=01
+        os.makedirs(partition_path_str, exist_ok=True) #create directory if it doesn't exist
+        return os.path.join(partition_path_str, 'data.parquet')
+
+    def _set_stats_cols(self, value_col: str, schema: pa.Schema) -> list[str]:
+        """
+        Sets the columns to include in statistics.
+        """
+        stats_cols = ['datetime_utc']
+        if value_col in schema.names:
+            stats_cols.append(value_col)
+        
+        return stats_cols
+    
+    def _set_dict_cols(self, schema: pa.Schema) -> list[str]:
+        """
+        Sets the columns to include in dictionary encoding.
+        """
+        dict_cols = []
+        if "up" in schema.names:
+            dict_cols.append("up")
+        elif "tecnologia" in schema.names:
+            dict_cols.append("tecnologia")
+        else:
+            print(f"[DEBUG] Dictionary encoding not applied for this dataset.")
+
+        return dict_cols
+
+    def _write_parquet_file(self, table: pa.Table, output_file: str, value_col: str, is_precios_data: bool) -> None:
+        """
+        Writes a PyArrow Table to a Parquet file with appropriate compression, statistics, and dictionary encoding.
+
+        Args:
+            table (pa.Table): The PyArrow Table to write.
+            output_file (str): The output file path.
+            value_col (str): The main value column for statistics.
+            is_precios_data (bool): Whether the data is 'precios' type (affects dictionary encoding).
+        """
+        try:
+            schema = table.schema
+            #set stat cols and dct cols
+            stats_cols = self._set_stats_cols(value_col, schema)
+            dict_cols = self._set_dict_cols(schema)
+
+            #write parquet file
             writer = pq.ParquetWriter(
-                os.path.join(partition_path, 'data.parquet'),
+                output_file,
                 schema,
-                use_dictionary=['id_mercado'],  # Dictionary encoding for id_mercado
                 compression='zstd',
-                write_statistics=['datetime_utc', value_col],  # Stats for datetime_utc, price only
-                data_page_size=64 * 1024,  # 64 KB pages
+                write_statistics=stats_cols,
+                use_dictionary=dict_cols,
+                data_page_size=64 * 1024,
                 data_page_version='2.0',
-                row_group_size= self.row_group_size # 2880 rows per partition
+                row_group_size=self.row_group_size
             )
-            writer.write_table(partition_table)
+            writer.write_table(table)
             writer.close()
-
-        print(f"Partitioned Parquet files written to {self.processed_path}")
-
-        return
+            print(f"[DEBUG] Successfully wrote {output_file}")
+        except Exception as e:
+            print(f"[ERROR] Error writing Parquet file {output_file}: {e}")
 
 
 if __name__ == "__main__":

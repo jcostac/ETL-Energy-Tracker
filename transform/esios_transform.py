@@ -120,8 +120,6 @@ class TransformadorESIOS:
             print("--------------------------------")
             print(f"Raw data loaded ({len(raw_df)} rows). Starting transformation...")
             print("--------------------------------")
-            print(f"Raw data head: \n{raw_df.head()}")
-            print("--------------------------------")
             processed_df = self.processor.transform_price_data(raw_df)
             print("--------------------------------")
             print(f"Processed data head: \n{processed_df.head()}")
