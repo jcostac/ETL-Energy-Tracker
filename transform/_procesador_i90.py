@@ -3,6 +3,8 @@ from typing import Dict, List, Optional, Any
 import sys
 from pathlib import Path
 import pytz
+import traceback
+from utilidades.progress_utils import with_progress
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -160,29 +162,19 @@ class I90Processor:
             return df
 
         # Verify required columns exist
-        required_cols = ['fecha', 'hora']
+        required_cols = ['fecha', 'hora', "granularity"]
         if not all(col in df.columns for col in required_cols):
-            print(f"Warning: Required columns {required_cols} not found in DataFrame.")
-            if 'datetime_utc' in df.columns:
-                try:
-                    df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
-                    return df
-                except Exception as e:
-                    print(f"Error processing existing datetime_utc: {e}")
-                    return df
-            else:
-                print("Cannot create datetime_utc without required columns.")
-                return pd.DataFrame()  # Return empty DataFrame if we can't process dates
+            raise ValueError(f"Required columns: {required_cols} not found in DataFrame.")
 
         # Split data by granularity if the column exists
         df_hourly = pd.DataFrame()
         df_15min = pd.DataFrame()
         
-        if 'granularidad' in df.columns:
-            df_hourly = df[df['granularidad'] == 'Hora'].copy()
-            df_15min = df[df['granularidad'] == 'Quince minutos'].copy()
-        else:
-            # No granularidad column - detect format from 'hora' values
+        if 'granularity' in df.columns:
+            df_hourly = df[df['granularity'] == 'Hora'].copy()
+            df_15min = df[df['granularity'] == 'Quince minutos'].copy()
+
+        else: # No granularity column - detect format from 'hora' values
             sample_horas = df['hora'].dropna().astype(str).head(5).tolist()
             
             # Check if format is "HH-HH+1" (possibly with 'a'/'b' suffix)
@@ -190,15 +182,15 @@ class I90Processor:
             
             if hourly_format:
                 df_hourly = df.copy()
-                df['granularidad'] = 'Hora'  # Add for tracking
+                df['granularity'] = 'Hora'  # Add for tracking
             else:
                 df_15min = df.copy()
-                df['granularidad'] = 'Quince minutos'  # Add for tracking
+                df['granularity'] = 'Quince minutos'  # Add for tracking
         
         # Process hourly data
         df_hourly_processed = pd.DataFrame()
         if not df_hourly.empty:
-            print(f"Processing {len(df_hourly)} rows of hourly data")
+            print(f"Processing {len(df_hourly)} rows of hourly data...")
             df_hourly_processed = self._process_hourly_data(df_hourly)
         
         # Process 15-minute data
@@ -225,6 +217,7 @@ class I90Processor:
         
         return final_df
 
+    @with_progress(message="Processing hourly data...", interval=2)
     def _process_hourly_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix for fall-back DST).
@@ -253,10 +246,10 @@ class I90Processor:
         
         except Exception as e:
             print(f"Error processing hourly data: {e}")
-            import traceback
             print(traceback.format_exc())
             return pd.DataFrame()
 
+    @with_progress(message="Processing 15-minute data...", interval=2)
     def _process_15min_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process 15-minute data (numeric index "1" to "96/92/100").
@@ -322,9 +315,14 @@ class I90Processor:
         else:
             # For cases where we have just the hour as a number
             base_hour = int(hora_str)
-        
+
         # Create naive datetime from date and hour
-        naive_dt = pd.Timestamp.combine(fecha, pd.Timestamp(hour=base_hour).time())
+        naive_dt = pd.Timestamp(
+            year=fecha.year,
+            month=fecha.month,
+            day=fecha.day,
+            hour=base_hour
+        )
         
         # Get timezone object
         tz = pytz.timezone('Europe/Madrid')
@@ -389,7 +387,7 @@ class I90Processor:
         year_range = (fecha.year - 1, fecha.year + 1)
         start_range = pd.Timestamp(year=year_range[0], month=1, day=1)
         end_range = pd.Timestamp(year=year_range[1], month=12, day=31)
-        
+
         # Get the transition dates for the year range 
         transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
         
