@@ -411,7 +411,7 @@ class I90Processor:
         intervals_per_hour = 4
         
         # Generate the base sequence of datetimes for the day
-        day_start = pd.Timestamp.combine(fecha, pd.Timestamp(hour=0, minute=0).time())
+        naive_dt = pd.Timestamp(year=fecha.year, month=fecha.month, day=fecha.day, hour=0)
         
         # Generate the complete sequence for the day
         # For normal days and fall-back days, we can use date_range
@@ -419,7 +419,7 @@ class I90Processor:
             # For normal days (96 intervals) or fall-back days (100 intervals)
             # Use naive datetime sequence first (no timezone)
             ts_sequence = pd.date_range(
-                start=day_start,
+                start=naive_dt,
                 periods=num_intervals,
                 freq='15min'
             )
