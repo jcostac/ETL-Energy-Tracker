@@ -426,10 +426,27 @@ class RawFileUtils(StorageFileUtils):
                 # Check if the item is a directory and its name represents a year (is numeric)
                 if item.is_dir():
                     folder_list.append(int(item.name))
+
+            # Sort the folder list in descending order (oldest year first)
+            folder_list.sort()
+
             return folder_list
         else:
             print(f"Target path {target_path} does not exist or is not a directory.")
             return []
+
+    def get_raw_file_list(self, mercado: str, year: int, month: int) -> list[str]:
+        """
+        Get a list of raw files for a given market, year, and month.
+        """
+        file_path = self.raw_path / mercado / str(year) / str(month)
+
+        if self.dev and not self.prod:
+            file_extension = 'csv'
+        else:
+            file_extension = 'parquet'
+
+        return list(file_path.glob(f"*.{file_extension}"))
     
 
 class ProcessedFileUtils(StorageFileUtils):

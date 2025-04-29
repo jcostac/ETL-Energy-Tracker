@@ -158,7 +158,6 @@ class TransformadorI90:
 
         print(f"\n✅ Successfully completed transformation run for specified markets and dataset types. ✅")
 
-
     def _transform_and_save(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str):
         """Transforms data using the processor, adjusts schema for secundaria/date, and saves the result."""
         if raw_df.empty:
@@ -257,7 +256,6 @@ class TransformadorI90:
             # print("Processed DF info before failed save:")
             # print(processed_df.info())
             return
-
 
     # --- Data Loading and Processing Logic (similar to TransformadorESIOS) ---
 
@@ -362,9 +360,13 @@ class TransformadorI90:
             target_year = target_date.year
             target_month = target_date.month
 
-            # Read the specific month's file, passing dataset_type if needed
-            raw_file_path = self.raw_file_utils.get_raw_file_path(target_year, target_month, mercado)
-            dataset_type = self._extract_dataset_type_from_filename(raw_file_path)
+            # Get the list of files for the target year and month
+            files = self.raw_file_utils.get_raw_file_list(mercado, target_year, target_month)
+            if not files:
+                print(f"No files found for {mercado}/{dataset_type} for {target_year}-{target_month:02d}. Skipping.")
+                return
+
+            #read the files in the list of raw files
             raw_df = self.raw_file_utils.read_raw_file(target_year, target_month, dataset_type, mercado)
 
             # Filter for the specific day
@@ -388,19 +390,23 @@ class TransformadorI90:
         print(f"Starting LATEST transformation for {mercado} - {dataset_type}")
         latest_year, latest_month = None, None # Initialize for error message
         try:
-            # Find the latest year/month available using RawFileUtils
-            years = sorted(self.raw_file_utils.get_raw_folder_list(mercado, dataset_type=dataset_type), reverse=True)
-            if not years: print(f"No data years found for {mercado}/{dataset_type}. Skipping latest."); return
+            # Find the latest year/month available using RawFileUtils and sort them in descending order (latest year first) 
+            years = sorted(self.raw_file_utils.get_raw_folder_list(mercado=mercado), reverse=True)
+            if not years:
+                print(f"No data years found for {mercado}. Skipping latest.")
+                return
             latest_year = years[0]
 
-            months = sorted(self.raw_file_utils.get_raw_folder_list(mercado, latest_year, dataset_type=dataset_type), reverse=True)
-            if not months: print(f"No data months found for latest year {latest_year}. Skipping latest."); return
+            # Get months for the latest year, and sort them in descending order (latest month first)
+            months = sorted(self.raw_file_utils.get_raw_folder_list(mercado=mercado, year=latest_year), reverse=True)
+            if not months:
+                print(f"No data months found for latest year {latest_year} in {mercado}. Skipping latest.")
+                return
             latest_month = months[0]
 
             print(f"Identified latest potential file location: {latest_year}-{latest_month:02d}")
+
             # Read the file, passing dataset_type if needed
-            raw_file_path = self.raw_file_utils.get_raw_file_path(latest_year, latest_month, mercado)
-            dataset_type = self._extract_dataset_type_from_filename(raw_file_path)
             raw_df = self.raw_file_utils.read_raw_file(latest_year, latest_month, dataset_type, mercado)
 
             # Filter for the latest day within that file
@@ -434,55 +440,31 @@ class TransformadorI90:
             if all_days_in_range.empty:
                 print("Warning: Date range resulted in zero days. Nothing to process.")
                 return
-            # Get unique year-month tuples
+            
+            # Get unique year-month tuples IE: [(2025, 1), (2025, 2), (2025, 3), (2025, 4)]
             year_months = sorted(list(set([(d.year, d.month) for d in all_days_in_range])))
 
+            # No need for start_day and end_day variables here
+            # start_day = all_days_in_range[0].day
+            # end_day = all_days_in_range[-1].day
 
             all_raw_dfs = []
             print(f"Reading files for year-months: {year_months}")
             for year, month in year_months:
                 try:
                     # Pass dataset_type to reader if needed
-                    raw_file_path = self.raw_file_utils.get_raw_file_path(year, month, mercado)
-                    dataset_type = self._extract_dataset_type_from_filename(raw_file_path)
-                    df_month = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
-                    if not df_month.empty:
-                        # Pre-filter month data to reduce memory usage before concat
-                        # Filter based on year/month is sufficient here before combining
-                        month_start = pd.Timestamp(year=year, month=month, day=1)
-                        # Handle month end carefully (days in month)
-                        month_end = month_start + pd.offsets.MonthEnd(0)
-
-                        # Ensure datetime_utc exists for filtering
-                        if 'datetime_utc' not in df_month.columns:
-                            # Attempt to derive or skip
-                            if 'fecha' in df_month.columns:
-                                df_month['datetime_utc'] = pd.to_datetime(df_month['fecha'], utc=True, errors='coerce')
-                                df_month = df_month.dropna(subset=['datetime_utc'])
-                            else:
-                                print(f"Warning: Cannot pre-filter file {year}-{month:02d} as 'datetime_utc' or 'fecha' is missing.")
-                                # Append without pre-filtering, relying on final filter
-                                all_raw_dfs.append(df_month)
-                                continue # Skip to next iteration
-
-                        # Filter data within the month that falls into the overall start/end date range
-                        df_filtered_month = df_month[
-                            (df_month['datetime_utc'] >= pd.Timestamp(start_dt, tz='UTC')) &
-                            (df_month['datetime_utc'] <= pd.Timestamp(end_dt, tz='UTC').replace(hour=23, minute=59, second=59)) # Ensure end date is inclusive
-                        ]
-
-                        if not df_filtered_month.empty:
-                             all_raw_dfs.append(df_filtered_month)
-                             print(f"Read and pre-filtered {len(df_filtered_month)} rows for {year}-{month:02d}")
-                        else:
-                            print(f"No relevant data found in {year}-{month:02d} for the specified date range.")
-
+                    raw_df = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
+                    # Append the dataframe read from the file to the list
+                    if raw_df is not None and not raw_df.empty:
+                        all_raw_dfs.append(raw_df)
                     else:
-                        print(f"File {year}-{month:02d} is empty or read failed.")
+                         print(f"Warning: No data returned from reading {mercado}/{dataset_type} for {year}-{month:02d}.")
+
                 except FileNotFoundError:
                     print(f"Warning: Raw file not found for {mercado}/{dataset_type} for {year}-{month:02d}. Skipping.")
                 except Exception as e:
-                    print(f"Error reading or pre-filtering raw file for {year}-{month:02d}: {e}")
+                    print(f"Error reading or processing raw file for {year}-{month:02d}: {e}")
+                    # Consider if you want to continue or stop on error
                     continue # Continue processing other months
 
             if not all_raw_dfs:
@@ -491,9 +473,9 @@ class TransformadorI90:
 
             # Concatenate filtered monthly dataframes
             combined_raw_df = pd.concat(all_raw_dfs, ignore_index=True)
-            print(f"Combined raw data ({len(combined_raw_df)} rows).")
-            # The final filtering step might be redundant if pre-filtering worked, but safe to keep.
-            # It ensures the exact date range is met after concatenation.
+
+            print(f"Combined raw data ({len(combined_raw_df)} rows). Applying date range filtering.")
+            # The final filtering step ensures the exact date range is met after concatenation.
             filtered_df = self._process_df_based_on_transform_type(combined_raw_df, 'multiple', start_date=start_date, end_date=end_date)
 
 
