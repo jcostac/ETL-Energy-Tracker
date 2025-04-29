@@ -5,6 +5,7 @@ from pathlib import Path
 import pytz
 import traceback
 from utilidades.progress_utils import with_progress
+from datetime import time
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -361,13 +362,6 @@ class I90Processor:
         """
         Parse 15-minute format data (index "1" to "96/92/100") into a timezone-aware
         datetime in Europe/Madrid timezone, handling DST transitions correctly.
-        
-        Args:
-            fecha: Date object or datetime object
-            hora_index_str: 1-based index string ("1" to "96" normally, adjusted on DST days)
-        
-        Returns:
-            Timezone-aware pd.Timestamp in Europe/Madrid timezone
         """
         # Ensure fecha is a date object
         if isinstance(fecha, pd.Timestamp):
@@ -397,9 +391,9 @@ class I90Processor:
         skip_hour = None
         transition_type = None
         
-        is_transition_date = fecha in transition_dates # Check if the date is a transition date
+        is_transition_date = fecha in transition_dates
         if is_transition_date:
-            transition_type = transition_dates[fecha] # Get the transition type for the date 
+            transition_type = transition_dates[fecha]
             
             if transition_type == 2:  # Spring forward: skip hour 2
                 num_intervals = 92  # 96 - 4 (skipped 15-min intervals)
@@ -407,17 +401,40 @@ class I90Processor:
             elif transition_type == 1:  # Fall back: repeat hour 2
                 num_intervals = 100  # 96 + 4 (repeated 15-min intervals)
         
-        # Calculate how many 15-min intervals in each hour
-        intervals_per_hour = 4
+        # When we have an out-of-bounds index on a spring forward day, adjust the index
+        if is_transition_date and transition_type == 2 and index > 92:
+            # Calculate the equivalent time by mapping to the right hour
+            # For spring forward, indices from 9-12 (hour 2) are skipped
+            # So index 93 should map to 97, etc.
+            adjusted_index = index + 4  # Add the 4 skipped intervals
+            
+            # Create the time directly based on the adjusted index
+            hour = (adjusted_index - 1) // 4
+            minute = ((adjusted_index - 1) % 4) * 15
+            
+            # Check that hour is valid (0-23)
+            if hour >= 24:
+                hour = 23
+                minute = 45  # Set to last interval of the day
+            
+            # Create timestamp with the correct hour and minute
+            ts = pd.Timestamp.combine(fecha, time(hour=hour, minute=minute))
+            try:
+                # For times after spring forward, is_dst should be True
+                aware_ts = tz.localize(ts, is_dst=True)
+                return aware_ts
+            except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError) as e:
+                print(f"Warning: Could not localize adjusted time {ts} on date {fecha}: {e}")
+                # Return a reasonable fallback
+                ts = ts.replace(hour=max(3, min(hour, 23)))  # Ensure we're after spring forward and within valid range
+                return tz.localize(ts, is_dst=True)
         
         # Generate the base sequence of datetimes for the day
         naive_dt = pd.Timestamp(year=fecha.year, month=fecha.month, day=fecha.day, hour=0)
         
         # Generate the complete sequence for the day
-        # For normal days and fall-back days, we can use date_range
         if not is_transition_date or transition_type == 1:
             # For normal days (96 intervals) or fall-back days (100 intervals)
-            # Use naive datetime sequence first (no timezone)
             ts_sequence = pd.date_range(
                 start=naive_dt,
                 periods=num_intervals,
@@ -428,25 +445,17 @@ class I90Processor:
             aware_ts_sequence = []
             for ts in ts_sequence:
                 try:
-                    # Default assumption for DST status
                     is_dst = None
                     
-                    # Special handling for the fall-back ambiguous hour
                     if is_transition_date and transition_type == 1 and ts.hour == 2:
-                        # For the repeated hour, we need to set DST flag
-                        # First 4 occurrences (2:00, 2:15, 2:30, 2:45) are DST=True
-                        # Second 4 occurrences are DST=False
                         first_2am_block = len([t for t in aware_ts_sequence if t.hour == 2]) < 4
                         is_dst = first_2am_block
                     
-                    # Localize with appropriate DST status
                     aware_ts = tz.localize(ts, is_dst=is_dst)
                     aware_ts_sequence.append(aware_ts)
                     
                 except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError) as e:
-                    # Handle any edge cases we missed
                     if 'NonExistentTimeError' in str(e) and ts.hour == 2:
-                        # For spring forward, shift to 3:00 for any hour 2 times
                         shifted_ts = ts.replace(hour=3)
                         aware_ts = tz.localize(shifted_ts, is_dst=True)
                         aware_ts_sequence.append(aware_ts)
@@ -458,12 +467,13 @@ class I90Processor:
             
             for h in range(24):
                 if h == skip_hour:
-                    continue  # Skip hour 2 for spring forward
+                    continue
                 
                 for m in range(0, 60, 15):
-                    ts = pd.Timestamp.combine(fecha, pd.Timestamp(hour=h, minute=m).time())
+                    # Use datetime.time() instead of pd.Timestamp
+        
+                    ts = pd.Timestamp.combine(fecha, time(hour=h, minute=m))
                     try:
-                        # For hours after the spring forward, we're in DST
                         is_dst = h >= 3 if skip_hour == 2 else None
                         aware_ts = tz.localize(ts, is_dst=is_dst)
                         aware_ts_sequence.append(aware_ts)
