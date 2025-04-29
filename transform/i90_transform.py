@@ -351,7 +351,6 @@ class TransformadorI90:
         except Exception as e:
             print(f"Error during batch processing setup for {mercado}/{dataset_type}: {e}")
 
-
     def _transform_single(self, mercado: str, dataset_type: str, date: str):
         """Process a single day's data."""
         print(f"Starting SINGLE transformation for {mercado} - {dataset_type} on {date}")
@@ -383,7 +382,6 @@ class TransformadorI90:
              print(f"Raw data file not found for {mercado}/{dataset_type} for {target_year}-{target_month:02d}.")
         except Exception as e:
             print(f"Error during single day processing for {mercado}/{dataset_type} on {date}: {e}")
-
 
     def _transform_latest(self, mercado: str, dataset_type: str):
         """Process the latest day available in the raw data."""

@@ -166,7 +166,7 @@ class I90Processor:
         if not all(col in df.columns for col in required_cols):
             raise ValueError(f"Required columns: {required_cols} not found in DataFrame.")
 
-        # Split data by granularity if the column exists
+        # Split data by granularity if the column exists (useful for months were we have a granularity change mid month)
         df_hourly = pd.DataFrame()
         df_15min = pd.DataFrame()
         
@@ -174,10 +174,10 @@ class I90Processor:
             df_hourly = df[df['granularity'] == 'Hora'].copy()
             df_15min = df[df['granularity'] == 'Quince minutos'].copy()
 
-        else: # No granularity column - detect format from 'hora' values
+        else: # typically this will never execute as we have a granularity column, but jsut in case we extract it from the hora column
             sample_horas = df['hora'].dropna().astype(str).head(5).tolist()
             
-            # Check if format is "HH-HH+1" (possibly with 'a'/'b' suffix)
+            # Check if format is "HH-HH+1" (possibly with 'a'/'b' suffix if there is a fall back DST)
             hourly_format = any('-' in str(h) for h in sample_horas)
             
             if hourly_format:
