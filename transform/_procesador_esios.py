@@ -84,13 +84,13 @@ class ESIOSProcessor:
             print("Geo name column not found in dataframe. Skipping filter.")
             return df
         
-        # Create and apply the filter only if the indicators and geo_names are in the dataframe
-        if 'indicador_id' in indicators_to_filter_str and 'geo_name' in self.geo_names_of_interest:
+        # Apply filters if the columns exist
+        if 'indicador_id' in df.columns:  # Check if the column exists
             # Apply both filters together
             mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'].isin(self.geo_names_of_interest))
             df_filtered = df[mask]
-            #print unique values of geo_name in filtered dataframe
             print(f"Unique geo_name values in filtered dataframe: {df_filtered['geo_name'].unique()}")
+            print(f"Filtered from {len(df)} to {len(df_filtered)} rows")
             return df_filtered
         
         return df
