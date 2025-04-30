@@ -440,7 +440,7 @@ class ProcessedFileUtils(StorageFileUtils):
     def __init__(self, use_s3: bool = False) -> None:
         super().__init__(use_s3)
         self.processed_path = self.base_path / 'processed'
-        self.row_group_size = 122880
+        self.row_group_size = 122880 # Example: 128k rows per group
 
     @staticmethod
     def drop_processed_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
@@ -449,7 +449,6 @@ class ProcessedFileUtils(StorageFileUtils):
         """
 
         #print duplicate number before dropping
-        print("--------------------------------")
         print(f"Number of duplicates before dropping: {df.duplicated().sum()}")
 
         # Then handle subset-based duplicates
@@ -467,7 +466,7 @@ class ProcessedFileUtils(StorageFileUtils):
         return df
     
 
-    def add_partition_cols(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
+    def _add_partition_cols(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
         Adds necessary partition columns to the DataFrame.
         """
@@ -480,129 +479,287 @@ class ProcessedFileUtils(StorageFileUtils):
     def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_col: str, dataset_type: str) -> None:
         """
         Processes a DataFrame and saves/appends it as partitioned parquet files using Hive partitioning.
-        The method is modular, with each step delegated to a helper for clarity and debuggability.
+        Handles both creating new files and appending to existing files with deduplication.
 
         Args:
-            df (pd.DataFrame): The DataFrame containing the data to be saved.
+            df (pd.DataFrame): The DataFrame containing the data to be saved/appended.
             mercado (str): The market name (used for partitioning and added as a column).
             value_col (str): The name of the main value column (e.g., 'precio', 'volumenes_i90').
+            dataset_type (str): The type of dataset ('precios', 'volumenes_i90', etc.)
         """
         if df.empty:
-            print(f"[DEBUG] Input DataFrame for {mercado} is empty. Skipping parquet write.")
+            print(f"[INFO] Input DataFrame for {mercado} is empty. Skipping parquet write/append.")
             return
         
-        #drop processed duplicates
-        df = self.drop_processed_duplicates(df, dataset_type)
+        # Prepare the input DataFrame ie add partition columns and ensure datetime is UTC naive
+        df = self._prepare_input_dataframe(df, mercado)
 
-        # Add partition columns (year, month, mercado)
-        df = self.add_partition_cols(df, mercado)
-        # Ensure datetime_utc is timezone-naive for Parquet compatibility
-        df = self._ensure_datetime_utc_naive(df)
-
-        # Define partition columns and get unique partition combinations
+        # Get unique partitions from the input DataFrame
         partition_cols = ['mercado', 'id_mercado', 'year', 'month']
-        unique_partitions_df = df[partition_cols].drop_duplicates()
-
-        print(f"Writing {len(unique_partitions_df)} partition(s) for market '{mercado}'...")
-
-        # Convert DataFrame to PyArrow Table
-        table = self._to_pyarrow_table(df)
-        if table is None:
-            print("[ERROR] Could not convert DataFrame to PyArrow Table.")
+        if not self._validate_partition_columns(df, partition_cols):
             return
 
-        # Iterate over each unique partition and write to Parquet
+        unique_partitions_df = df[partition_cols].drop_duplicates()
+        print("--------------------------------")
+        print(f"Processing {len(unique_partitions_df)} partition(s) for market '{mercado}'...")
+        print("--------------------------------")
+
+        # Process each partition
         for _, partition in unique_partitions_df.iterrows():
             try:
-                # Filter table for current partition
-                partition_table = self._filter_partition(table, partition, partition_cols)
-                if partition_table.num_rows == 0:
-                    print(f"[DEBUG] Skipping empty partition: {partition.to_dict()}")
-                    continue
-
-                # Sort partition by datetime_utc
-                partition_table.sort_by('datetime_utc')
-                # Drop partition columns from the file (Hive will infer from path)
-                partition_table_final = self._drop_partition_cols(partition_table, partition_cols)
-                print(f"Columns in partition table before writing: {partition_table_final.column_names}")
-                # Build output file path for this partition
-                output_file_path = self._build_partition_path(partition, partition_cols, dataset_type)
-                # Write the partitioned Parquet file
-                row_group_size = min(self.row_group_size, len(df))
-                self._write_parquet_file(
-                    table=partition_table_final,
-                    output_file=output_file_path,
-                    value_col=value_col,
-                    row_group_size=row_group_size
-                )
-
-                #read processed parquet file
-                print(f"Reading processed parquet file from: {output_file_path}")
-                processed_df = self._read_processed_parquet(full_path=output_file_path)
-                
+                self._process_single_partition(df, partition, partition_cols, value_col, dataset_type)
             except Exception as e:
+                import traceback
                 print(f"❌ Failed to process partition {partition.to_dict()}: {e} ❌")
+                print(traceback.format_exc())
 
-        print(f"✅ Finished writing all partitions for market '{mercado}' to {self.processed_path} ✅")
+        print(f"✅ Finished processing all partitions for market '{mercado}' to {self.processed_path} ✅")
 
-    def _read_processed_parquet(self, mercado: str = None, dataset_type: str = None, full_path: str = None, year: int = None, month: int = None, id_mercado: int = None) -> pd.DataFrame:
+    def _prepare_input_dataframe(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Reads processed parquet files from the appropriate directory structure with Hive-style partitioning.
+        Prepares the input DataFrame by adding partition columns and ensuring datetime is UTC naive.
+
+        Args:
+            df (pd.DataFrame): Raw input DataFrame.
+            mercado (str): Market name for partitioning.
+
+        Returns:
+            pd.DataFrame: Prepared DataFrame with partition columns and normalized datetime.
+        """
+        # Add partition columns
+        df = self._add_partition_cols(df, mercado)
+        # Ensure datetime_utc is timezone-naive
+        df = self._ensure_datetime_utc_naive(df)
+        return df
+
+    def _validate_partition_columns(self, df: pd.DataFrame, partition_cols: list) -> bool:
+        """
+        Validates that all required partition columns exist in the DataFrame.
+
+        Args:
+            df (pd.DataFrame): The DataFrame to validate.
+            partition_cols (list): List of required partition column names.
+
+        Returns:
+            bool: True if all required columns exist, False otherwise.
+        """
+        missing_cols = [col for col in partition_cols if col not in df.columns]
+        if missing_cols:
+            print(f"[ERROR] Input DataFrame is missing required partition columns: {missing_cols}. Cannot proceed.")
+            return False
+        return True
+
+    def _process_single_partition(self, df: pd.DataFrame, partition, partition_cols: list, value_col: str, dataset_type: str) -> None:
+        """
+        Processes a single partition: filters data, handles existing file if present, and writes result.
+
+        Args:
+            df (pd.DataFrame): The full input DataFrame.
+            partition: Partition values (from unique_partitions_df row).
+            partition_cols (list): List of partition column names.
+            value_col (str): The value column name.
+            dataset_type (str): The type of dataset.
+        """
+        # Filter new data for this partition
+        new_data_partition_df = self._filter_df_for_partition(df, partition, partition_cols)
+        
+        if new_data_partition_df.empty:
+            print(f"[DEBUG] No new data for partition: {partition.to_dict()}. Checking for existing file.")
+        
+        # Build file path and check for existing file
+        output_file_path = self._build_partition_path(partition, partition_cols, dataset_type)
+        
+        # Read existing data if file exists
+        existing_data_df = self._read_existing_partition_file(output_file_path, partition)
+        
+        # Combine, deduplicate, and write data
+        self._combine_and_write_partition(
+            new_data_df=new_data_partition_df,
+            existing_data_df=existing_data_df,
+            partition=partition,
+            partition_cols=partition_cols,
+            output_file_path=output_file_path,
+            value_col=value_col,
+            dataset_type=dataset_type
+        )
+
+    def _filter_df_for_partition(self, df: pd.DataFrame, partition, partition_cols: list) -> pd.DataFrame:
+        """
+        Filters the DataFrame to get the rows that apply to a specific partition.
+
+        Args:
+            df (pd.DataFrame): The full DataFrame.
+            partition: Partition values (Series or dict).
+            partition_cols (list): List of partition column names.
+
+        Returns:
+            pd.DataFrame: Filtered DataFrame for the partition.
+        """
+        # Start with a True mask that will be narrowed down with each partition column
+        partition_mask = True
+        
+        # For each partition column, add a condition to the mask
+        # This builds a compound boolean mask that matches all partition criteria
+        for col in partition_cols:
+            partition_mask &= (df[col] == partition[col])
+            
+        # Return a copy of the filtered DataFrame to avoid modifying the original
+        return df[partition_mask].copy()
+
+    def _read_existing_partition_file(self, file_path: str, partition) -> pd.DataFrame:
+        """
+        Reads an existing partition file if it exists.
         
         Args:
-            mercado (str): Market name (e.g., 'diario', 'intra')
-            dataset_type (str): Dataset type (e.g., 'precios', 'volumenes')
-            year (int, optional): Filter by specific year
-            month (int, optional): Filter by specific month
-            id_mercado (int, optional): Filter by specific market ID
+            file_path (str): Path to the potential existing file.
+            partition: Partition values for adding back to the DataFrame.
             
         Returns:
-            pd.DataFrame: Combined DataFrame from all matching partitions
-            pd.DataFrame: Statistics from the DataFrame (min, max, mean, std, etc.)
+            pd.DataFrame: Existing data or empty DataFrame if no file exists.
         """
-        if full_path is None:
-            #all other parameters need to be provided
-            if year is None or month is None or id_mercado is None or dataset_type is None or mercado is None:
-                raise ValueError("All other parameters need to be provided if full_path is not provided")
-            
-            #join all parameters to form full path
-            full_path = os.path.join(self.processed_path, f"mercado={mercado}", f"id_mercado={id_mercado}", f"year={year}", f"month={month}", f"{dataset_type}.parquet")
-        
-            
-        else:
-            #extract parameters from full path 
-            pattern = r"mercado=([^\\/]+)[\\/]+id_mercado=([^\\/]+)[\\/]+year=([^\\/]+)[\\/]+month=([^\\/]+)[\\/]+([^\\/]+)\.parquet$"
-            match = re.search(pattern, full_path)
-            if match:
-                mercado, id_mercado, year, month, dataset_type = match.groups()
-            else:
-                raise ValueError(f"Could not extract partition values from path: {full_path}")
-            
-        try:
-            # Use pyarrow.dataset for efficient reading with partitioning
-            dataset = pq.ParquetDataset(full_path)
-            #print(f"Parquet schema: {pq.read_table(base_path).schema}")
-
-            
-            if len(dataset.files) == 0:
-                print(f"No parquet files found at path: {full_path}")
-                return pd.DataFrame()
+        existing_data_df = pd.DataFrame()
+        if os.path.exists(file_path):
+            print("--------------------------------")
+            print(f"[INFO] Existing file found at {file_path}. Reading...")
+            try:
+                # Read existing data
+                existing_data_df = pd.read_parquet(file_path)
+                existing_data_df = self._ensure_datetime_utc_naive(existing_data_df)
+                print(f"[INFO] Read {len(existing_data_df)} rows from existing file.")
                 
-            print(f"Found {len(dataset.files)} parquet files for {mercado.upper()} {dataset_type} in {year} - {month}")
-            processed_df = dataset.read().to_pandas()
-            processed_df_stats = processed_df.describe()
-            print(f"Stats for {mercado.upper()}  {dataset_type}:")
-            print(processed_df_stats)
-            print("--------------------------------")
-            print(f"First 10 rows for {mercado.upper()} {dataset_type}:")
-            print(processed_df.head(10))
-            print("--------------------------------")
-            print(f"Shape of processed DataFrame: {processed_df.shape}")
-            return processed_df
+                # Add partition columns back if they were dropped
+                for col, value in partition.items():
+                    if col not in existing_data_df.columns:
+                        existing_data_df[col] = value
+                        
+            except Exception as e:
+                print(f"[WARNING] Could not read existing file {file_path}: {e}. Will only write new data if available.")
+                existing_data_df = pd.DataFrame()
+        else:
+            print(f"[INFO] No existing file found at {file_path}. Writing new data.")
             
+        return existing_data_df
+
+    def _combine_and_write_partition(self, new_data_df: pd.DataFrame, existing_data_df: pd.DataFrame,
+                                    partition, partition_cols: list, output_file_path: str,
+                                    value_col: str, dataset_type: str) -> None:
+        """
+        Combines new and existing data, deduplicates, and writes the result to a parquet file.
+
+        Args:
+            new_data_df (pd.DataFrame): New data for the partition.
+            existing_data_df (pd.DataFrame): Existing data from the partition file.
+            partition: Partition values.
+            partition_cols (list): List of partition column names.
+            output_file_path (str): Path to write the output file.
+            value_col (str): Value column name.
+            dataset_type (str): Dataset type.
+        """
+        # Skip if both DataFrames are empty
+        if new_data_df.empty and existing_data_df.empty:
+            print(f"[INFO] No data for partition {partition.to_dict()}. Skipping write.")
+            return
+            
+        # Combine data if needed
+        if not new_data_df.empty and not existing_data_df.empty:
+            print(f"[INFO] Combining new data ({len(new_data_df)} rows) with existing data ({len(existing_data_df)} rows).")
+            combined_df = pd.concat([existing_data_df, new_data_df], ignore_index=True)
+        elif not new_data_df.empty:
+            combined_df = new_data_df
+            print(f"[INFO] Using only new data ({len(new_data_df)} rows).")
+        else:
+            combined_df = existing_data_df
+            print(f"[INFO] Using only existing data ({len(existing_data_df)} rows).")
+            
+        # Deduplicate
+        
+        print("--------------------------------")
+        print(f"[INFO] Deduplicating data ({len(combined_df)} rows) for partition {partition.to_dict()}...")
+        final_df = self.drop_processed_duplicates(combined_df, dataset_type)
+        print(f"[INFO] Data after deduplication: {len(final_df)} rows.")
+        print("--------------------------------")
+        
+        if final_df.empty:
+            print(f"[INFO] Partition {partition.to_dict()} is empty after deduplication. Skipping write.")
+            return
+            
+        # Convert to PyArrow, sort, and prepare for writing
+        final_df_sorted = self._prepare_dataframe_for_writing(final_df, partition_cols)
+        if final_df_sorted is None:
+            return
+            
+        # Write the file
+        row_group_size = min(self.row_group_size, len(final_df_sorted))
+        if row_group_size == 0:
+            print(f"[WARNING] Final DataFrame to write has 0 rows for partition {partition.to_dict()}. Skipping write.")
+            return
+            
+        
+        self._write_final_parquet(final_df_sorted, output_file_path, value_col, row_group_size)
+
+    def _prepare_dataframe_for_writing(self, df: pd.DataFrame, partition_cols: list) -> Optional[pd.DataFrame]:
+        """
+        Prepares the final DataFrame for writing:  sorts, and drops partition columns.
+
+        Args:
+            df (pd.DataFrame): The DataFrame to prepare.
+            partition_cols (list): Partition columns to drop.
+
+        Returns:
+            pd.DataFrame or None: Prepared DataFrame or None if conversion fails.
+        """
+        try:
+            # Sort by datetime_utc
+            df_sorted = df.sort_values(by='datetime_utc').reset_index(drop=True)
+            
+            # Drop partition columns (they're encoded in the path)
+            for col in partition_cols:
+                if col in df_sorted.columns:
+                    df_sorted = df_sorted.drop(columns=[col])
+                    
+            return df_sorted
         except Exception as e:
-            print(f"Error reading processed parquet files: {e}")
-            return pd.DataFrame(),
+            print(f"[ERROR] Failed to prepare DataFrame for writing: {e}")
+            return None
+
+    def _write_final_parquet(self, df: pd.DataFrame, output_file: str, value_col: str, row_group_size: int) -> None:
+        """
+        Converts the final DataFrame to PyArrow and writes it to a Parquet file.
+
+        Args:
+            df (pd.DataFrame): The DataFrame to write.
+            output_file (str): Output file path.
+            value_col (str): Value column name.
+            row_group_size (int): Row group size for Parquet.
+        """
+        try:
+            print("--------------------------------")
+            print(f"[INFO] Writing {len(df)} rows to {output_file}...")
+            # Convert to PyArrow Table
+            table = self._to_pyarrow_table(df)
+            if table is None:
+                print(f"[ERROR] Could not convert DataFrame to PyArrow Table. Skipping write.")
+                return
+                
+            # Write the file
+            schema = table.schema
+            stats_cols = self._set_stats_cols(value_col, schema)
+            dict_cols = self._set_dict_cols(schema)
+            
+            writer = pq.ParquetWriter(
+                output_file,
+                schema,
+                compression='zstd',
+                write_statistics=stats_cols,
+                use_dictionary=dict_cols,
+                data_page_size=64 * 1024,
+                data_page_version='2.0'
+            )
+            writer.write_table(table, row_group_size)
+            writer.close()
+            print(f"✅ Successfully wrote {output_file} ✅")
+        except Exception as e:
+            print(f"❌ Error writing Parquet file {output_file}: {e} ❌")
   
     def _ensure_datetime_utc_naive(self, df: pd.DataFrame) -> pd.DataFrame:
         """
