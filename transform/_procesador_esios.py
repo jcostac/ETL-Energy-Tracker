@@ -61,19 +61,19 @@ class ESIOSProcessor:
         std_price = df['precio'].std()
         extreme_prices = df[abs(df['precio'] - mean_price) > 3 * std_price]
         if not extreme_prices.empty:
-            print(f"Info: Found {len(extreme_prices)} price values more than 3 standard deviations from mean")
-            print(f"Price range: Min={df['precio'].min():.2f}, Max={df['precio'].max():.2f}")
+            print(f"-Info: Found {len(extreme_prices)} price values more than 3 standard deviations from mean")
+            print(f"-Price range: Min={df['precio'].min():.2f}, Max={df['precio'].max():.2f}")
             
         # Check for zero prices
         zero_prices = df[df['precio'] == 0]
         if not zero_prices.empty:
-            print(f"Info: Found {len(zero_prices)} zero price values")
+            print(f"-Info: Found {len(zero_prices)} zero price values")
             
         # Basic statistics logging
         print(f"Price statistics:")
-        print(f"Mean: {mean_price:.2f}")
-        print(f"Median: {df['precio'].median():.2f}")
-        print(f"Std Dev: {std_price:.2f}")
+        print(f"-Mean: {mean_price:.2f}")
+        print(f"-Median: {df['precio'].median():.2f}")
+        print(f"-Std Dev: {std_price:.2f}")
         
         return df
     
