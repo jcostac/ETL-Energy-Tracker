@@ -2,7 +2,7 @@
 Utility class for database operations
 """
 
-__all__ = ['DatabaseUtils'] #Export the class
+__all__ = ['DatabaseUtils', 'DuckDBUtils'] #Export the class
 
 from sqlalchemy import create_engine, text, Engine
 import pandas as pd

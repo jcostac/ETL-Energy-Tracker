@@ -442,7 +442,7 @@ class ProcessedFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving processed parquet files.
     """
-    def __init__(self, use_s3: bool = False) -> None:
+    def __init__(self, use_s3: bool = False, ) -> None:
         super().__init__(use_s3)
         self.processed_path = self.base_path / 'processed'
         self.row_group_size = 122880 # Example: 128k rows per group
