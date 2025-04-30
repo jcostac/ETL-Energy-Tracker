@@ -44,36 +44,41 @@ class ESIOSProcessor:
         Returns:
             pd.DataFrame: DataFrame with validated prices
         """
-        # Round prices to 2 decimal places (keeping this as it's just formatting)
+        print("\n📈 PRICE ANALYSIS")
+        print("-"*30)
+        
+        # Round prices
         df['precio'] = df['precio'].round(2)
         
-        # Price validation checks (without modifying the data)
+        # Validation checks
         if df['precio'].isnull().any():
-            print(f"Warning: Found {df['precio'].isnull().sum()} null price values")
-            
-        # Check for negative prices (these can be valid in energy markets)
+            null_count = df['precio'].isnull().sum()
+            print(f"⚠️  Found {null_count} null price values")
+        
+        # Check negative prices
         negative_prices = df[df['precio'] < 0]
         if not negative_prices.empty:
-            print(f"-Info: Found {len(negative_prices)} negative price values")
-            
-        # Check for unusually high prices (without removing them) 3x std from mean
+            print(f"ℹ️  Negative prices: {len(negative_prices)} records")
+        
+        # Check extreme prices
         mean_price = df['precio'].mean()
         std_price = df['precio'].std()
         extreme_prices = df[abs(df['precio'] - mean_price) > 3 * std_price]
         if not extreme_prices.empty:
-            print(f"-Info: Found {len(extreme_prices)} price values more than 3 standard deviations from mean")
-            print(f"-Price range: Min={df['precio'].min():.2f}, Max={df['precio'].max():.2f}")
-            
-        # Check for zero prices
+            print(f"⚠️  Extreme prices: {len(extreme_prices)} records")
+            print(f"   Range: {df['precio'].min():.2f} to {df['precio'].max():.2f}")
+        
+        # Check zero prices
         zero_prices = df[df['precio'] == 0]
         if not zero_prices.empty:
-            print(f"-Info: Found {len(zero_prices)} zero price values")
-            
-        # Basic statistics logging
-        print(f"Price statistics:")
-        print(f"-Mean: {mean_price:.2f}")
-        print(f"-Median: {df['precio'].median():.2f}")
-        print(f"-Std Dev: {std_price:.2f}")
+            print(f"ℹ️  Zero prices: {len(zero_prices)} records")
+        
+        # Statistics
+        print("\n📊 Price Statistics")
+        print(f"   Mean: {mean_price:.2f}")
+        print(f"   Median: {df['precio'].median():.2f}")
+        print(f"   Std Dev: {std_price:.2f}")
+        print("-"*30)
         
         return df
     
@@ -191,25 +196,38 @@ class ESIOSProcessor:
         Returns:
             pd.DataFrame: The modified DataFrame with combined granularity data.
         """
-        if 'granularidad' in df.columns:
-            is_hourly_mask = df['granularidad'] == 'Hora'
-            df_hourly = df[is_hourly_mask].copy()  # Extract hourly data
-            df_15min = df[~is_hourly_mask].copy()  # Extract 15-minute data
-            df_hourly_converted = pd.DataFrame()  # Initialize an empty DataFrame for converted data
+        print("\n⏰ HANDLING TIME GRANULARITY")
+        print("-"*30)
 
-            if not df_hourly.empty:
-                print(f"Found {len(df_hourly)} rows with 'Hora' granularity out of {len(df)}. Converting to 15min...")
-                df_hourly_converted = DateUtilsETL.convert_hourly_to_15min(df_hourly)
-                print(f"Conversion resulted in {len(df_hourly_converted)} rows.")
-            else: #print message if no hourly data found
-                print(f"No rows with 'Hora' granularity found out of {len(df)}. Keeping existing {len(df_15min)} rows.")
+        if 'granularidad' not in df.columns:
+            print("ℹ️  No granularity column found")
+            print("   Assuming uniform granularity")
+            return df
 
-            df = pd.concat([df_15min, df_hourly_converted], ignore_index=True)
-            print(f"DataFrame now has {len(df)} rows after handling granularities.")
-        else:
-            # If 'granularidad' column is missing, assume uniform granularity
-            print("Warning: 'granularidad' column not found. Assuming uniform granularity.")
+        # Split data by granularity
+        is_hourly_mask = df['granularidad'] == 'Hora'
+        df_hourly = df[is_hourly_mask].copy()
+        df_15min = df[~is_hourly_mask].copy()
         
+        print("📊 Initial Data:")
+        print(f"   Total records: {len(df)}")
+        print(f"   Hourly records: {len(df_hourly)}")
+        print(f"   15-min records: {len(df_15min)}")
+
+        # Convert hourly data if present
+        if not df_hourly.empty:
+            print("\n🔄 Converting hourly to 15-min...")
+            df_hourly_converted = DateUtilsETL.convert_hourly_to_15min(df_hourly)
+            print(f"✅ Conversion complete: {len(df_hourly)} → {len(df_hourly_converted)}")
+            
+            # Combine data
+            df = pd.concat([df_15min, df_hourly_converted], ignore_index=True)
+            print(f"\n📊 Final record count: {len(df)}")
+        else:
+            print("\nℹ️  No hourly data to convert")
+            print(f"📊 Keeping {len(df_15min)} 15-min records")
+        
+        print("-"*30)
         return df
 
     def _select_and_finalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -256,89 +274,94 @@ class ESIOSProcessor:
         Returns:
             pd.DataFrame: The original DataFrame after validation.
         """
-        if not df.empty:  # Only validate if there's data
+        print("\n🔍 DATA VALIDATION")
+        print("-"*30)
+        print(f"Type: {type.upper()}")
+        
+        if df.empty:
+            print("⚠️  Empty DataFrame - Skipping validation")
+            return df
+        
+        try:
             if type == "processed":
-                df = self.data_validatior.validate_processed_data(df, data="precios")  # Validate the data
+                print("Validating processed data structure...")
+                df = self.data_validatior.validate_processed_data(df, data="precios")
+                print("✅ Processed data validation passed")
             elif type == "raw":
-                df = self.data_validatior.validate_raw_data(df, data="precios")  # Validate the data
-        else:
-            print("Skipping validation for empty DataFrame.")  # Skip validation for empty DataFrame
+                print("Validating raw data structure...")
+                df = self.data_validatior.validate_raw_data(df, data="precios")
+                print("✅ Raw data validation passed")
+        except Exception as e:
+            print(f"❌ Validation failed: {str(e)}")
+            raise
+        
+        print("-"*30)
         return df
 
     def transform_price_data(self, df: pd.DataFrame, geo_name: Optional[str] = None) -> pd.DataFrame:
         """
         Apply a sequence of processing steps to transform ESIOS price data.
-
-        Args:
-            df (pd.DataFrame): Input DataFrame with raw/semi-processed ESIOS data.
-                               Expected columns vary depending on the processing steps but
-                               typically include 'indicador_id', 'geo_name', 'value'/'precio',
-                               'datetime_utc', 'granularidad'.
-            geo_name (Optional[str]): The geographical area name to filter by (e.g., "España").
-                                      Defaults to "España" if None.
-
-        Returns:
-            pd.DataFrame: Transformed DataFrame with columns ['id_mercado', 'datetime_utc', 'precio']
-                          and index named 'id'. Returns an empty DataFrame if processing fails
-                          or results in no data.
         """
+        print("\n" + "="*80)
+        print("🔄 STARTING ESIOS PRICE TRANSFORMATION")
+        print("="*80)
+
         if df.empty:
+            print("\n❌ EMPTY INPUT")
             print("Input DataFrame is empty. Skipping transformation.")
-            # Return an empty DataFrame with the expected final structure
             empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
             empty_df.index.name = 'id'
             return empty_df
 
-
         # Define the standard processing pipeline
-        # In the future, this could be made configurable
         pipeline = [
             (self._filter_by_geo_name, {'geo_name': self.geo_names_of_interest}),
-            (self._validate_data, {"type": "raw"}), #validate raw data
+            (self._validate_data, {"type": "raw"}),
             (self._rename_value_to_precio, {}),
             (self._map_id_mercado, {}),
             (self._standardize_prices, {}),
             (self._handle_granularity, {}),
             (self._select_and_finalize_columns, {}),
-            (self._validate_data, {"type": "processed"}) #validate processed data
+            (self._validate_data, {"type": "processed"})
         ]
 
-        # Execute the pipeline
         try:
-            #iterate over pipeline steps
-            i = 0
             df_processed = df.copy()
-            for step_func, step_kwargs in pipeline:
-                i += 1
-                print("--------------------------------")
-                print(f"Applying step {i} of {len(pipeline)}: {step_func.__name__}...")
-                #use  function and necessary kwargs of the corresponding step
+            total_steps = len(pipeline)
+
+            for i, (step_func, step_kwargs) in enumerate(pipeline, 1):
+                print("\n" + "-"*50)
+                print(f"📍 STEP {i}/{total_steps}: {step_func.__name__.replace('_', ' ').title()}")
+                print("-"*50)
+                
                 df_processed = step_func(df_processed, **step_kwargs)
-                print(f"DataFrame shape after step {step_func.__name__}:")
-                print(f"Rows: {df_processed.shape[0]} Columns: {df_processed.shape[1]}")
-                print("--------------------------------")
+                
+                print(f"\n📊 Data Status:")
+                print(f"   Rows: {df_processed.shape[0]}")
+                print(f"   Columns: {df_processed.shape[1]}")
 
-                #if the dataframe is empty and the step is not the final validation step, raise an error
                 if df_processed.empty and step_func.__name__ != '_validate_final_data':
-                    
-                    print(f"DataFrame became empty after step: {step_func.__name__}. Stopping pipeline.")
-                    raise ValueError(f"Error: DataFrame became empty after step: {step_func.__name__}. Stopping pipeline.")
+                    print("\n❌ PIPELINE HALTED")
+                    print(f"DataFrame became empty after step: {step_func.__name__}")
+                    raise ValueError(f"DataFrame empty after: {step_func.__name__}")
 
+            print("\n✅ TRANSFORMATION COMPLETE")
+            print(f"Final shape: {df_processed.shape}")
+            print("="*80 + "\n")
             return df_processed
 
         except ValueError as e:
-            # Return an empty DataFrame with the expected final structure on error
+            print("\n❌ VALIDATION ERROR")
+            print(f"Error: {str(e)}")
+            print("="*80 + "\n")
             empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
             empty_df.index.name = 'id'
             return empty_df
         
-        except Exception as e: # Catch any other unexpected error
-            print(f"An unexpected error occurred during transformation: {e}")
-            # Return an empty DataFrame with the expected final structure on error
+        except Exception as e:
+            print("\n❌ UNEXPECTED ERROR")
+            print(f"Error: {str(e)}")
+            print("="*80 + "\n")
             empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
             empty_df.index.name = 'id'
             return empty_df
-        
-        finally:
-            print("--------------------------------")
-            print("Transformation pipeline ended.")

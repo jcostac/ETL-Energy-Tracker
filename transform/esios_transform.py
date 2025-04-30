@@ -118,30 +118,53 @@ class TransformadorESIOS:
     def _save_transformed_data(self, raw_df: pd.DataFrame, mercado: str):
         try:
             # 1. Transform Data
-            print("--------------------------------")
-            print(f"Raw data loaded ({len(raw_df)} rows). Starting transformation...")
-            print("--------------------------------")
+            print("\n" + "="*80)
+            print(f"🔄 TRANSFORMING DATA FOR {mercado.upper()}")
+            print("="*80)
+
+            print("\n📊 INPUT DATA")
+            print("-"*50)
+            print(f"Raw records to process: {len(raw_df)}")
+            
             processed_df = self.processor.transform_price_data(raw_df)
-            print("--------------------------------")
-            print(f"Processed data head: \n{processed_df.head()}")
-            print("--------------------------------")
 
             if processed_df.empty:
-                print(f"Transformation resulted in empty DataFrame for {mercado}.")
+                print("\n❌ TRANSFORMATION FAILED")
+                print(f"Transformation resulted in empty DataFrame for {mercado}")
+                print("="*80 + "\n")
                 return
 
-        except Exception as e:
-            print(f"Error transforming data for {mercado}: {e}")
-            return
+            print("\n📋 PROCESSED DATA PREVIEW")
+            print("-"*50)
+            print("First 5 records:")
+            print(processed_df.head().to_string(
+                index=True,
+                justify='right',
+                float_format=lambda x: f"{x:.6f}"
+            ))
+            print("-"*50)
 
-        try:
-        
-            # 3. Save Processed Data
-            print(f"Transformation complete ({len(processed_df)} rows). Saving processed data...")
-            self.processed_file_utils.write_processed_parquet(processed_df, mercado, value_col='precio', dataset_type=self.dataset_type)
+            # 2. Save Processed Data
+            print("\n💾 SAVING DATA")
+            print("-"*50)
+            print(f"Records to save: {len(processed_df)}")
+            print(f"Target market: {mercado}")
+            print(f"Dataset type: {self.dataset_type}")
+            
+            self.processed_file_utils.write_processed_parquet(
+                processed_df, 
+                mercado, 
+                value_col='precio', 
+                dataset_type=self.dataset_type
+            )
 
         except Exception as e:
-            print(f"Error saving processed data for {mercado}: {e}")
+            print("\n❌ ERROR OCCURRED")
+            print("-"*50)
+            print(f"Operation: {'Transformation' if 'transform' in str(e) else 'Save'}")
+            print(f"Market: {mercado}")
+            print(f"Error: {str(e)}")
+            print("="*80 + "\n")
             return
 
     def _route_to_market_saver(self, raw_df: pd.DataFrame, mercado: str):
@@ -162,117 +185,195 @@ class TransformadorESIOS:
 
     def _process_batch_mode(self, mercado):
         """Processes all historical data for a given market."""
+        print("\n" + "="*80)
+        print(f"🔄 STARTING BATCH TRANSFORM")
+        print(f"Market: {mercado.upper()}")
+        print("="*80 + "\n")
+
         years = self.raw_file_utils.get_raw_folder_list(mercado)
         
         for year in years:
             months = self.raw_file_utils.get_raw_folder_list(mercado, year)
             
+            print(f"\n📅 Processing Year: {year}")
+            print("-"*50)
+            
             for month in months:
                 try:
-                    print(f"Processing {mercado} for {year}-{month:02d}")
+                    print(f"📌 Processing {year}-{month:02d}...")
                     raw_df = self.raw_file_utils.read_raw_file(year, month, self.dataset_type, mercado)
+                    
+                    if raw_df.empty:
+                        print(f"⚠️  Empty file for {year}-{month:02d}")
+                        continue
+                    
+                    print(f"   Records found: {len(raw_df)}")
                     raw_df = self._filter_data_by_mode(raw_df, 'batch')
                     self._route_to_market_saver(raw_df, mercado)
-                    print(f"Successfully processed {mercado} for {year}-{month:02d}")
-
+                    print(f"✅ Successfully processed {year}-{month:02d}")
 
                 except Exception as e:
-                    print(f"Error processing {mercado} for {year}-{month:02d}: {e}")
+                    print(f"❌ Error processing {year}-{month:02d}: {e}")
                     continue
+            
+            print("-"*50)
+        
+        print("\n✅ BATCH PROCESSING COMPLETE")
+        print("="*80 + "\n")
 
     def _process_single_day(self, mercado, date: str):
         """Processes data for a single specified day."""
+        print("\n" + "="*80)
+        print(f"🔄 STARTING SINGLE DAY TRANSFORM")
+        print(f"Market: {mercado.upper()}")
+        print(f"Date: {date}")
+        print("="*80 + "\n")
+
         try:
             # Parse the date string to get year and month
             try:
                 target_date = pd.to_datetime(date)
                 target_year = target_date.year
                 target_month = target_date.month
-
             except ValueError:
-                print(f"Invalid date format: {date}. Please use YYYY-MM-DD.")
+                print("❌ VALIDATION ERROR")
+                print(f"Invalid date format: {date}")
+                print("Please use YYYY-MM-DD format")
+                print("="*80 + "\n")
                 return
 
-            print(f"Processing data for {mercado} on {date}")
-
+            print("📂 CHECKING DATA AVAILABILITY")
+            print("-"*50)
+            
             # Check if the required year and month folders exist
             available_years = self.raw_file_utils.get_raw_folder_list(mercado)
             if target_year not in available_years:
-                print(f"No data found for market {mercado} in year {target_year}")
+                print("❌ DATA NOT FOUND")
+                print(f"No data available for year {target_year}")
+                print("="*80 + "\n")
                 return
 
             available_months = self.raw_file_utils.get_raw_folder_list(mercado, target_year)
             if target_month not in available_months:
-                print(f"No data found for market {mercado} in year {target_year}, month {target_month:02d}")
+                print("❌ DATA NOT FOUND")
+                print(f"No data available for {target_year}-{target_month:02d}")
+                print("="*80 + "\n")
                 return
 
-            # Read the specific raw file for the given year and month
-            raw_df = self.raw_file_utils.read_raw_file(target_year, target_month, self.dataset_type, mercado)
-            print("--------------------------------")
-            print(f"Raw data before filtering by single day:")
-            print("\n", raw_df.head())
-            print(f"Shape: \n{raw_df.shape}")
-            print("--------------------------------")
+            print("✅ Data files available")
+            print("-"*50 + "\n")
 
-            # Filter the DataFrame for the specific date and process
+            # Read and process data
+            print("🔄 PROCESSING DATA")
+            print("-"*50)
+            print(f"1. Reading raw file for {target_year}-{target_month:02d}...")
+            raw_df = self.raw_file_utils.read_raw_file(target_year, target_month, self.dataset_type, mercado)
+            print(f"   Records found: {len(raw_df)}")
+            
+            print("\n2. Filtering for target date...")
             filtered_df = self._filter_data_by_mode(raw_df, mode='single', start_date=date, end_date=date)
 
-            # Check if data exists for the specific date after filtering
             if filtered_df.empty:
-                print("--------------------------------")
-                print(f"No data found on {date} for mercado {mercado.upper()} on month {target_month} of year {target_year}.")
-                print(f"Range of available dates in the raw dataset:")
-                print(f"- {raw_df['datetime_utc'].dt.date.min()} to {raw_df['datetime_utc'].dt.date.max()}")
-                print("--------------------------------")
+                print("\n❌ NO DATA FOUND")
+                print(f"No records for {date}")
+                print(f"Available date range: {raw_df['datetime_utc'].dt.date.min()} to {raw_df['datetime_utc'].dt.date.max()}")
+                print("="*80 + "\n")
                 return
             
-            #save data
+            print(f"   Filtered records: {len(filtered_df)}")
+            
+            print("\n3. Applying market transformation...")
             self._route_to_market_saver(filtered_df, mercado)
+            print("-"*50)
+
+            print("\n✅ PROCESS COMPLETE")
+            print(f"Successfully processed {mercado} data for {date}")
+            print("="*80 + "\n")
 
         except FileNotFoundError:
-             print(f"Raw file not found for {mercado} for {target_year}-{target_month:02d}.")
+            print("\n❌ FILE ERROR")
+            print(f"Raw file not found for {target_year}-{target_month:02d}")
+            print("="*80 + "\n")
         except Exception as e:
-            print(f"Error processing data for {mercado} on {date}: {e}")
+            print("\n❌ UNEXPECTED ERROR")
+            print(f"Error processing data: {str(e)}")
+            print("="*80 + "\n")
 
     def _process_latest_day(self, mercado):
         """Processes the most recent day's data."""
+        print("\n" + "="*80)
+        print(f"🔄 STARTING LATEST DAY TRANSFORM")
+        print(f"Market: {mercado.upper()}")
+        print("="*80 + "\n")
+
         try:
+            print("📂 LOCATING LATEST DATA")
+            print("-"*50)
+            
             # Get the latest year
             years = sorted(self.raw_file_utils.get_raw_folder_list(mercado), reverse=True)
             if not years:
-                print(f"No data found for market {mercado}")
+                print("❌ NO DATA FOUND")
+                print(f"No data available for market {mercado}")
+                print("="*80 + "\n")
                 return
             
             latest_year = years[0]
+            print(f"✓ Latest year: {latest_year}")
             
-            # Get the latest month for the latest year
+            # Get the latest month
             months = sorted(self.raw_file_utils.get_raw_folder_list(mercado, latest_year), reverse=True)
             if not months:
-                print(f"No data found for market {mercado} in year {latest_year}")
+                print("❌ NO DATA FOUND")
+                print(f"No data available for year {latest_year}")
+                print("="*80 + "\n")
                 return
             
             latest_month = months[0]
+            print(f"✓ Latest month: {latest_month:02d}")
+            print("-"*50 + "\n")
             
-            print(f"Processing latest data for {mercado}: {latest_year}-{latest_month}")
+            # Process data
+            print("🔄 PROCESSING DATA")
+            print("-"*50)
+            print(f"1. Reading latest file ({latest_year}-{latest_month:02d})...")
             raw_df = self.raw_file_utils.read_raw_file(latest_year, latest_month, self.dataset_type, mercado)
+            print(f"   Records found: {len(raw_df)}")
 
-            print("--------------------------------")
-            print(f"Raw data before filtering by single day:")
-            print("\n", raw_df.head())
-            print(f"Shape: \n{raw_df.shape}")
-            print("--------------------------------")
-
+            print("\n2. Filtering for latest day...")
             raw_df = self._filter_data_by_mode(raw_df, 'latest')
+            if raw_df.empty:
+                print("❌ NO DATA FOUND")
+                print("No records found in latest file")
+                print("="*80 + "\n")
+                return
+            
+            latest_date = raw_df['datetime_utc'].dt.date.max()
+            print(f"   Latest date: {latest_date}")
+            print(f"   Filtered records: {len(raw_df)}")
 
-            #save data
+            print("\n3. Applying market transformation...")
             self._route_to_market_saver(raw_df, mercado)
+            print("-"*50)
+
+            print("\n✅ PROCESS COMPLETE")
+            print(f"Successfully processed latest {mercado} data")
+            print(f"Date processed: {latest_date}")
+            print("="*80 + "\n")
 
         except Exception as e:
-            print(f"Error processing latest data for {mercado}: {e}")
+            print("\n❌ UNEXPECTED ERROR")
+            print(f"Error processing latest data: {str(e)}")
+            print("="*80 + "\n")
     
     def _process_date_range(self, mercado: str, start_date: str, end_date: str):
         """Processes data for a specified date range."""
-        print(f"Starting multiple transform for {mercado} from {start_date} to {end_date}")
+        print("\n" + "="*80)
+        print(f"🔄 STARTING MULTIPLE TRANSFORM")
+        print(f"Market: {mercado.upper()}")
+        print(f"Period: {start_date} to {end_date}")
+        print("="*80 + "\n")
+
         try:
             # Parse dates using DateUtilsETL for consistency
             start_date_dt = pd.to_datetime(start_date)
@@ -298,37 +399,40 @@ class TransformadorESIOS:
             processed_any_file = False
 
             # Read data for each relevant year-month
-            print(f"Identifying and reading relevant files for {mercado} between {start_date} and {end_date}...")
+            print("\n📂 FILE PROCESSING")
+            print("-"*50)
             for year, month in year_months:
                 try:
-                    print(f"Attempting to read raw file: {year}-{month:02d} for {mercado}")
+                    print(f"📌 Reading {year}-{month:02d}...")
                     df = self.raw_file_utils.read_raw_file(year, month, self.dataset_type, mercado)
 
-                    #appned the df to existing df list if not empty
                     if not df.empty:
                         all_raw_dfs.append(df)
                         processed_any_file = True
-                        print(f"Successfully read raw file: {year}-{month:02d} for {mercado}")
+                        print(f"✅ Successfully read: {year}-{month:02d}")
                     else:
-                        print(f"Raw file {year}-{month:02d} for {mercado} is empty. Skipping.")
+                        print(f"⚠️  Empty file: {year}-{month:02d}")
 
                 except FileNotFoundError:
-                    print(f"Warning: Raw file not found for {mercado} for {year}-{month:02d}. Skipping.")
+                    print(f"❌ File not found: {year}-{month:02d}")
                 except Exception as e:
-                    print(f"Error reading raw file for {mercado} for {year}-{month:02d}: {e}")
-                    continue # Continue with next file
+                    print(f"❌ Error reading {year}-{month:02d}: {str(e)}")
+                    continue
+            print("-"*50 + "\n")
 
             if not processed_any_file:
-                 print(f"No raw files found or successfully read for {mercado} within the specified date range {start_date} to {end_date}.")
+                 print("❌ ERROR: No files processed")
+                 print(f"No data available for {mercado} between {start_date} and {end_date}")
                  return
 
-            # Concatenate all dataframes
-            print("Concatenating raw dataframes...")
+            # Data Processing Steps
+            print("🔄 PROCESSING DATA")
+            print("-"*50)
+            print("1. Concatenating dataframes...")
             combined_raw_df = pd.concat(all_raw_dfs, ignore_index=True)
-            print(f"Combined raw dataframe shape: {combined_raw_df.shape}")
+            print(f"   Combined shape: {combined_raw_df.shape}")
 
-            # Filter the combined DataFrame for the exact date range using the helper method
-            print(f"Filtering combined data for range {start_date} to {end_date}...")
+            print("\n2. Filtering date range...")
             processed_df = self._filter_data_by_mode(
                 combined_raw_df,
                 'multiple',
@@ -336,24 +440,33 @@ class TransformadorESIOS:
                 end_date=end_date
             )
 
-            # Check if data exists after filtering for the date range
             if processed_df.empty:
-                print(f"No data found for {mercado} between {start_date} and {end_date} after filtering the combined data.")
+                print("❌ ERROR: No data after filtering")
+                print(f"No records found for {mercado} in specified date range")
                 return
 
-            print(f"Filtered data shape for transformation: {processed_df.shape}")
+            print(f"   Filtered shape: {processed_df.shape}")
 
-            # Apply the final transformation and save (assuming _route_to_market_saver handles this)
-            print(f"Applying market transformation for {mercado}...")
+            print("\n3. Applying market transformation...")
             self._route_to_market_saver(processed_df, mercado)
-            print(f"🆗 Successfully processed and saved data for {mercado} from {start_date} to {end_date} 🆗")
+            print("-"*50)
+
+            print("\n✅ PROCESS COMPLETE")
+            print(f"Successfully processed {mercado} data")
+            print(f"Period: {start_date} to {end_date}")
+            print("="*80 + "\n")
 
         except ValueError as ve:
-             # Catch specific errors like date parsing or invalid range
-             print(f"Configuration or Value Error during multiple transform for {mercado} ({start_date}-{end_date}): {ve}")
+             print("\n❌ VALIDATION ERROR")
+             print(f"Error in {mercado} ({start_date} to {end_date})")
+             print(f"Details: {str(ve)}")
+             print("="*80 + "\n")
         except Exception as e:
-            print(f"An unexpected error occurred during multiple transform for {mercado} ({start_date}-{end_date}): {e}")
-            print(traceback.format_exc()) # Print stack trace for debugging
+            print("\n❌ UNEXPECTED ERROR")
+            print(f"Error in {mercado} ({start_date} to {end_date})")
+            print(f"Details: {str(e)}")
+            print(traceback.format_exc())
+            print("="*80 + "\n")
 
     def transform_data_for_all_markets(self, start_date: str = None, end_date: str = None, mercados: list[str] = None, mode: str = 'latest') -> None:
         """
