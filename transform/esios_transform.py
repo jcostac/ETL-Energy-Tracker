@@ -70,11 +70,11 @@ class TransformadorESIOS:
             if mode == 'latest':
                 # Process only the last day in the dataframe
                 last_day = raw_df['datetime_utc'].dt.date.max()
-              
-                print(f"Processing in single mode for {last_day}")
-                # Filter dataframe to only include the last day
-                # Instead of comparing with date directly, convert to Timestamp
-                filtered_df = raw_df[raw_df['datetime_utc'].dt.date == pd.Timestamp(last_day)]
+                print(f"Latest day in data: {last_day}")
+                # Compare date with date directly without converting to Timestamp
+                filtered_df = raw_df[raw_df['datetime_utc'].dt.date == last_day]
+                print(f"Records found after filtering for : {len(filtered_df)}")
+                print(f"Dates in data: {sorted(raw_df['datetime_utc'].dt.date.unique())}")
                 return filtered_df
 
             #2. BATCH mode

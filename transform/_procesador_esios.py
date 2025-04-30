@@ -29,7 +29,7 @@ class ESIOSProcessor:
         """
         self.config = ESIOSConfig()
         self.data_validatior = DataValidationUtils()
-        self.indicators_to_filter = [600, 612, 613, 614, 615, 616, 617, 618, 1782]
+        self.indicators_to_filter_by_geo_name = [600, 612, 613, 614, 615, 616, 617, 618, 1782]
         self.geo_names_in_raw_data = []# List of unique geo_name values in raw data
         self.geo_names_of_interest = ["España"]# List of unique geo_name values of interest
 
@@ -104,25 +104,31 @@ class ESIOSProcessor:
         self.unique_geo_names(df)
         
         # Convert indicators to filter into string format for comparison
-        indicators_to_filter_str = [str(i) for i in self.indicators_to_filter]
+        indicators_to_filter_str = [str(i) for i in self.indicators_to_filter_by_geo_name]
+        print(f"Indicators to filter by geo_name: {indicators_to_filter_str}")
         
         # Ensure 'indicador_id' is of string type
         if 'indicador_id' in df.columns:
             df['indicador_id'] = df['indicador_id'].astype(str)
+            
+            # Create a mask for rows that need geo_name filtering
+            # it creates a boolean mask needs_geo_filter that marks which rows have indicator IDs that need geographic filtering
+            needs_geo_filter = df['indicador_id'].isin(indicators_to_filter_str) 
+            print(f"Needs geo_name filter: {needs_geo_filter.any()}")
+            
+            if needs_geo_filter.any(): #if any rows need filtering
 
-        if 'geo_name' not in df.columns:
-            print("Geo name column not found in dataframe. Skipping filter.")
-            return df
-        
-        # Apply filters if the columns exist
-        if 'indicador_id' in df.columns:  # Check if the column exists
-            # Apply both filters together
-            mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'].isin(self.geo_names_of_interest))
-            df_filtered = df[mask]
-            print(f"Unique geo_name values in filtered dataframe: {df_filtered['geo_name'].unique()}")
-            #print(f"Filtered from {len(df)} to {len(df_filtered)} rows")
-            return df_filtered
-        
+                #~needs_geo_filter: Keeps ALL rows that don't need geographic filtering (their indicator IDs are not in the list)
+                #needs_geo_filter & df['geo_name'].isin(self.geo_names_of_interest): Keeps only the rows that need filtering AND have the specified geo_name
+                mask = (~needs_geo_filter) | (needs_geo_filter & df['geo_name'].isin(self.geo_names_of_interest))
+
+                #mask: Combines the two conditions: keep all non-filtered rows OR keep only the filtered rows that match the specified geo_name
+                df_filtered = df[mask]
+
+                print(f"Unique geo_name values in filtered dataframe: {df_filtered['geo_name'].unique()}")
+                print(f"Filtered from {len(df)} to {len(df_filtered)} rows")
+                return df_filtered
+            
         return df
 
     def _rename_value_to_precio(self, df: pd.DataFrame) -> pd.DataFrame:
