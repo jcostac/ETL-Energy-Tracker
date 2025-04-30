@@ -4,6 +4,7 @@ from utilidades.etl_date_utils import DateUtilsETL
 import pytz
 import pretty_errors
 import sys
+import traceback
 
 # Add necessary imports
 from pathlib import Path
@@ -97,10 +98,6 @@ class TransformadorESIOS:
 
             #4. MULTIPLE mode
             elif mode == 'multiple':
-                #convert to series first 
-                start_date_series = pd.Series(start_date)
-                end_date_series = pd.Series(end_date)
-
                 #convert from naive to utc
                 target_start_date = pd.to_datetime(start_date).date()
                 target_end_date = pd.to_datetime(end_date).date()
@@ -108,7 +105,11 @@ class TransformadorESIOS:
                 # Process a range of days
                 print(f"Processing in multiple mode for {target_start_date} to {target_end_date}")
 
-                filtered_df = raw_df[raw_df['datetime_utc'].dt.date.isin(pd.date_range(start=target_start_date, end=target_end_date))]
+                # Use direct comparison instead of isin with date_range
+                filtered_df = raw_df[
+                    (raw_df['datetime_utc'].dt.date >= target_start_date) & 
+                    (raw_df['datetime_utc'].dt.date <= target_end_date)
+                ]
                 return filtered_df
             
             else:
@@ -138,19 +139,6 @@ class TransformadorESIOS:
             # 3. Save Processed Data
             print(f"Transformation complete ({len(processed_df)} rows). Saving processed data...")
             self.processed_file_utils.write_processed_parquet(processed_df, mercado, value_col='precio', dataset_type=self.dataset_type)
-            
-            #custom printout for ddebugging date range pocessed (ie sinlge, multiple, batch or latest modes)
-            unique_dates = processed_df['datetime_utc'].dt.date.unique()
-            num_unique_dates = len(unique_dates)
-            if num_unique_dates == 1:
-                single_date = unique_dates[0]
-                date_range = single_date
-            else:
-                min_date = unique_dates.min()
-                max_date = unique_dates.max()
-                date_range = f"dates in range: {min_date} to {max_date}"
-
-            print(f"Successfully saved processed {mercado} data for {date_range}.")
 
         except Exception as e:
             print(f"Error saving processed data for {mercado}: {e}")
@@ -358,14 +346,12 @@ class TransformadorESIOS:
             # Apply the final transformation and save (assuming _route_to_market_saver handles this)
             print(f"Applying market transformation for {mercado}...")
             self._route_to_market_saver(processed_df, mercado)
-            print(f"Successfully processed and saved data for {mercado} from {start_date} to {end_date}")
+            print(f"🆗 Successfully processed and saved data for {mercado} from {start_date} to {end_date} 🆗")
 
         except ValueError as ve:
              # Catch specific errors like date parsing or invalid range
              print(f"Configuration or Value Error during multiple transform for {mercado} ({start_date}-{end_date}): {ve}")
         except Exception as e:
-            # Catch broader exceptions during the process
-            import traceback
             print(f"An unexpected error occurred during multiple transform for {mercado} ({start_date}-{end_date}): {e}")
             print(traceback.format_exc()) # Print stack trace for debugging
 

@@ -620,7 +620,7 @@ class ProcessedFileUtils(StorageFileUtils):
         existing_data_df = pd.DataFrame()
         if os.path.exists(file_path):
             print("--------------------------------")
-            print(f"[INFO] Existing file found at {file_path}. Reading...")
+            print(f"[INFO] Existing file found for {partition['mercado'].upper()}, with id_mercado: {partition['id_mercado']}, for year: {partition['year']}, month: {partition['month']}. Reading...")
             try:
                 # Read existing data
                 existing_data_df = pd.read_parquet(file_path)
@@ -749,18 +749,20 @@ class ProcessedFileUtils(StorageFileUtils):
             writer = pq.ParquetWriter(
                 output_file,
                 schema,
-                compression='zstd',
-                write_statistics=stats_cols,
-                use_dictionary=dict_cols,
-                data_page_size=64 * 1024,
-                data_page_version='2.0'
+                compression='zstd', #compression algorithm
+                write_statistics=stats_cols, #write statistics for columns where we could easily have value filters ie precios > x amount to optimize queries
+                use_dictionary=dict_cols, #dictionary encoding for columns with many repeated values
+                data_page_size=64 * 1024, #64k rows per page 
+                data_page_version='2.0' #parquet version
             )
             writer.write_table(table, row_group_size)
             writer.close()
             print(f"✅ Successfully wrote {output_file} ✅")
+            print(f"================================================")
         except Exception as e:
-            print(f"❌ Error writing Parquet file {output_file}: {e} ❌")
-  
+            print(f"❌ Error writing Parquet file {output_file}: {e} ❌")  
+            print(f"================================================")
+
     def _ensure_datetime_utc_naive(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Ensures the 'datetime_utc' column is timezone-naive for Parquet compatibility.
@@ -888,38 +890,6 @@ class ProcessedFileUtils(StorageFileUtils):
             print(f"Dictionary encoding not applied for this dataset. Only applied for i90 and i3 datasets.")
         print("--------------------------------")
         return dict_cols
-
-    def _write_parquet_file(self, table: pa.Table, output_file: str, value_col: str, row_group_size: int) -> None:
-        """
-        Writes a PyArrow Table to a Parquet file with appropriate compression, statistics, and dictionary encoding.
-
-        Args:
-            table (pa.Table): The PyArrow Table to write.
-            output_file (str): The output file path.
-            value_col (str): The main value column for statistics.
-            is_precios_data (bool): Whether the data is 'precios' type (affects dictionary encoding).
-        """
-        try:
-            schema = table.schema
-            #set stat cols and dct cols
-            stats_cols = self._set_stats_cols(value_col, schema)
-            dict_cols = self._set_dict_cols(schema)
-
-            #write parquet file
-            writer = pq.ParquetWriter(
-                output_file,
-                schema,
-                compression='zstd',
-                write_statistics=stats_cols,
-                use_dictionary=dict_cols,
-                data_page_size=64 * 1024,
-                data_page_version='2.0'
-            )
-            writer.write_table(table, row_group_size)
-            writer.close()
-            print(f"✅ Successfully wrote {output_file} ✅")
-        except Exception as e:
-            print(f"❌ Error writing Parquet file {output_file}: {e} ❌")
 
 
 if __name__ == "__main__":

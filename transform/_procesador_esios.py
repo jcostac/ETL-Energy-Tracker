@@ -54,7 +54,7 @@ class ESIOSProcessor:
         # Check for negative prices (these can be valid in energy markets)
         negative_prices = df[df['precio'] < 0]
         if not negative_prices.empty:
-            print(f"Info: Found {len(negative_prices)} negative price values")
+            print(f"-Info: Found {len(negative_prices)} negative price values")
             
         # Check for unusually high prices (without removing them) 3x std from mean
         mean_price = df['precio'].mean()
