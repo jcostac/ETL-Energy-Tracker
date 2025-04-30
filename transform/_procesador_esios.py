@@ -34,21 +34,46 @@ class ESIOSProcessor:
         self.geo_names_of_interest = ["España"]# List of unique geo_name values of interest
 
 
-    @staticmethod
-    def standardize_prices(df: pd.DataFrame) -> pd.DataFrame:
+    def _standardize_prices(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Standardize price values (e.g., convert to same unit, handle outliers).
+        Validate and check price values, with optional data quality warnings.
         
         Args:
             df (pd.DataFrame): Input DataFrame with price data
             
         Returns:
-            pd.DataFrame: DataFrame with standardized prices
+            pd.DataFrame: DataFrame with validated prices
         """
-        # Remove extreme outliers (e.g., prices > 3 std from mean)
+        # Round prices to 2 decimal places (keeping this as it's just formatting)
+        df['precio'] = df['precio'].round(2)
+        
+        # Price validation checks (without modifying the data)
+        if df['precio'].isnull().any():
+            print(f"Warning: Found {df['precio'].isnull().sum()} null price values")
+            
+        # Check for negative prices (these can be valid in energy markets)
+        negative_prices = df[df['precio'] < 0]
+        if not negative_prices.empty:
+            print(f"Info: Found {len(negative_prices)} negative price values")
+            
+        # Check for unusually high prices (without removing them) 3x std from mean
         mean_price = df['precio'].mean()
         std_price = df['precio'].std()
-        df = df[abs(df['precio'] - mean_price) <= 3 * std_price]
+        extreme_prices = df[abs(df['precio'] - mean_price) > 3 * std_price]
+        if not extreme_prices.empty:
+            print(f"Info: Found {len(extreme_prices)} price values more than 3 standard deviations from mean")
+            print(f"Price range: Min={df['precio'].min():.2f}, Max={df['precio'].max():.2f}")
+            
+        # Check for zero prices
+        zero_prices = df[df['precio'] == 0]
+        if not zero_prices.empty:
+            print(f"Info: Found {len(zero_prices)} zero price values")
+            
+        # Basic statistics logging
+        print(f"Price statistics:")
+        print(f"Mean: {mean_price:.2f}")
+        print(f"Median: {df['precio'].median():.2f}")
+        print(f"Std Dev: {std_price:.2f}")
         
         return df
     
@@ -90,7 +115,7 @@ class ESIOSProcessor:
             mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'].isin(self.geo_names_of_interest))
             df_filtered = df[mask]
             print(f"Unique geo_name values in filtered dataframe: {df_filtered['geo_name'].unique()}")
-            print(f"Filtered from {len(df)} to {len(df_filtered)} rows")
+            #print(f"Filtered from {len(df)} to {len(df_filtered)} rows")
             return df_filtered
         
         return df
@@ -272,6 +297,7 @@ class ESIOSProcessor:
             (self._validate_data, {"type": "raw"}), #validate raw data
             (self._rename_value_to_precio, {}),
             (self._map_id_mercado, {}),
+            (self._standardize_prices, {}),
             (self._handle_granularity, {}),
             (self._select_and_finalize_columns, {}),
             (self._validate_data, {"type": "processed"}) #validate processed data
