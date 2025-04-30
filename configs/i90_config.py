@@ -259,7 +259,7 @@ class I90Config:
 class DiarioConfig(I90Config):
     def __init__(self):
         super().__init__()
-        #get individual id
+        #get individual i.e. {'Diario': 1}
         self.diaria_id = self.id_mercado_map["Diario"]
 
         # group id onto a single var (this is the right way to do it in order to be used in get_sheets_of_interest)

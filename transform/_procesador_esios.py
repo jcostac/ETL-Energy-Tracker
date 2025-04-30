@@ -97,7 +97,7 @@ class ESIOSProcessor:
 
         return
 
-    def _filter_by_geo_name(self, df: pd.DataFrame, geo_name: str) -> pd.DataFrame:
+    def _filter_by_geo_name(self, df: pd.DataFrame, geo_name: list[str]) -> pd.DataFrame:
         """
         Filter data based on geo_name for specific indicators.
         """
@@ -120,7 +120,7 @@ class ESIOSProcessor:
 
                 #~needs_geo_filter: Keeps ALL rows that don't need geographic filtering (their indicator IDs are not in the list)
                 #needs_geo_filter & df['geo_name'].isin(self.geo_names_of_interest): Keeps only the rows that need filtering AND have the specified geo_name
-                mask = (~needs_geo_filter) | (needs_geo_filter & df['geo_name'].isin(self.geo_names_of_interest))
+                mask = (~needs_geo_filter) | (needs_geo_filter & df['geo_name'].isin(geo_name))
 
                 #mask: Combines the two conditions: keep all non-filtered rows OR keep only the filtered rows that match the specified geo_name
                 df_filtered = df[mask]
@@ -318,10 +318,13 @@ class ESIOSProcessor:
             empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
             empty_df.index.name = 'id'
             return empty_df
+        
+        if geo_name is None:
+            geo_name = self.geo_names_of_interest
 
         # Define the standard processing pipeline
         pipeline = [
-            (self._filter_by_geo_name, {'geo_name': self.geo_names_of_interest}),
+            (self._filter_by_geo_name, {'geo_name': geo_name}),
             (self._validate_data, {"type": "raw"}),
             (self._rename_value_to_precio, {}),
             (self._map_id_mercado, {}),

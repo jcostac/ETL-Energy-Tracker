@@ -470,11 +470,18 @@ class TransformadorESIOS:
 
     def transform_data_for_all_markets(self, start_date: str = None, end_date: str = None, mercados: list[str] = None, mode: str = 'latest') -> None:
         """
-        Transforms data for all specified markets based on the mode.
-        
+        Transforms data for all specified markets based on the mode. 
+        If mode is 'latest', it will process the latest data for each market.
+        If mode is 'batch', it will process all data for each market.
+        If mode is 'single', it will process data for a single day for each market.
+        If mode is 'multiple', it will process data for a range of days for each market.
+        If mode is not specified, it will default to 'latest'.
+
         Args:
             mercados: List of market names to process. If None, processes all markets.
-            mode: One of 'latest', 'batch', 'single', or 'multiple'
+            mode: One of 'latest', 'batch', 'single', or 'multiple', default is 'latest'
+            start_date: The start date to process. Optional for single and multiple modes.
+            end_date: The end date to process. Optional for multiple modes.
         """
         if mode not in self.transform_types:
             raise ValueError(f"Invalid transform type: {mode}. Must be one of: {self.transform_types}")
