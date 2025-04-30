@@ -15,6 +15,7 @@ import shutil
 import sys
 import os
 from deprecated import deprecated
+import re
 # Get the absolute path to the scripts directory
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
@@ -446,6 +447,11 @@ class ProcessedFileUtils(StorageFileUtils):
         """
         Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of processed data
         """
+
+        #print duplicate number before dropping
+        print("--------------------------------")
+        print(f"Number of duplicates before dropping: {df.duplicated().sum()}")
+
         # Then handle subset-based duplicates
         try:
             if dataset_type == 'volumenes_i90':
@@ -453,7 +459,7 @@ class ProcessedFileUtils(StorageFileUtils):
             elif dataset_type == 'volumenes_i3':
                 df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
             else:
-                df = df.drop_duplicates(subset=['datetime_utc', 'indicador_id'], keep='last')
+                df = df.drop_duplicates(subset=['datetime_utc', 'id_mercado', 'datetime_utc'], keep='last')
         except Exception as e:
             print(f"Error dropping duplicates: {e}")
             raise
@@ -471,7 +477,7 @@ class ProcessedFileUtils(StorageFileUtils):
 
         return df
         
-    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_col: str) -> None:
+    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_col: str, dataset_type: str) -> None:
         """
         Processes a DataFrame and saves/appends it as partitioned parquet files using Hive partitioning.
         The method is modular, with each step delegated to a helper for clarity and debuggability.
@@ -484,6 +490,9 @@ class ProcessedFileUtils(StorageFileUtils):
         if df.empty:
             print(f"[DEBUG] Input DataFrame for {mercado} is empty. Skipping parquet write.")
             return
+        
+        #drop processed duplicates
+        df = self.drop_processed_duplicates(df, dataset_type)
 
         # Add partition columns (year, month, mercado)
         df = self.add_partition_cols(df, mercado)
@@ -494,7 +503,7 @@ class ProcessedFileUtils(StorageFileUtils):
         partition_cols = ['mercado', 'id_mercado', 'year', 'month']
         unique_partitions_df = df[partition_cols].drop_duplicates()
 
-        print(f"[DEBUG] Writing {len(unique_partitions_df)} partition(s) for market '{mercado}'...")
+        print(f"Writing {len(unique_partitions_df)} partition(s) for market '{mercado}'...")
 
         # Convert DataFrame to PyArrow Table
         table = self._to_pyarrow_table(df)
@@ -512,24 +521,89 @@ class ProcessedFileUtils(StorageFileUtils):
                     continue
 
                 # Sort partition by datetime_utc
-                partition_table = self._sort_partition_table(partition_table, 'datetime_utc')
+                partition_table.sort_by('datetime_utc')
                 # Drop partition columns from the file (Hive will infer from path)
                 partition_table_final = self._drop_partition_cols(partition_table, partition_cols)
+                print(f"Columns in partition table before writing: {partition_table_final.column_names}")
                 # Build output file path for this partition
-                output_file = self._build_partition_path(partition, partition_cols, value_col)
+                output_file_path = self._build_partition_path(partition, partition_cols, dataset_type)
                 # Write the partitioned Parquet file
                 row_group_size = min(self.row_group_size, len(df))
                 self._write_parquet_file(
                     table=partition_table_final,
-                    output_path=output_file,
+                    output_file=output_file_path,
                     value_col=value_col,
                     row_group_size=row_group_size
                 )
+
+                #read processed parquet file
+                print(f"Reading processed parquet file from: {output_file_path}")
+                processed_df = self._read_processed_parquet(full_path=output_file_path)
+                
             except Exception as e:
-                print(f"[ERROR] Failed to process partition {partition.to_dict()}: {e}")
+                print(f"❌ Failed to process partition {partition.to_dict()}: {e} ❌")
 
-        print(f"[DEBUG] Finished writing partitioned Parquet files for market '{mercado}' to {self.processed_path}")
+        print(f"✅ Finished writing all partitions for market '{mercado}' to {self.processed_path} ✅")
 
+    def _read_processed_parquet(self, mercado: str = None, dataset_type: str = None, full_path: str = None, year: int = None, month: int = None, id_mercado: int = None) -> pd.DataFrame:
+        """
+        Reads processed parquet files from the appropriate directory structure with Hive-style partitioning.
+        
+        Args:
+            mercado (str): Market name (e.g., 'diario', 'intra')
+            dataset_type (str): Dataset type (e.g., 'precios', 'volumenes')
+            year (int, optional): Filter by specific year
+            month (int, optional): Filter by specific month
+            id_mercado (int, optional): Filter by specific market ID
+            
+        Returns:
+            pd.DataFrame: Combined DataFrame from all matching partitions
+            pd.DataFrame: Statistics from the DataFrame (min, max, mean, std, etc.)
+        """
+        if full_path is None:
+            #all other parameters need to be provided
+            if year is None or month is None or id_mercado is None or dataset_type is None or mercado is None:
+                raise ValueError("All other parameters need to be provided if full_path is not provided")
+            
+            #join all parameters to form full path
+            full_path = os.path.join(self.processed_path, f"mercado={mercado}", f"id_mercado={id_mercado}", f"year={year}", f"month={month}", f"{dataset_type}.parquet")
+        
+            
+        else:
+            #extract parameters from full path 
+            pattern = r"mercado=([^\\/]+)[\\/]+id_mercado=([^\\/]+)[\\/]+year=([^\\/]+)[\\/]+month=([^\\/]+)[\\/]+([^\\/]+)\.parquet$"
+            match = re.search(pattern, full_path)
+            if match:
+                mercado, id_mercado, year, month, dataset_type = match.groups()
+            else:
+                raise ValueError(f"Could not extract partition values from path: {full_path}")
+            
+        try:
+            # Use pyarrow.dataset for efficient reading with partitioning
+            dataset = pq.ParquetDataset(full_path)
+            #print(f"Parquet schema: {pq.read_table(base_path).schema}")
+
+            
+            if len(dataset.files) == 0:
+                print(f"No parquet files found at path: {full_path}")
+                return pd.DataFrame()
+                
+            print(f"Found {len(dataset.files)} parquet files for {mercado.upper()} {dataset_type} in {year} - {month}")
+            processed_df = dataset.read().to_pandas()
+            processed_df_stats = processed_df.describe()
+            print(f"Stats for {mercado.upper()}  {dataset_type}:")
+            print(processed_df_stats)
+            print("--------------------------------")
+            print(f"First 10 rows for {mercado.upper()} {dataset_type}:")
+            print(processed_df.head(10))
+            print("--------------------------------")
+            print(f"Shape of processed DataFrame: {processed_df.shape}")
+            return processed_df
+            
+        except Exception as e:
+            print(f"Error reading processed parquet files: {e}")
+            return pd.DataFrame(),
+  
     def _ensure_datetime_utc_naive(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Ensures the 'datetime_utc' column is timezone-naive for Parquet compatibility.
@@ -579,23 +653,6 @@ class ProcessedFileUtils(StorageFileUtils):
             mask = pa.compute.and_(mask, pa.compute.equal(table[col], partition[col]))
         return table.filter(mask)
 
-    def _sort_partition_table(self, table: pa.Table, sort_col: str) -> pa.Table:
-        """
-        Sorts a PyArrow Table by the specified column.
-
-        Args:
-            table (pa.Table): The PyArrow Table to sort.
-            sort_col (str): The column name to sort by.
-
-        Returns:
-            pa.Table: Sorted PyArrow Table.
-        """
-        try:
-            return table.sort_by(sort_col)
-        except Exception as e:
-            print(f"[ERROR] Error sorting partition Table by {sort_col}: {e}")
-            return table
-
     def _drop_partition_cols(self, table: pa.Table, partition_cols: list) -> pa.Table:
         """
         Drops partition columns from the PyArrow Table (they are encoded in the Hive path).
@@ -607,13 +664,15 @@ class ProcessedFileUtils(StorageFileUtils):
         Returns:
             pa.Table: Table with partition columns dropped.
         """
+        print(f"Dropping partition columns: {partition_cols}")
         cols_to_drop = [col for col in partition_cols if col in table.column_names]
         if not cols_to_drop:
-            print("[DEBUG] No partition columns found to drop.")
+            
             return table
-        return table.drop(cols_to_drop)
+        table = table.drop(cols_to_drop)
+        return table
 
-    def _build_partition_path(self, partition, partition_cols: list, value_col: str) -> str:
+    def _build_partition_path(self, partition, partition_cols: list, dataset_type: str) -> str:
         """
         Builds the output file path for a given partition using Hive-style key=value directories.
         Hive-style: key=value for each partition column
@@ -640,7 +699,7 @@ class ProcessedFileUtils(StorageFileUtils):
             path_segments.append(segment)
         partition_path_str = os.path.join(*path_segments) #kwargs, join path segments ie> processed/mercado=BTC/id_mercado=BTC/year=2024/month=01
         os.makedirs(partition_path_str, exist_ok=True) #create directory if it doesn't exist
-        return os.path.join(partition_path_str, f"{value_col}.parquet")
+        return os.path.join(partition_path_str, f"{dataset_type}.parquet")
 
     def _set_stats_cols(self, value_col: str, schema: pa.Schema) -> list[str]:
         """
@@ -656,14 +715,16 @@ class ProcessedFileUtils(StorageFileUtils):
         """
         Sets the columns to include in dictionary encoding.
         """
+        print("--------------------------------")
+        print(f"Applying dictionary encoding...")
         dict_cols = []
         if "up" in schema.names:
             dict_cols.append("up")
         elif "tecnologia" in schema.names:
             dict_cols.append("tecnologia")
         else:
-            print(f"[DEBUG] Dictionary encoding not applied for this dataset.")
-
+            print(f"Dictionary encoding not applied for this dataset. Only applied for i90 and i3 datasets.")
+        print("--------------------------------")
         return dict_cols
 
     def _write_parquet_file(self, table: pa.Table, output_file: str, value_col: str, row_group_size: int) -> None:
@@ -694,9 +755,9 @@ class ProcessedFileUtils(StorageFileUtils):
             )
             writer.write_table(table, row_group_size)
             writer.close()
-            print(f"[DEBUG] Successfully wrote {output_file}")
+            print(f"✅ Successfully wrote {output_file} ✅")
         except Exception as e:
-            print(f"[ERROR] Error writing Parquet file {output_file}: {e}")
+            print(f"❌ Error writing Parquet file {output_file}: {e} ❌")
 
 
 if __name__ == "__main__":

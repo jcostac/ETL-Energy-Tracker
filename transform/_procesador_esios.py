@@ -79,12 +79,18 @@ class ESIOSProcessor:
         # Ensure 'indicador_id' is of string type
         if 'indicador_id' in df.columns:
             df['indicador_id'] = df['indicador_id'].astype(str)
+
+        if 'geo_name' not in df.columns:
+            print("Geo name column not found in dataframe. Skipping filter.")
+            return df
         
-        # Create and apply the filter
-        if 'indicador_id' in df.columns and 'geo_name' in df.columns:
+        # Create and apply the filter only if the indicators and geo_names are in the dataframe
+        if 'indicador_id' in indicators_to_filter_str and 'geo_name' in self.geo_names_of_interest:
             # Apply both filters together
             mask = (df['indicador_id'].isin(indicators_to_filter_str)) & (df['geo_name'].isin(self.geo_names_of_interest))
             df_filtered = df[mask]
+            #print unique values of geo_name in filtered dataframe
+            print(f"Unique geo_name values in filtered dataframe: {df_filtered['geo_name'].unique()}")
             return df_filtered
         
         return df

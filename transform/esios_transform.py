@@ -137,9 +137,9 @@ class TransformadorESIOS:
         
             # 3. Save Processed Data
             print(f"Transformation complete ({len(processed_df)} rows). Saving processed data...")
-            self.processed_file_utils.write_processed_parquet(processed_df, mercado, value_col='precio')
+            self.processed_file_utils.write_processed_parquet(processed_df, mercado, value_col='precio', dataset_type=self.dataset_type)
             
-            #custom printout for depending on date range pocessed (ie sinlge, multiple, batch or latest modes)
+            #custom printout for ddebugging date range pocessed (ie sinlge, multiple, batch or latest modes)
             unique_dates = processed_df['datetime_utc'].dt.date.unique()
             num_unique_dates = len(unique_dates)
             if num_unique_dates == 1:
@@ -150,6 +150,7 @@ class TransformadorESIOS:
                 max_date = unique_dates.max()
                 date_range = f"dates in range: {min_date} to {max_date}"
 
+            print(f"Successfully saved processed {mercado} data for {date_range}.")
 
         except Exception as e:
             print(f"Error saving processed data for {mercado}: {e}")
@@ -237,8 +238,6 @@ class TransformadorESIOS:
                 print("--------------------------------")
                 return
             
-            breakpoint()
-
             #save data
             self._route_to_market_saver(filtered_df, mercado)
 
@@ -316,6 +315,8 @@ class TransformadorESIOS:
                 try:
                     print(f"Attempting to read raw file: {year}-{month:02d} for {mercado}")
                     df = self.raw_file_utils.read_raw_file(year, month, self.dataset_type, mercado)
+
+                    #appned the df to existing df list if not empty
                     if not df.empty:
                         all_raw_dfs.append(df)
                         processed_any_file = True
@@ -327,7 +328,6 @@ class TransformadorESIOS:
                     print(f"Warning: Raw file not found for {mercado} for {year}-{month:02d}. Skipping.")
                 except Exception as e:
                     print(f"Error reading raw file for {mercado} for {year}-{month:02d}: {e}")
-                    # Decide whether to continue or stop on read error
                     continue # Continue with next file
 
             if not processed_any_file:
