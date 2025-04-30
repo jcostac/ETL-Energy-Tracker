@@ -454,7 +454,7 @@ class ProcessedFileUtils(StorageFileUtils):
         """
 
         #print duplicate number before dropping
-        print(f" Number of duplicates before dropping: {df.duplicated().sum()}")
+        print(f"Number of duplicates before dropping: {df.duplicated().sum()}")
 
         # Then handle subset-based duplicates
         try:
