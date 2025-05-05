@@ -13,7 +13,6 @@ from datetime import timedelta, timezone
 from deprecated import deprecated
 import numpy as np
 
-@deprecated(action="error", reason="Class used in an old ETL pipeline, now deprecated.")
 class TimeUtils:
     """Utility class for handling time-related operations for ESIOS, OMIE and I90 data. 
 
@@ -200,37 +199,53 @@ class TimeUtils:
         return hora_str
 
     @staticmethod
-    def get_transition_dates(fecha_inicio: datetime, fecha_fin: datetime) -> Dict[datetime.date, int]:
+    def get_transition_dates(fecha_inicio: datetime, fecha_fin: datetime, timezone: str = 'Europe/Madrid') -> Dict[datetime.date, int]:
         """
         Get dictionary of special dates (daylight saving transitions) between two dates
         
         Args:
             fecha_inicio (datetime): Start date
             fecha_fin (datetime): End date
+            timezone (str): Timezone to use for the transition dates (default: 'Europe/Madrid')
             
         Returns:
             dict: Dictionary with dates as keys and transition type as values
                  transition type: 1 = 25-hour day (fall back)
                                 2 = 23-hour day (spring forward)
         """
-        spain_timezone = pytz.timezone('Europe/Madrid')
-        utc_transition_times = spain_timezone._utc_transition_times[1:]
+        # Get the timezone object for Spain (Europe/Madrid)
+        timezone = pytz.timezone(timezone)
+        
+        # Access the list of UTC transition datetimes from the pytz timezone object
+        # The [1:] slice is used to skip the initial transition at the epoch if present
+        utc_transition_times = timezone._utc_transition_times[1:]
+        
+        # Convert the UTC transition datetimes to the local 'Europe/Madrid' timezone
         localized_transition_times = [
-            pytz.utc.localize(transition).astimezone(spain_timezone) 
+            pytz.utc.localize(transition).astimezone(timezone) 
             for transition in utc_transition_times
         ]
         
-        fecha_inicio_local = spain_timezone.localize(fecha_inicio)
-        fecha_fin_local = spain_timezone.localize(fecha_fin)
+        # Localize the provided start and end dates to the 'Europe/Madrid' timezone
+        # This makes them timezone-aware for comparison
+        fecha_inicio_local = timezone.localize(fecha_inicio)
+        fecha_fin_local = timezone.localize(fecha_fin)
         
+        # Filter the localized transition times to include only those within the specified date range
         filtered_transition_times = [
             transition 
             for transition in localized_transition_times 
             if fecha_inicio_local <= transition <= fecha_fin_local
         ]
 
+        # Create a dictionary mapping the date of each transition to its type
+        # The transition type is determined by inspecting the UTC offset change:
+        # - Spring forward (e.g., +01:00 to +02:00): The 4th char from the end of ISO format ('2') -> type 2 (23-hour day)
+        # - Fall back (e.g., +02:00 to +01:00): The 4th char from the end of ISO format ('1') -> type 1 (25-hour day)
+        # Note: This logic relies on the specific offset format and might be fragile for other timezones.
         transition_dates = {dt.date(): int(dt.isoformat()[-4]) for dt in filtered_transition_times}
         
+        # Return the dictionary of transition dates and their types
         return transition_dates
 
     @staticmethod

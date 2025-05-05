@@ -2,6 +2,10 @@ import pandas as pd
 from typing import Dict, List, Optional, Any
 import sys
 from pathlib import Path
+import pytz
+import traceback
+from utilidades.progress_utils import with_progress
+from datetime import time
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -15,6 +19,7 @@ from configs.i90_config import (
     )
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
+from utilidades.etl_date_utils import TimeUtils
 
 
 class I90Processor:
@@ -39,16 +44,23 @@ class I90Processor:
             return self._empty_output_df(dataset_type)
 
         try:
+            # transformation functions
+            print(f"Applying market filters and id to DataFrame with shape: {df.shape}")
             df = self._apply_market_filters_and_id(df, market_config)
             if df.empty: raise ValueError("DataFrame empty after applying market filters.")
 
+            print(f"Standardizing datetime for DataFrame with shape: {df.shape}")
             df = self._standardize_datetime(df)
             if df.empty: raise ValueError("DataFrame empty after standardizing datetime.")
 
+            print(f"Selecting and finalizing columns for DataFrame with shape: {df.shape}")
             df = self._select_and_finalize_columns(df, dataset_type)
             if df.empty: raise ValueError("DataFrame empty after selecting final columns.")
 
+            print(f"Validating final data for DataFrame with shape: {df.shape}")
             df = self._validate_final_data(df, dataset_type)
+            if df.empty: raise ValueError("DataFrame empty after validation step.")
+
             print("I90 transformation pipeline completed successfully.")
             return df
 
@@ -78,9 +90,11 @@ class I90Processor:
 
         all_market_dfs = []
 
-        required_cols = ['volumen'] # Base columns often present
-        if 'Sentido' in df.columns: required_cols.append('Sentido')
-        if 'Redespacho' in df.columns: required_cols.append('Redespacho')
+        required_cols = ['volumenes'] # Base columns often present
+        if 'Sentido' in df.columns: 
+            required_cols.append('Sentido')
+        if 'Redespacho' in df.columns: 
+            required_cols.append('Redespacho')
 
         # Ensure required columns exist
         if not all(col in df.columns for col in required_cols if col in ['Sentido', 'Redespacho']):
@@ -104,6 +118,7 @@ class I90Processor:
                  # Ensure consistent comparison (e.g., handle case sensitivity if needed)
                  # Assuming Sentido in DataFrame and config map are comparable (e.g., 'Subir', 'Bajar', None)
                 filtered_df = filtered_df[filtered_df['Sentido'] == sentido]
+
             elif sentido and 'Sentido' not in filtered_df.columns:
                  print(f"Warning: Config requires filtering by Sentido='{sentido}' for market_id {market_id}, but 'Sentido' column is missing.")
                  # If sentido filter is required but column missing, no rows will match
@@ -139,50 +154,337 @@ class I90Processor:
 
     # === DATETIME HANDLING ===
     def _standardize_datetime(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ensures a standard UTC datetime column."""
-        if df.empty: return df
+        """
+        Ensures a standard UTC datetime column with 15-minute granularity.
+        Handles different input formats ('hora' column can be numeric index or HH-HH+1 format)
+        and properly processes DST transitions.
+        """
+        if df.empty: 
+            return df
 
-        if 'hora' in df.columns and 'fecha' in df.columns:
-             # Combine fecha and hora, assuming 'hora' might need adjustment (e.g., from 1-24 to 0-23)
-             # The extractor might already handle this; this is a fallback/standardization step.
-             # This logic needs refinement based on the exact output of the extractor.
-             # For now, assume 'hora' is datetime.time or similar and 'fecha' is datetime.date/datetime
-             # Handle potential errors during combination
-             try:
-                df['datetime_local'] = df.apply(lambda row: pd.Timestamp.combine(row['fecha'].date(), row['hora']), axis=1)
-                df['datetime_utc'] = self.date_utils.convert_local_to_utc(df['datetime_local']) # Assumes local is Europe/Madrid
-                df = df.drop(columns=['datetime_local', 'fecha', 'hora'], errors='ignore')
-             except Exception as e:
-                 print(f"Error combining 'fecha' and 'hora': {e}. Cannot create 'datetime_utc'.")
-                 # Decide handling: return empty or raise? Returning df without datetime_utc for now.
-                 if 'datetime_utc' not in df.columns: # Ensure it doesn't exist if creation failed
-                     pass # Or add an empty column: df['datetime_utc'] = pd.NaT
-                 return df.drop(columns=['fecha', 'hora'], errors='ignore') # Drop original cols
+        # Verify required columns exist
+        required_cols = ['fecha', 'hora', "granularity"]
+        if not all(col in df.columns for col in required_cols):
+            raise ValueError(f"Required columns: {required_cols} not found in DataFrame.")
 
-        elif 'datetime_utc' in df.columns:
-             try:
-                df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
-             except Exception as e:
-                print(f"Error converting existing 'datetime_utc' column: {e}. Setting to NaT.")
-                df['datetime_utc'] = pd.NaT
-        elif 'datetime' in df.columns: # If extractor provides a generic datetime
-             try:
-                df['datetime_utc'] = pd.to_datetime(df['datetime'], utc=True)
-                if 'datetime' != 'datetime_utc':
-                    df = df.drop(columns=['datetime'], errors='ignore')
-             except Exception as e:
-                 print(f"Error converting existing 'datetime' column: {e}. Setting to NaT.")
-                 df['datetime_utc'] = pd.NaT
-                 if 'datetime' != 'datetime_utc': df = df.drop(columns=['datetime'], errors='ignore')
+        # Split data by granularity if the column exists (useful for months were we have a granularity change mid month)
+        df_hourly = pd.DataFrame()
+        df_15min = pd.DataFrame()
+        
+        if 'granularity' in df.columns:
+            df_hourly = df[df['granularity'] == 'Hora'].copy()
+            df_15min = df[df['granularity'] == 'Quince minutos'].copy()
+
+        else: # typically this will never execute as we have a granularity column, but jsut in case we extract it from the hora column
+            sample_horas = df['hora'].dropna().astype(str).head(5).tolist()
+            
+            # Check if format is "HH-HH+1" (possibly with 'a'/'b' suffix if there is a fall back DST)
+            hourly_format = any('-' in str(h) for h in sample_horas)
+            
+            if hourly_format:
+                df_hourly = df.copy()
+                df['granularity'] = 'Hora'  # Add for tracking
+            else:
+                df_15min = df.copy()
+                df['granularity'] = 'Quince minutos'  # Add for tracking
+        
+        # Process hourly data
+        df_hourly_processed = pd.DataFrame()
+        if not df_hourly.empty:
+            print(f"Processing {len(df_hourly)} rows of hourly data...")
+            df_hourly_processed = self._process_hourly_data(df_hourly)
+        
+        # Process 15-minute data
+        df_15min_processed = pd.DataFrame()
+        if not df_15min.empty:
+            print(f"Processing {len(df_15min)} rows of 15-minute data")
+            df_15min_processed = self._process_15min_data(df_15min)
+        
+        # Combine results
+        final_df = pd.concat([df_hourly_processed, df_15min_processed], ignore_index=True)
+        
+        # Ensure we have datetime_utc column and drop intermediate columns
+        if 'datetime_utc' not in final_df.columns:
+            print("Error: datetime_utc column not created during processing.")
+            return pd.DataFrame()
+        
+        cols_to_drop = ['fecha', 'hora', 'granularidad', 'datetime_local']
+        final_df = final_df.drop(columns=[c for c in cols_to_drop if c in final_df.columns], errors='ignore')
+        
+        # Drop rows with invalid datetimes and sort
+        final_df = final_df.dropna(subset=['datetime_utc'])
+        if not final_df.empty:
+            final_df = final_df.sort_values(by='datetime_utc').reset_index(drop=True)
+        
+        return final_df
+
+    @with_progress(message="Processing hourly data...", interval=2)
+    def _process_hourly_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix for fall-back DST).
+        Creates timezone-aware datetime_local series and converts to UTC.
+        """
+        try:
+            # Create a copy to avoid modifying the original
+            result_df = df.copy()
+            
+            # Apply the parsing function to create datetime_local
+            result_df['datetime_local'] = result_df.apply(
+                lambda row: self._parse_hourly_datetime_local(row['fecha'], row['hora']), 
+                axis=1
+            )
+            
+            # Convert to UTC
+            utc_df = self.date_utils.convert_local_to_utc(result_df['datetime_local'])
+            
+            # Add the UTC datetime column to our result
+            result_df['datetime_utc'] = utc_df['datetime_utc']
+            
+            # Convert to 15-minute frequency
+            result_df = self.date_utils.convert_hourly_to_15min(result_df)
+            
+            return result_df
+        
+        except Exception as e:
+            print(f"Error processing hourly data: {e}")
+            print(traceback.format_exc())
+            return pd.DataFrame()
+
+    @with_progress(message="Processing 15-minute data...", interval=2)
+    def _process_15min_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Process 15-minute data (numeric index "1" to "96/92/100").
+        Creates timezone-aware datetime_local series and converts to UTC.
+        """
+        try:
+            # Create a copy to avoid modifying the original
+            result_df = df.copy()
+            
+            # Apply the parsing function to create datetime_local
+            result_df['datetime_local'] = result_df.apply(
+                lambda row: self._parse_15min_datetime_local(row['fecha'], row['hora']), 
+                axis=1
+            )
+            
+            # Convert to UTC
+            utc_df = self.date_utils.convert_local_to_utc(result_df['datetime_local'])
+            
+            # Add the UTC datetime column to our result
+            result_df['datetime_utc'] = utc_df['datetime_utc']
+            
+            return result_df
+        
+        except Exception as e:
+            print(f"Error processing 15-minute data: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return pd.DataFrame()
+
+    def _parse_hourly_datetime_local(self, fecha, hora_str) -> pd.Timestamp:
+        """
+        Parse hourly format data (e.g., "00-01", "02-03a", "02-03b") into a timezone-aware
+        datetime in Europe/Madrid timezone.
+        
+        Args:
+            fecha: Date object or datetime object
+            hora_str: Hour string in format "HH-HH+1" potentially with 'a' or 'b' suffix
+        
+        Returns:
+            Timezone-aware pd.Timestamp in Europe/Madrid timezone
+        """
+        # Ensure fecha is a date object
+        if isinstance(fecha, pd.Timestamp):
+            fecha = fecha.date()
+        elif isinstance(fecha, str):
+            fecha = pd.to_datetime(fecha).date()
+        
+        # Handle the hora string format
+        hora_str = str(hora_str)  # Ensure string
+        
+        # Check for fall-back DST suffix ('a' or 'b')
+        is_dst = None  # Default - let pytz figure it out
+        if hora_str.endswith('a'):
+            hora_str = hora_str[:-1]  # Remove suffix
+            is_dst = True  # First occurrence during ambiguous hour (still on DST)
+        elif hora_str.endswith('b'):
+            hora_str = hora_str[:-1]  # Remove suffix
+            is_dst = False  # Second occurrence during ambiguous hour (standard time)
+        
+        # Extract the hour from the format "HH-HH+1"
+        if '-' in hora_str:
+            base_hour = int(hora_str.split('-')[0])
+        else:
+            # For cases where we have just the hour as a number
+            base_hour = int(hora_str)
+
+        # Create naive datetime from date and hour
+        naive_dt = pd.Timestamp(
+            year=fecha.year,
+            month=fecha.month,
+            day=fecha.day,
+            hour=base_hour
+        )
+        
+        # Get timezone object
+        tz = pytz.timezone('Europe/Madrid')
+        
+        # Check if this is a DST transition date
+        year_range = (naive_dt.year - 1, naive_dt.year + 1)
+        
+        # Create a much smaller date range for the transition check
+        start_range = pd.Timestamp(year=year_range[0], month=1, day=1)
+        end_range = pd.Timestamp(year=year_range[1], month=12, day=31)
+        transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
+        
+        is_transition_date = naive_dt.date() in transition_dates
+        if is_transition_date:
+            transition_type = transition_dates[naive_dt.date()]
+            
+            # Handle spring forward (2:00 → 3:00)
+            if transition_type == 2 and base_hour == 2:
+                # The hour 2:00-2:59 doesn't exist - shift to 3:00
+                naive_dt = naive_dt.replace(hour=3)
+        
+        # Localize the datetime with DST handling
+        try:
+            # Attempt localization with is_dst hint
+            local_dt = tz.localize(naive_dt, is_dst=is_dst)
+        except pytz.exceptions.AmbiguousTimeError:
+            # For ambiguous times (fall-back), default to DST if not specified
+            local_dt = tz.localize(naive_dt, is_dst=True if is_dst is None else is_dst)
+        except pytz.exceptions.NonExistentTimeError:
+            # For non-existent times (spring-forward), shift forward
+            local_dt = tz.localize(naive_dt.replace(hour=3), is_dst=True)
+        
+        return local_dt
+
+    def _parse_15min_datetime_local(self, fecha, hora_index_str) -> pd.Timestamp:
+        """
+        Parse 15-minute format data (index "1" to "96/92/100") into a timezone-aware
+        datetime in Europe/Madrid timezone, handling DST transitions correctly.
+        """
+        # Ensure fecha is a date object
+        if isinstance(fecha, pd.Timestamp):
+            fecha = fecha.date()
+        elif isinstance(fecha, str):
+            fecha = pd.to_datetime(fecha).date()
+        
+        # Ensure index is an integer
+        index = int(hora_index_str)
+        if index < 1:
+            raise ValueError(f"Invalid 15-minute index: {hora_index_str}. Must be ≥ 1.")
+        
+        # Get timezone object
+        tz = pytz.timezone('Europe/Madrid')
+        
+        # Check if this is a DST transition date
+        year_range = (fecha.year - 1, fecha.year + 1)
+        start_range = pd.Timestamp(year=year_range[0], month=1, day=1)
+        end_range = pd.Timestamp(year=year_range[1], month=12, day=31)
+
+        # Get the transition dates for the year range 
+        transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
+        
+        # Generate the sequence of timestamps for this day
+        # Default: normal day (96 intervals)
+        num_intervals = 96
+        skip_hour = None
+        transition_type = None
+        
+        is_transition_date = fecha in transition_dates
+        if is_transition_date:
+            transition_type = transition_dates[fecha]
+            
+            if transition_type == 2:  # Spring forward: skip hour 2
+                num_intervals = 92  # 96 - 4 (skipped 15-min intervals)
+                skip_hour = 2
+            elif transition_type == 1:  # Fall back: repeat hour 2
+                num_intervals = 100  # 96 + 4 (repeated 15-min intervals)
+        
+        # When we have an out-of-bounds index on a spring forward day, adjust the index
+        if is_transition_date and transition_type == 2 and index > 92:
+            # Calculate the equivalent time by mapping to the right hour
+            # For spring forward, indices from 9-12 (hour 2) are skipped
+            # So index 93 should map to 97, etc.
+            adjusted_index = index + 4  # Add the 4 skipped intervals
+            
+            # Create the time directly based on the adjusted index
+            hour = (adjusted_index - 1) // 4
+            minute = ((adjusted_index - 1) % 4) * 15
+            
+            # Check that hour is valid (0-23)
+            if hour >= 24:
+                hour = 23
+                minute = 45  # Set to last interval of the day
+            
+            # Create timestamp with the correct hour and minute
+            ts = pd.Timestamp.combine(fecha, time(hour=hour, minute=minute))
+            try:
+                # For times after spring forward, is_dst should be True
+                aware_ts = tz.localize(ts, is_dst=True)
+                return aware_ts
+            except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError) as e:
+                print(f"Warning: Could not localize adjusted time {ts} on date {fecha}: {e}")
+                # Return a reasonable fallback
+                ts = ts.replace(hour=max(3, min(hour, 23)))  # Ensure we're after spring forward and within valid range
+                return tz.localize(ts, is_dst=True)
+        
+        # Generate the base sequence of datetimes for the day
+        naive_dt = pd.Timestamp(year=fecha.year, month=fecha.month, day=fecha.day, hour=0)
+        
+        # Generate the complete sequence for the day
+        if not is_transition_date or transition_type == 1:
+            # For normal days (96 intervals) or fall-back days (100 intervals)
+            ts_sequence = pd.date_range(
+                start=naive_dt,
+                periods=num_intervals,
+                freq='15min'
+            )
+            
+            # Handle DST transitions for each timestamp
+            aware_ts_sequence = []
+            for ts in ts_sequence:
+                try:
+                    is_dst = None
                     
-             print("Warning: Could not find suitable columns ('fecha'/'hora', 'datetime_utc', 'datetime') to create standardized 'datetime_utc'.")
-             # Decide handling: error or return df as is? Returning as is for now.
-             return df
-
-        # Drop rows where datetime conversion might have failed
-        df = df.dropna(subset=['datetime_utc'])
-
-        return df
+                    if is_transition_date and transition_type == 1 and ts.hour == 2:
+                        first_2am_block = len([t for t in aware_ts_sequence if t.hour == 2]) < 4
+                        is_dst = first_2am_block
+                    
+                    aware_ts = tz.localize(ts, is_dst=is_dst)
+                    aware_ts_sequence.append(aware_ts)
+                    
+                except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError) as e:
+                    if 'NonExistentTimeError' in str(e) and ts.hour == 2:
+                        shifted_ts = ts.replace(hour=3)
+                        aware_ts = tz.localize(shifted_ts, is_dst=True)
+                        aware_ts_sequence.append(aware_ts)
+                    else:
+                        print(f"Warning: Could not localize {ts} on date {fecha}: {e}")
+        else:
+            # For spring-forward (skip hour 2)
+            aware_ts_sequence = []
+            
+            for h in range(24):
+                if h == skip_hour:
+                    continue
+                
+                for m in range(0, 60, 15):
+                    # Use datetime.time() instead of pd.Timestamp
+        
+                    ts = pd.Timestamp.combine(fecha, time(hour=h, minute=m))
+                    try:
+                        is_dst = h >= 3 if skip_hour == 2 else None
+                        aware_ts = tz.localize(ts, is_dst=is_dst)
+                        aware_ts_sequence.append(aware_ts)
+                    except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError) as e:
+                        print(f"Warning: Could not localize {ts} on date {fecha}: {e}")
+        
+        # Get the requested timestamp (1-based indexing)
+        if index <= len(aware_ts_sequence):
+            return aware_ts_sequence[index - 1]
+        else:
+            raise ValueError(f"Index {index} out of bounds for date {fecha} with {len(aware_ts_sequence)} intervals.")
 
     # === COLUMN FINALIZATION ===
     def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
@@ -192,9 +494,9 @@ class I90Processor:
 
     def _get_value_col(self, dataset_type: str) -> Optional[str]:
         if dataset_type == 'volumenes_i90':
-            return 'volumen'
+            return 'volumenes'
         elif dataset_type == 'precios_i90':
-            return 'precio'
+            return 'precios'
         return None
 
     # === VALIDATION ===
@@ -204,7 +506,7 @@ class I90Processor:
             validation_schema_type = "volumenes_i90" if dataset_type == 'volumenes_i90' else "precios_i90" # Map to validation schema names more specifically
             try:
                  # Assuming DataValidationUtils.validate_data expects specific schema names
-                 DataValidationUtils.validate_data(df, validation_schema_type)
+                 DataValidationUtils.validate_processed_data(df, validation_schema_type)
                  print("Final data validation successful.")
             except KeyError as e:
                  print(f"Validation Error: Schema '{validation_schema_type}' not found in DataValidationUtils. Skipping validation. Error: {e}")
