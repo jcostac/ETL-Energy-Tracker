@@ -161,4 +161,4 @@ class ParquetReader:
 
 if __name__ == "__main__":
     read_ops = ParquetReader()
-    read_ops.read_parquet_data(fecha_inicio_lectura="2024-01-01", fecha_fin_lectura="2024-01-01", mercado_lst=["intra"])
+    read_ops.read_parquet_data(fecha_inicio_lectura="2024-01-01", fecha_fin_lectura="2024-01-01", mercado_lst=["secundaria"])

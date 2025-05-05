@@ -100,69 +100,89 @@ class TransformadorI90:
     def transform_data_for_all_markets(self, start_date: Optional[str] = None, end_date: Optional[str] = None,
                                          mercados: Optional[List[str]] = None,
                                          dataset_types: Optional[List[str]] = None,
-                                         transform_type: str = 'latest') -> None:
+                                         transform_type: str = 'latest') -> dict:
         """
         Transforms data for specified markets and dataset types based on the transform_type.
-
-        Args:
-            start_date: Start date for 'single' or 'multiple' modes (YYYY-MM-DD).
-            end_date: End date for 'multiple' mode (YYYY-MM-DD).
-            mercados: List of market names to process. If None, processes all relevant markets.
-            dataset_types: List of dataset types ('volumenes_i90', 'precios_i90'). If None, processes all.
-            transform_type: One of 'latest', 'batch', 'single', or 'multiple'.
+        Returns: Dict[market, DataFrame or list]
         """
         if transform_type not in self.transform_types:
             raise ValueError(f"Invalid transform type: {transform_type}. Must be one of: {self.transform_types}")
         if transform_type in ['single', 'multiple'] and not start_date:
-             raise ValueError(f"start_date is required for transform_type '{transform_type}'")
+            raise ValueError(f"start_date is required for transform_type '{transform_type}'")
         if transform_type == 'multiple' and not end_date:
-             raise ValueError(f"end_date is required for transform_type 'multiple'")
+            raise ValueError(f"end_date is required for transform_type 'multiple'")
 
         if dataset_types is None:
             dataset_types = self.dataset_types
-        else: # Validate provided dataset types
+        else:
             invalid_types = [dt for dt in dataset_types if dt not in self.dataset_types]
             if invalid_types:
                 raise ValueError(f"Invalid dataset_type(s) provided: {invalid_types}. Must be in {self.dataset_types}")
 
+        # --- FLAT results dict ---
+        results = {}
 
-        for dataset_type in dataset_types:
-            print(f"\n--- Processing Dataset Type: {dataset_type} ---")
+        print(f"\n===== STARTING TRANSFORMATION RUN (Mode: {transform_type.upper()}) =====")
+        print(f"Dataset types to process: {', '.join(dataset_types)}")
+        if start_date: print(f"Start Date: {start_date}")
+        if end_date: print(f"End Date: {end_date}")
+        print("="*60)
 
-            # Determine relevant markets for this dataset type
-            if mercados is None:
-                relevant_markets = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets if dataset_type == 'precios_i90' else []
-            else:
-                # Validate provided market names against known markets for the dataset type
-                known_markets_for_type = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets
-                invalid_markets = [m for m in mercados if m not in known_markets_for_type]
-                if invalid_markets:
-                    print(f"Warning: Market(s) {invalid_markets} are not typically associated with dataset type {dataset_type} or are unknown. Skipping them for this type.")
-                relevant_markets = [m for m in mercados if m in known_markets_for_type]
+        # Only process one dataset_type at a time for flat output
+        if len(dataset_types) > 1:
+            print("Warning: Only the first dataset_type will be processed for flat output to match ESIOS pipeline.")
+        dataset_type = dataset_types[0]
 
+        # Determine relevant markets for this dataset type
+        if mercados is None:
+            relevant_markets = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets if dataset_type == 'precios_i90' else []
+        else:
+            known_markets_for_type = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets
+            invalid_markets = [m for m in mercados if m not in known_markets_for_type]
+            if invalid_markets:
+                print(f"Warning: Market(s) {invalid_markets} are not typically associated with dataset type {dataset_type} or are unknown. Skipping them for this type.")
+            relevant_markets = [m for m in mercados if m in known_markets_for_type]
 
-            if not relevant_markets:
-                 print(f"No relevant markets specified or configured for dataset type: {dataset_type}")
-                 continue
+        if not relevant_markets:
+            print(f"No relevant markets specified or configured for dataset type: {dataset_type}")
+            return results
 
-            for mercado in relevant_markets:
-                print(f"\n-- Market: {mercado} --")
-                try:
-                    if transform_type == 'batch':
-                        self._process_batch_mode(mercado, dataset_type)
-                    elif transform_type == 'single':
-                        self._process_single_day(mercado, dataset_type, start_date)
-                    elif transform_type == 'latest':
-                        self._process_latest_day(mercado, dataset_type)
-                    elif transform_type == 'multiple':
-                        self._process_date_range(mercado, dataset_type, start_date, end_date)
-                except Exception as e:
-                     # Catch errors here to allow processing of other markets/types
-                     print(f"❌ Failed to transform {dataset_type} for market {mercado} ({transform_type}): {e}")
-                     print(traceback.format_exc()) # Print stack trace for debugging
-                     continue # Continue with the next market/dataset type
+        for mercado in relevant_markets:
+            print(f"\n-- Market: {mercado} --")
+            try:
+                if transform_type == 'batch':
+                    market_result = self._process_batch_mode(mercado, dataset_type)
+                elif transform_type == 'single':
+                    market_result = self._process_single_day(mercado, dataset_type, start_date)
+                elif transform_type == 'latest':
+                    market_result = self._process_latest_day(mercado, dataset_type)
+                elif transform_type == 'multiple':
+                    market_result = self._process_date_range(mercado, dataset_type, start_date, end_date)
+                results[mercado] = market_result
+            except Exception as e:
+                results[mercado] = None
+                print(f"❌ Failed to transform {dataset_type} for market {mercado} ({transform_type}): {e}")
+                print(traceback.format_exc())
+                continue
 
-        print(f"\n✅ Successfully completed transformation run for specified markets and dataset types. ✅")
+        print(f"\n===== TRANSFORMATION RUN FINISHED (Mode: {transform_type.upper()}) =====")
+        # Optionally print summary of results
+        print("Summary:")
+        for market, result in results.items():
+            status = "Failed/No Data"
+            if isinstance(result, pd.DataFrame):
+                if not result.empty:
+                    status = f"Success ({len(result)} records)"
+                else:
+                    status = "Success (Empty DF)"
+            elif isinstance(result, list):
+                success_count = sum(1 for df in result if isinstance(df, pd.DataFrame) and not df.empty)
+                total_items = len(result)
+                status = f"Batch Success ({success_count}/{total_items} periods processed)"
+            print(f"- {market}: {status}")
+        print("="*60)
+
+        return results
 
     def _transform_data(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str) -> pd.DataFrame:
         """Transforms data using the processor and returns the processed DataFrame."""
@@ -253,12 +273,13 @@ class TransformadorI90:
 
     def _process_batch_mode(self, mercado: str, dataset_type: str):
         """Process all available raw data for a market/dataset_type."""
+        processed_dfs = []
         print(f"Starting BATCH transformation for {mercado} - {dataset_type}")
         try:
             # Use RawFileUtils to find all year/month combinations
             # Pass dataset_type if your raw storage differentiates files by it
             years = self.raw_file_utils.get_raw_folder_list(mercado, dataset_type=dataset_type)
-            if not years: print(f"No years found for {mercado}/{dataset_type}. Skipping batch."); return
+            if not years: print(f"No years found for {mercado}/{dataset_type}. Skipping batch."); return processed_dfs
 
             for year in years:
                 months = self.raw_file_utils.get_raw_folder_list(mercado, year, dataset_type=dataset_type)
@@ -270,7 +291,9 @@ class TransformadorI90:
                         raw_file_path = self.raw_file_utils.get_raw_file_path(year, month, mercado)
                         dataset_type = self._extract_dataset_type_from_filename(raw_file_path)
                         raw_df = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
-                        self._transform_data(raw_df, mercado, dataset_type)
+                        processed_df = self._transform_data(raw_df, mercado, dataset_type)
+                        if processed_df is not None and not processed_df.empty:
+                            processed_dfs.append(processed_df)
                     except FileNotFoundError:
                         print(f"Raw file not found for {year}-{month:02d}. Skipping.")
                     except Exception as e:
@@ -278,6 +301,7 @@ class TransformadorI90:
                         continue # Continue with next month/year
         except Exception as e:
             print(f"Error during batch processing setup for {mercado}/{dataset_type}: {e}")
+        return processed_dfs
 
     def _process_single_day(self, mercado: str, dataset_type: str, date: str):
         """Process a single day's data."""
@@ -301,9 +325,10 @@ class TransformadorI90:
 
             if filtered_df.empty:
                 print(f"No data found for {mercado}/{dataset_type} on {date} within file {target_year}-{target_month:02d}.")
-                return
+                return pd.DataFrame()
 
-            self._transform_data(filtered_df, mercado, dataset_type)
+            processed_df = self._transform_data(filtered_df, mercado, dataset_type)
+            return processed_df
 
         except FileNotFoundError:
              # It's possible the folder exists but not the specific file (e.g., parquet file name)
@@ -312,42 +337,42 @@ class TransformadorI90:
             print(f"Error during single day processing for {mercado}/{dataset_type} on {date}: {e}")
 
     def _process_latest_day(self, mercado: str, dataset_type: str):
-        """Process the latest day available in the raw data."""
+        """Process the latest day available in the raw data for the given dataset_type."""
         print(f"Starting LATEST transformation for {mercado} - {dataset_type}")
-        latest_year, latest_month = None, None # Initialize for error message
         try:
-            # Find the latest year/month available using RawFileUtils and sort them in descending order (latest year first) 
+            # Find all years (descending)
             years = sorted(self.raw_file_utils.get_raw_folder_list(mercado=mercado), reverse=True)
             if not years:
                 print(f"No data years found for {mercado}. Skipping latest.")
                 return
-            latest_year = years[0]
 
-            # Get months for the latest year, and sort them in descending order (latest month first)
-            months = sorted(self.raw_file_utils.get_raw_folder_list(mercado=mercado, year=latest_year), reverse=True)
-            if not months:
-                print(f"No data months found for latest year {latest_year} in {mercado}. Skipping latest.")
-                return
-            latest_month = months[0]
-
-            print(f"Identified latest potential file location: {latest_year}-{latest_month:02d}")
-
-            # Read the file, passing dataset_type if needed
-            raw_df = self.raw_file_utils.read_raw_file(latest_year, latest_month, dataset_type, mercado)
-
-            # Filter for the latest day within that file
-            filtered_df = self._process_df_based_on_transform_type(raw_df, 'latest')
-
-            if filtered_df.empty:
-                print(f"No data found for the latest day within file {latest_year}-{latest_month:02d}.")
-                return
-
-            self._transform_data(filtered_df, mercado, dataset_type)
-
-        except FileNotFoundError:
-             # Provide more context if year/month were determined
-             location = f" for {mercado}/{dataset_type} at {latest_year}-{latest_month:02d}" if latest_year else ""
-             print(f"Latest raw file not found{location}.")
+            found = False 
+            for year in years:
+                # Find all months (descending) for this year (latest month first) -> this is useful bc i90 has a time lag o f90 days and latest raw folder for a market might not contain i90 data. 
+                months = sorted(self.raw_file_utils.get_raw_folder_list(mercado=mercado, year=year), reverse=True)
+                for month in months:
+                    # Check if the file for this dataset_type exists
+                    files = self.raw_file_utils.get_raw_file_list(mercado, year, month)
+                    if not files:
+                        continue
+                    # Look for a file that matches the dataset_type
+                    matching_files = [f for f in files if dataset_type in str(f)]
+                    if matching_files:
+                        print(f"Identified latest available file for {mercado}/{dataset_type}: {year}-{month:02d}")
+                        # Read the file
+                        raw_df = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
+                        # Filter for the latest day within that file
+                        filtered_df = self._process_df_based_on_transform_type(raw_df, 'latest')
+                        if filtered_df.empty:
+                            print(f"No data found for the latest day within file {year}-{month:02d}.")
+                            return pd.DataFrame()
+                        processed_df = self._transform_data(filtered_df, mercado, dataset_type)
+                        found = True
+                        return processed_df
+                if found:
+                    break
+            if not found:
+                print(f"No raw file found for {mercado}/{dataset_type} in any available year/month.")
         except Exception as e:
             print(f"Error during latest day processing for {mercado}/{dataset_type}: {e}")
 
@@ -403,10 +428,11 @@ class TransformadorI90:
 
             if filtered_df.empty:
                 print(f"No data found for {mercado}/{dataset_type} between {start_date} and {end_date} after final filtering.")
-                return
+                return pd.DataFrame()
 
             print(f"Filtered data has {len(filtered_df)} rows. Proceeding with transformation...")
-            self._transform_data(filtered_df, mercado, dataset_type)
+            processed_df = self._transform_data(filtered_df, mercado, dataset_type)
+            return processed_df
 
         except ValueError as ve:
              print(f"Configuration or Value Error during multiple transform: {ve}")

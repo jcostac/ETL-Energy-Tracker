@@ -140,7 +140,7 @@ class DataValidationUtils:
         required_cols = None
         
         if type == "processed":
-            if validation_schema_type == "precios":
+            if validation_schema_type == "precios" or validation_schema_type == "precios_i90":
                 required_cols = self.processed_price_required_cols
             elif validation_schema_type == "volumenes_i90":
                 required_cols = self.processed_volumenesi90_required_cols

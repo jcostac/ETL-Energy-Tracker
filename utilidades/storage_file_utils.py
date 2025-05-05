@@ -472,6 +472,8 @@ class ProcessedFileUtils(StorageFileUtils):
 
         #print duplicate number before dropping
         print(f"Number of duplicates before dropping: {df.duplicated().sum()}")
+        print(f"Columns in DataFrame: {df.columns.tolist()}")
+        print(f"Dataset type: {dataset_type}")
 
         # Then handle subset-based duplicates
         try:
@@ -480,7 +482,7 @@ class ProcessedFileUtils(StorageFileUtils):
             elif dataset_type == 'volumenes_i3':
                 df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
             else:
-                df = df.drop_duplicates(subset=['datetime_utc', 'id_mercado', 'datetime_utc'], keep='last')
+                df = df.drop_duplicates(subset=['datetime_utc', 'id_mercado', 'precio'], keep='last')
         except Exception as e:
             print(f"Error dropping duplicates: {e}")
             raise
@@ -780,11 +782,6 @@ class ProcessedFileUtils(StorageFileUtils):
         try:
             # Sort by datetime_utc
             df_sorted = df.sort_values(by='datetime_utc').reset_index(drop=True)
-            
-            # Drop partition columns (they're encoded in the path)
-            for col in partition_cols:
-                if col in df_sorted.columns:
-                    df_sorted = df_sorted.drop(columns=[col])
                     
             return df_sorted
         except Exception as e:

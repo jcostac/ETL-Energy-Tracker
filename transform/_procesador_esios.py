@@ -291,11 +291,11 @@ class ESIOSProcessor:
         try:
             if type == "processed":
                 print("Validating processed data structure...")
-                df = self.data_validatior.validate_processed_data(df, data="precios")
+                df = self.data_validatior.validate_processed_data(df, validation_schema_type="precios")
                 print("✅ Processed data validation passed")
             elif type == "raw":
                 print("Validating raw data structure...")
-                df = self.data_validatior.validate_raw_data(df, data="precios")
+                df = self.data_validatior.validate_raw_data(df, validation_schema_type="precios")
                 print("✅ Raw data validation passed")
         except Exception as e:
             print(f"❌ Validation failed: {str(e)}")
@@ -363,14 +363,11 @@ class ESIOSProcessor:
             print("\n❌ VALIDATION ERROR")
             print(f"Error: {str(e)}")
             print("="*80 + "\n")
-            empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
-            empty_df.index.name = 'id'
-            return empty_df
+            raise
+
         
         except Exception as e:
             print("\n❌ UNEXPECTED ERROR")
             print(f"Error: {str(e)}")
             print("="*80 + "\n")
-            empty_df = pd.DataFrame(columns=['id_mercado', 'datetime_utc', 'precio'])
-            empty_df.index.name = 'id'
-            return empty_df
+            raise
