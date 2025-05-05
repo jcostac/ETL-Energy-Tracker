@@ -74,7 +74,10 @@ class DataValidationUtils:
             # Create a copy to avoid modifying the original
             df = df.copy()
             
-            df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
+            if 'datetime_utc' in df.columns:
+                df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
+            else:
+                df['fecha'] = pd.to_datetime(df['fecha'])
            
             #for processed data
             if type == "processed":
@@ -107,13 +110,13 @@ class DataValidationUtils:
                     df['precios'] = df['precios'].astype('float32')
                     df['Unidad de Programación'] = df['Unidad de Programación'].astype('str')
                     df['hora'] = df['hora'].astype('str')
-                    df['fecha'] = pd.to_datetime(df['fecha'])
+                
                 
                 #for volumenes datasets coming from I90 or I3
                 elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
                     df['volumenes'] = df['volumenes'].astype('float32')
                     df['hora'] = df['hora'].astype('str')
-                    df['fecha'] = pd.to_datetime(df['fecha'])
+                  
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
     
