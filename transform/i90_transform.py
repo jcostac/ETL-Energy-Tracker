@@ -164,104 +164,28 @@ class TransformadorI90:
 
         print(f"\n✅ Successfully completed transformation run for specified markets and dataset types. ✅")
 
-    def _transform_and_save(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str):
-        """Transforms data using the processor, adjusts schema for secundaria/date, and saves the result."""
+    def _transform_data(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str) -> pd.DataFrame:
+        """Transforms data using the processor and returns the processed DataFrame."""
         if raw_df.empty:
-             print(f"Skipping transformation for {mercado} - {dataset_type}: Input DataFrame is empty.")
-             return
+            print(f"Skipping transformation for {mercado} - {dataset_type}: Input DataFrame is empty.")
+            return pd.DataFrame()
 
-        processed_df = pd.DataFrame() # Initialize empty df for error cases
         try:
-            # 1. Get Market Configuration (Instantiated object)
             market_config = self.get_config_for_market(mercado)
-
-            # 2. Transform Data using I90Processor
             print(f"Raw data loaded ({len(raw_df)} rows). Starting transformation for {mercado} - {dataset_type}...")
-            # Processor now outputs 'up' column for unit identifier in volumenes
-            processed_df = self.processor.transform_data(raw_df, market_config, dataset_type)
-
-            if processed_df is None or processed_df.empty: # Check for None as well
-                print(f"Transformation resulted in empty or None DataFrame for {mercado} - {dataset_type}. Nothing to save.")
-                return
-
-            # --- Schema Adjustment for Secundaria Market based on Date (ie addiong a ZR column for the month where SRS takes effect---
-            if mercado == 'secundaria' and dataset_type == 'volumenes_i90' and 'up' in processed_df.columns:
-                print("Applying date-based schema adjustment for secundaria market...")
-                threshold_date = pd.Timestamp('2024-11-20', tz='UTC')
-                # Ensure datetime column is usable
-                if not pd.api.types.is_datetime64_any_dtype(processed_df['datetime_utc']):
-                     print("Warning: Cannot apply secundaria date logic, datetime_utc column has wrong type.")
-                else:
-                    min_date = processed_df['datetime_utc'].min()
-                    max_date = processed_df['datetime_utc'].max()
-
-                    # Check if the data chunk contains dates on or after the threshold
-                    if max_date >= threshold_date:
-                        print(f"Data chunk includes dates on/after {threshold_date.date()}. Creating 'zr' column.")
-                        # Create 'zr' column with values from 'up' for dates >= threshold
-                        processed_df['zr'] = np.where(
-                            processed_df['datetime_utc'] >= threshold_date,
-                            processed_df['up'],
-                            pd.NA # Use pandas NA for missing values
-                        )
-                        # Modify 'up' column to keep values only for dates < threshold
-                        processed_df['up'] = np.where(
-                            processed_df['datetime_utc'] < threshold_date,
-                            processed_df['up'],
-                            pd.NA # Use pandas NA for missing values
-                        )
-                        # Ensure 'zr' column type matches 'up' if needed (e.g., string)
-                        processed_df['zr'] = processed_df['zr'].astype(processed_df['up'].dtype)
-
-                        print("Columns 'up' and 'zr' now reflect the threshold split.")
-                    else:
-                         # Data is entirely before the threshold, keep 'up' as is.
-                         print(f"Data chunk is entirely before {threshold_date.date()}. Keeping 'up' column.")
-            # -------------------------------------------------------------
-
+            processed_df = self.processor.transform_volumenes_or_precios_i90(raw_df, market_config, dataset_type)
+            if processed_df is None or processed_df.empty:
+                print(f"Transformation resulted in empty or None DataFrame for {mercado} - {dataset_type}.")
+                return pd.DataFrame()
+            
+            print(f"Processed data has {len(processed_df)} rows:")
+            print(processed_df.head())
+            return processed_df
         except Exception as e:
-            print(f"Error during transformation or schema adjustment for {mercado} - {dataset_type}: {e}")
-            # Optionally log the raw_df or intermediate processed_df head/info here
-            # print("Raw DF info before failed transform/adjustment:")
-            # print(raw_df.info())
-            return # Stop processing
-
-        try:
-            # 3. Save Processed Data (with potentially adjusted schema)
-            print(f"Final processing complete ({len(processed_df)} rows). Saving data...")
-
-            # Ensure final columns are ordered logically if 'zr' was added
-            final_columns_order = ['datetime_utc', 'id_mercado']
-            if 'up' in processed_df.columns: final_columns_order.append('up')
-            if 'zr' in processed_df.columns: final_columns_order.append('zr')
-            # Determine value column name
-            value_col = 'volumen' if dataset_type == 'volumenes_i90' else 'precio'
-            if value_col in processed_df.columns: final_columns_order.append(value_col)
-            else: print(f"Warning: Expected value column '{value_col}' not found before saving.")
-
-            # Reorder columns for saving
-            processed_df = processed_df[final_columns_order]
-
-            # Saving logic remains the same, ProcessedFileUtils handles the actual write
-            self.processed_file_utils.write_processed_parquet(processed_df, mercado) # Might need adjustment based on ProcessedFileUtils capabilities
-
-            date_range_str = "N/A"
-            if 'datetime_utc' in processed_df.columns and not processed_df.empty:
-                 try:
-                     min_date_save = processed_df['datetime_utc'].min().date()
-                     max_date_save = processed_df['datetime_utc'].max().date()
-                     date_range_str = f"{min_date_save} to {max_date_save}"
-                 except Exception as date_err:
-                      print(f"Could not determine date range from final data: {date_err}")
-
-            print(f"Successfully saved processed {mercado} ({dataset_type}) data for date range: {date_range_str}.")
-
-        except Exception as e:
-            print(f"Error saving processed data for {mercado} - {dataset_type}: {e}")
-            # Optionally log processed_df head/info here
-            # print("Processed DF info before failed save:")
-            # print(processed_df.info())
-            return
+            print(f"Error during transformation for {mercado} - {dataset_type}: {e}")
+            print("Raw DF info before failed transform:")
+            print(raw_df.info())
+            return pd.DataFrame()
 
     def _process_df_based_on_transform_type(self, raw_df: pd.DataFrame, transform_type: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
         """
@@ -273,7 +197,7 @@ class TransformadorI90:
 
         # --- Datetime Column Handling ---
         # The I90Processor._standardize_datetime should create 'datetime_utc', but do do this, we first hacve to filter by date, hence the necessesity of a fecha column
-        # We rely on tghe "fecha" column for filtering by date to succeed.
+        # We rely on the "fecha" column for filtering by date to succeed.
         # or lack the column, leading to errors here or empty results.
         if "fecha" not in raw_df.columns:
             print("Error: 'fecha' column missing in DataFrame passed to _process_df_based_on_transform_type. Cannot apply date filters.")
@@ -346,7 +270,7 @@ class TransformadorI90:
                         raw_file_path = self.raw_file_utils.get_raw_file_path(year, month, mercado)
                         dataset_type = self._extract_dataset_type_from_filename(raw_file_path)
                         raw_df = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
-                        self._transform_and_save(raw_df, mercado, dataset_type)
+                        self._transform_data(raw_df, mercado, dataset_type)
                     except FileNotFoundError:
                         print(f"Raw file not found for {year}-{month:02d}. Skipping.")
                     except Exception as e:
@@ -379,7 +303,7 @@ class TransformadorI90:
                 print(f"No data found for {mercado}/{dataset_type} on {date} within file {target_year}-{target_month:02d}.")
                 return
 
-            self._transform_and_save(filtered_df, mercado, dataset_type)
+            self._transform_data(filtered_df, mercado, dataset_type)
 
         except FileNotFoundError:
              # It's possible the folder exists but not the specific file (e.g., parquet file name)
@@ -418,7 +342,7 @@ class TransformadorI90:
                 print(f"No data found for the latest day within file {latest_year}-{latest_month:02d}.")
                 return
 
-            self._transform_and_save(filtered_df, mercado, dataset_type)
+            self._transform_data(filtered_df, mercado, dataset_type)
 
         except FileNotFoundError:
              # Provide more context if year/month were determined
@@ -445,10 +369,6 @@ class TransformadorI90:
             
             # Get unique year-month tuples IE: [(2025, 1), (2025, 2), (2025, 3), (2025, 4)]
             year_months = sorted(list(set([(d.year, d.month) for d in all_days_in_range])))
-
-            # No need for start_day and end_day variables here
-            # start_day = all_days_in_range[0].day
-            # end_day = all_days_in_range[-1].day
 
             all_raw_dfs = []
             print(f"Reading files for year-months: {year_months}")
@@ -486,7 +406,7 @@ class TransformadorI90:
                 return
 
             print(f"Filtered data has {len(filtered_df)} rows. Proceeding with transformation...")
-            self._transform_and_save(filtered_df, mercado, dataset_type)
+            self._transform_data(filtered_df, mercado, dataset_type)
 
         except ValueError as ve:
              print(f"Configuration or Value Error during multiple transform: {ve}")

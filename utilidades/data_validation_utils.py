@@ -13,8 +13,8 @@ class DataValidationUtils:
 
         #raw data structure requirements
         self.raw_price_required_cols = ['datetime_utc', 'value', 'indicador_id']
-        self.raw_precios_i90_required_cols = []
-        self.raw_volumenes_required_cols = []
+        self.raw_precios_i90_required_cols = ["fecha", "precios", "Redespacho", "Sentido", "Unidad de Programación", "hora", "granularity"]
+        self.raw_volumenes_required_cols = ["Unidad de Programación", "fecha", "volumenes", "hora", "granularity"]
 
     def _validate_data_common(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
         """
@@ -78,33 +78,42 @@ class DataValidationUtils:
            
             #for processed data
             if type == "processed":
-                #for the different datasets that can be processed
-                if validation_schema_type == "precios":
+                #for precios related datasets
+                if validation_schema_type in ["precios", "precios_i90"]:
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
                     df['precio'] = df['precio'].astype('float32')
                 
+                #for volumenes related datasets
                 elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
-                    # Add volumenes validation here
-                    pass
+                    df['id_mercado'] = df['id_mercado'].astype('uint8')
+                    df['volumenes'] = df['volumenes'].astype('float32')
 
-                elif validation_schema_type == "precios_i90":
-                    pass
+                    if 'up' in df.columns:
+                        df['up'] = df['up'].astype('str')
+                    if 'tecnologia' in df.columns:
+                        df['tecnologia'] = df['tecnologia'].astype('str')
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
             
             #for raw data
             elif type == "raw":
-                #for the different datasets that can be raw
+                #for precios datasets coming from ESIOS
                 if validation_schema_type == "precios":
                     df['value'] = df['value'].astype('float32')
                     df['indicador_id'] = df['indicador_id'].astype('str')
                     
-
+                #for precios datasets coming from I90
                 elif validation_schema_type == "precios_i90":
-                    pass
-
+                    df['precios'] = df['precios'].astype('float32')
+                    df['Unidad de Programación'] = df['Unidad de Programación'].astype('str')
+                    df['hora'] = df['hora'].astype('str')
+                    df['fecha'] = pd.to_datetime(df['fecha'])
+                
+                #for volumenes datasets coming from I90 or I3
                 elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
-                    pass
+                    df['volumenes'] = df['volumenes'].astype('float32')
+                    df['hora'] = df['hora'].astype('str')
+                    df['fecha'] = pd.to_datetime(df['fecha'])
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
     

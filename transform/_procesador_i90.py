@@ -32,6 +32,7 @@ class I90Processor:
         Initialize the processor.
         """
         self.date_utils = DateUtilsETL()
+        self.data_validation_utils = DataValidationUtils()
         # Potential future enhancements: Load all configs at init if needed
 
     # === MAIN PIPELINE ===
@@ -89,8 +90,9 @@ class I90Processor:
             return pd.DataFrame() # Return empty if input is empty
 
         all_market_dfs = []
+        print(f"Applying market filters and id to DataFrame with shape: {df.shape}")
 
-        required_cols = ['volumenes'] # Base columns often present
+        required_cols = ['volumenes'] #required cols for volumenes
         if 'Sentido' in df.columns: 
             required_cols.append('Sentido')
         if 'Redespacho' in df.columns: 
@@ -218,7 +220,7 @@ class I90Processor:
         
         return final_df
 
-    @with_progress(message="Processing hourly data...", interval=2)
+    @with_progress(message="Datetime processing of hourly data...", interval=2)
     def _process_hourly_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix for fall-back DST).
@@ -250,7 +252,7 @@ class I90Processor:
             print(traceback.format_exc())
             return pd.DataFrame()
 
-    @with_progress(message="Processing 15-minute data...", interval=2)
+    @with_progress(message="Datetime processing of 15-minute data...", interval=2)
     def _process_15min_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process 15-minute data (numeric index "1" to "96/92/100").
@@ -489,8 +491,25 @@ class I90Processor:
     # === COLUMN FINALIZATION ===
     def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """Selects, orders, and standardizes final columns, outputting 'up' for unit identifier."""
-       
-        pass
+
+        breakpoint()
+
+        if "Unidad de Programación" in df.columns:
+            df = df.rename(columns={"Unidad de Programación": "up"})
+
+        if dataset_type == 'volumenes_i90':
+           required_cols = self.data_validation_utils.processed_volumenesi90_required_cols
+        elif dataset_type == 'precios_i90':
+            #rename precios to precio
+            df = df.rename(columns={'precios': 'precio'})
+            required_cols = self.data_validation_utils.processed_price_required_cols
+
+        print(f"Filtering columns: {required_cols}")
+        df = df[required_cols]
+
+        breakpoint()
+
+        return df
 
     def _get_value_col(self, dataset_type: str) -> Optional[str]:
         if dataset_type == 'volumenes_i90':
@@ -500,13 +519,29 @@ class I90Processor:
         return None
 
     # === VALIDATION ===
+    def _validate_raw_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+        """Validate raw data structure."""
+        if not df.empty:
+            validation_schema_type = "volumenes_i90" if dataset_type == 'volumenes_i90' else "precios_i90" # Map to validation schema names more specifically
+            try:
+                self.data_validation_utils.validate_raw_data(df, validation_schema_type)
+                print("Raw data validation successful.")
+            except Exception as e:
+                print(f"Error during raw data validation: {e}")
+                # Decide if this should return empty df or raise
+                # Raising allows the error to propagate up
+                raise # Reraise validation error
+        else:
+            print("Skipping validation for empty DataFrame.")
+        return df
+    
     def _validate_final_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """Validate final data structure."""
         if not df.empty:
             validation_schema_type = "volumenes_i90" if dataset_type == 'volumenes_i90' else "precios_i90" # Map to validation schema names more specifically
             try:
                  # Assuming DataValidationUtils.validate_data expects specific schema names
-                 DataValidationUtils.validate_processed_data(df, validation_schema_type)
+                 self.data_validation_utils.validate_processed_data(df, validation_schema_type)
                  print("Final data validation successful.")
             except KeyError as e:
                  print(f"Validation Error: Schema '{validation_schema_type}' not found in DataValidationUtils. Skipping validation. Error: {e}")
@@ -531,6 +566,81 @@ class I90Processor:
         df = pd.DataFrame(columns=cols)
         df.index.name = 'id'
         return df
+
+    def transform_volumenes_or_precios_i90(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
+        """
+        Wrapper method to orchestrate the I90 processing pipeline with formatted debug printouts.
+        Args:
+            df (pd.DataFrame): Input DataFrame.
+            market_config (I90Config): Market configuration object.
+            dataset_type (str): 'volumenes_i90' or 'precios_i90'.
+        Returns:
+            pd.DataFrame: Processed DataFrame or empty DataFrame with correct columns on error.
+        """
+        print("\n" + "="*80)
+        print(f"🔄 STARTING I90 {dataset_type.upper()} TRANSFORMATION")
+        print("="*80)
+
+        if df.empty:
+            print("\n❌ EMPTY INPUT")
+            print("Input DataFrame is empty. Skipping transformation.")
+            return self._empty_output_df(dataset_type)
+
+        # Define the pipeline steps as (function, kwargs)
+        pipeline = [
+            (self._validate_raw_data, {"dataset_type": dataset_type}),
+            (self._apply_market_filters_and_id, {"market_config": market_config}),
+            (self._standardize_datetime, {}),
+            (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
+            (self._validate_final_data, {"dataset_type": dataset_type}),
+        ]
+
+        try:
+            df_processed = df.copy()
+            total_steps = len(pipeline)
+
+            for i, (step_func, step_kwargs) in enumerate(pipeline, 1):
+                print("\n" + "-"*50)
+                print(f"📍 STEP {i}/{total_steps}: {step_func.__name__.replace('_', ' ').title()}")
+                print("-"*50)
+
+                # Some steps expect different argument signatures
+                if step_func == self._apply_market_filters_and_id:
+                    df_processed = step_func(df_processed, **step_kwargs)
+                elif step_func == self._select_and_finalize_columns:
+                    df_processed = step_func(df_processed, **step_kwargs)
+                elif step_func == self._validate_raw_data or step_func == self._validate_final_data:
+                    df_processed = step_func(df_processed, **step_kwargs)
+                else:
+                    df_processed = step_func(df_processed)
+
+                print(f"\n📊 Data Status:")
+                print(f"   Rows: {df_processed.shape[0]}")
+                print(f"   Columns: {df_processed.shape[1]}")
+
+                if df_processed.empty and step_func != self._validate_final_data:
+                    print("\n❌ PIPELINE HALTED")
+                    print(f"DataFrame became empty after step: {step_func.__name__}")
+                    raise ValueError(f"DataFrame empty after: {step_func.__name__}")
+
+            print("\n✅ TRANSFORMATION COMPLETE")
+            print(f"Final shape: {df_processed.shape}")
+            print("="*80 + "\n")
+            return df_processed
+
+        except ValueError as e:
+            print("\n❌ VALIDATION ERROR")
+            print(f"Error: {str(e)}")
+            print("="*80 + "\n")
+            return self._empty_output_df(dataset_type)
+
+        except Exception as e:
+            print("\n❌ UNEXPECTED ERROR")
+            print(f"Error: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            print("="*80 + "\n")
+            return self._empty_output_df(dataset_type)
 
  
  

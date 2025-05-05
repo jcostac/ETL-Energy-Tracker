@@ -9,24 +9,25 @@ This repository is organized as a modular ETL (Extract, Transform, Load) pipelin
 ### `extract/`
 Contains scripts for extracting raw data from external sources:
 - `i90_extractor.py`, `esios_extractor.py`: Main extractors for I90 and ESIOS data.
-- `_descargador_i90.py`, `_descargador_esios.py`: Download utilities for respective data sources.
+- `_descargador_i90.py`, `_descargador_esios.py`: Helper modules fr downloading data sources.
 - `README.md`: Additional documentation for extraction logic.
 
 ### `transform/`
-Handles data cleaning, normalization, and transformation:
+Handles data cleaning, date transformation, and  parquet partitioning:
 - `i90_transform.py`, `esios_transform.py`: Transform raw extracted data into a standardized format.
 - `_procesador_i90.py`, `_procesador_esios.py`: Helper modules for processing specific data types.
 - `carga_i90.py`: Likely handles loading or further transformation for I90 data.
 
 ### `load/`
-Scripts for loading processed data into storage solutions:
-- `s3_data_lake_loader.py`, `local_data_lake_loader.py`, `data_lake_loader.py`: Loaders for different storage backends (S3, local, etc.).
+Scripts for loading processed data into storage solutions (local or cloud):
+- `s3_data_lake_loader.py`, `local_data_lake_loader.py`, `data_lake_loader.py`: Loaders for different storage solutions (S3 or local storage).
 - `__init__.py`: Marks the folder as a Python package.
 
 ### `read/`
 Utilities for reading and querying stored data:
 - `read_data.py`, `read_ESIOS_data.py`, `read_i90_data.py`: Read and process data from storage.
-- `esios_consultas.py`: Query utilities for ESIOS data.
+
+
 
 ### `utilidades/`
 General utilities and helper functions:
