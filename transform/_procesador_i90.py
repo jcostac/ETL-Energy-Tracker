@@ -33,44 +33,7 @@ class I90Processor:
         """
         self.date_utils = DateUtilsETL()
         self.data_validation_utils = DataValidationUtils()
-        # Potential future enhancements: Load all configs at init if needed
-
-    # === MAIN PIPELINE ===
-    def transform_data(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
-        """
-        Main transformation pipeline for I90 data.
-        """
-        if df.empty:
-            print("Input DataFrame is empty. Skipping transformation.")
-            return self._empty_output_df(dataset_type)
-
-        try:
-            # transformation functions
-            print(f"Applying market filters and id to DataFrame with shape: {df.shape}")
-            df = self._apply_market_filters_and_id(df, market_config)
-            if df.empty: raise ValueError("DataFrame empty after applying market filters.")
-
-            print(f"Standardizing datetime for DataFrame with shape: {df.shape}")
-            df = self._standardize_datetime(df)
-            if df.empty: raise ValueError("DataFrame empty after standardizing datetime.")
-
-            print(f"Selecting and finalizing columns for DataFrame with shape: {df.shape}")
-            df = self._select_and_finalize_columns(df, dataset_type)
-            if df.empty: raise ValueError("DataFrame empty after selecting final columns.")
-
-            print(f"Validating final data for DataFrame with shape: {df.shape}")
-            df = self._validate_final_data(df, dataset_type)
-            if df.empty: raise ValueError("DataFrame empty after validation step.")
-
-            print("I90 transformation pipeline completed successfully.")
-            return df
-
-        except Exception as e:
-            print(f"Error during I90 transformation pipeline: {e}")
-            import traceback
-            print(traceback.format_exc())
-            return self._empty_output_df(dataset_type)
-
+       
     # === FILTERING ===
     def _apply_market_filters_and_id(self, df: pd.DataFrame, market_config: I90Config) -> pd.DataFrame:
         """
@@ -169,50 +132,64 @@ class I90Processor:
         if not all(col in df.columns for col in required_cols):
             raise ValueError(f"Required columns: {required_cols} not found in DataFrame.")
 
-        # Split data by granularity if the column exists (useful for months were we have a granularity change mid month)
-        df_hourly = pd.DataFrame()
-        df_15min = pd.DataFrame()
+        # Ensure fecha is datetime
+        df['fecha'] = pd.to_datetime(df['fecha'])
         
-        if 'granularity' in df.columns:
-            df_hourly = df[df['granularity'] == 'Hora'].copy()
-            df_15min = df[df['granularity'] == 'Quince minutos'].copy()
-
-        else: # typically this will never execute as we have a granularity column, but jsut in case we extract it from the hora column
-            sample_horas = df['hora'].dropna().astype(str).head(5).tolist()
-            
-            # Check if format is "HH-HH+1" (possibly with 'a'/'b' suffix if there is a fall back DST)
-            hourly_format = any('-' in str(h) for h in sample_horas)
-            
-            if hourly_format:
-                df_hourly = df.copy()
-                df['granularity'] = 'Hora'  # Add for tracking
-            else:
-                df_15min = df.copy()
-                df['granularity'] = 'Quince minutos'  # Add for tracking
+        # Get timezone object
+        tz = pytz.timezone('Europe/Madrid')
+        
+        # Get transition dates for relevant year range
+        year_min = df['fecha'].dt.year.min() - 1
+        year_max = df['fecha'].dt.year.max() + 1
+        start_range = pd.Timestamp(year=year_min, month=1, day=1)
+        end_range = pd.Timestamp(year=year_max, month=12, day=31)
+        transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
+        
+        # Create mask for DST transition days
+        df['is_dst_day'] = df['fecha'].dt.date.apply(lambda x: x in transition_dates)
+        
+        # Split data by granularity
+        df_hourly_dst = df[(df['granularity'] == 'Hora') & (df['is_dst_day'])].copy()
+        df_hourly_normal = df[(df['granularity'] == 'Hora') & (~df['is_dst_day'])].copy()
+        df_15min_dst = df[(df['granularity'] == 'Quince minutos') & (df['is_dst_day'])].copy()
+        df_15min_normal = df[(df['granularity'] == 'Quince minutos') & (~df['is_dst_day'])].copy()
         
         # Process hourly data
-        df_hourly_processed = pd.DataFrame()
-        if not df_hourly.empty:
-            print(f"Processing {len(df_hourly)} rows of hourly data...")
-            #df_hourly_processed = self._process_hourly_data(df_hourly)
-            df_hourly_processed = self._process_hourly_data_vectorized(df_hourly)
+        df_hourly_processed_dst = pd.DataFrame()
+        if not df_hourly_dst.empty:
+            print(f"Processing {len(df_hourly_dst)} rows of hourly DST data with regular method...")
+            df_hourly_processed_dst = self._process_hourly_data(df_hourly_dst)
+        
+        df_hourly_processed_normal = pd.DataFrame()
+        if not df_hourly_normal.empty:
+            print(f"Processing {len(df_hourly_normal)} rows of hourly non-DST data with vectorized method...")
+            df_hourly_processed_normal = self._process_hourly_data_vectorized(df_hourly_normal)
         
         # Process 15-minute data
-        df_15min_processed = pd.DataFrame()
-        if not df_15min.empty:
-            print(f"Processing {len(df_15min)} rows of 15-minute data")
-            #df_15min_processed = self._process_15min_data(df_15min)
-            df_15min_processed = self._process_15min_data_vectorized(df_15min)
+        df_15min_processed_dst = pd.DataFrame()
+        if not df_15min_dst.empty:
+            print(f"Processing {len(df_15min_dst)} rows of 15-minute DST data with regular method...")
+            df_15min_processed_dst = self._process_15min_data(df_15min_dst)
+        
+        df_15min_processed_normal = pd.DataFrame()
+        if not df_15min_normal.empty:
+            print(f"Processing {len(df_15min_normal)} rows of 15-minute non-DST data with vectorized method...")
+            df_15min_processed_normal = self._process_15min_data_vectorized(df_15min_normal)
         
         # Combine results
-        final_df = pd.concat([df_hourly_processed, df_15min_processed], ignore_index=True)
+        final_df = pd.concat([
+            df_hourly_processed_dst, 
+            df_hourly_processed_normal,
+            df_15min_processed_dst, 
+            df_15min_processed_normal
+        ], ignore_index=True)
         
         # Ensure we have datetime_utc column and drop intermediate columns
         if 'datetime_utc' not in final_df.columns:
             print("Error: datetime_utc column not created during processing.")
             return pd.DataFrame()
         
-        cols_to_drop = ['fecha', 'hora', 'granularidad', 'datetime_local']
+        cols_to_drop = ['fecha', 'hora', 'granularidad', 'datetime_local', 'is_dst_day']
         final_df = final_df.drop(columns=[c for c in cols_to_drop if c in final_df.columns], errors='ignore')
         
         # Drop rows with invalid datetimes and sort
@@ -709,6 +686,8 @@ class I90Processor:
         df.index.name = 'id'
         return df
 
+    
+    # === MAIN PIPELINE ===
     def transform_volumenes_or_precios_i90(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
         """
         Wrapper method to orchestrate the I90 processing pipeline with formatted debug printouts.
