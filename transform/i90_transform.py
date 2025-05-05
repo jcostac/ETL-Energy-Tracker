@@ -155,7 +155,7 @@ class TransformadorI90:
                     elif transform_type == 'latest':
                         self._process_latest_day(mercado, dataset_type)
                     elif transform_type == 'multiple':
-                        self._process_multiple_day(mercado, dataset_type, start_date, end_date)
+                        self._process_date_range(mercado, dataset_type, start_date, end_date)
                 except Exception as e:
                      # Catch errors here to allow processing of other markets/types
                      print(f"❌ Failed to transform {dataset_type} for market {mercado} ({transform_type}): {e}")
@@ -351,7 +351,7 @@ class TransformadorI90:
         except Exception as e:
             print(f"Error during latest day processing for {mercado}/{dataset_type}: {e}")
 
-    def _process_multiple_day(self, mercado: str, dataset_type: str, start_date: str, end_date: str):
+    def _process_date_range(self, mercado: str, dataset_type: str, start_date: str, end_date: str):
         """Process a range of days, reading multiple monthly files if needed."""
         print(f"Starting MULTIPLE transformation for {mercado} - {dataset_type} from {start_date} to {end_date}")
         try:

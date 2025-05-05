@@ -194,13 +194,15 @@ class I90Processor:
         df_hourly_processed = pd.DataFrame()
         if not df_hourly.empty:
             print(f"Processing {len(df_hourly)} rows of hourly data...")
-            df_hourly_processed = self._process_hourly_data(df_hourly)
+            #df_hourly_processed = self._process_hourly_data(df_hourly)
+            df_hourly_processed = self._process_hourly_data_vectorized(df_hourly)
         
         # Process 15-minute data
         df_15min_processed = pd.DataFrame()
         if not df_15min.empty:
             print(f"Processing {len(df_15min)} rows of 15-minute data")
-            df_15min_processed = self._process_15min_data(df_15min)
+            #df_15min_processed = self._process_15min_data(df_15min)
+            df_15min_processed = self._process_15min_data_vectorized(df_15min)
         
         # Combine results
         final_df = pd.concat([df_hourly_processed, df_15min_processed], ignore_index=True)
@@ -282,6 +284,150 @@ class I90Processor:
             print(traceback.format_exc())
             return pd.DataFrame()
 
+    @with_progress(message="Processing 15-minute data (vectorized)...", interval=2)
+    def _process_15min_data_vectorized(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Process 15-minute data (numeric index "1" to "96/92/100") using vectorized operations.
+        Creates timezone-aware UTC datetime series by processing each day individually.
+        """
+        try:
+            input_df = df.copy() # Use a different name to avoid confusion within apply
+            tz = pytz.timezone('Europe/Madrid')
+
+            # Ensure 'fecha' is datetime and 'hora' is integer
+            input_df['fecha'] = pd.to_datetime(input_df['fecha'])
+            input_df['hora'] = pd.to_numeric(input_df['hora'], errors='coerce').astype('Int64')
+            input_df = input_df.dropna(subset=['fecha', 'hora'])
+
+            if input_df.empty:
+                 print("Warning: 15-min data empty after initial cleaning.")
+                 return pd.DataFrame()
+
+            # --- Group by day and apply localization ---
+            def localize_day(group: pd.DataFrame) -> pd.DataFrame:
+                # Sort within the day by 'hora'
+                group = group.sort_values(by='hora')
+
+                # Calculate naive datetime for the day
+                time_offset = pd.to_timedelta((group['hora'] - 1) * 15, unit='m')
+                # Ensure 'fecha' Series used here has the same index as the group
+                naive_dt = group['fecha'] + time_offset
+
+                # Localize, handling DST transitions for this specific day
+                try:
+                    local_dt = naive_dt.dt.tz_localize(tz, ambiguous='infer', nonexistent='shift_forward')
+                    group['datetime_utc'] = local_dt.dt.tz_convert('UTC')
+                except Exception as loc_err:
+                     # Log error for the specific day/group if needed
+                     print(f"Error localizing group for date {group['fecha'].iloc[0].date()}: {loc_err}")
+                     group['datetime_utc'] = pd.NaT # Assign NaT for error cases in this group
+
+                return group
+
+            print("Localizing timestamps day by day...")
+            # Apply the localization function to each daily group
+            # group_keys=False prevents adding 'fecha' as an index level
+            result_df = input_df.groupby('fecha', group_keys=False).apply(localize_day)
+
+            # --- End Grouping ---
+
+            # Drop rows where UTC conversion failed (marked as NaT)
+            result_df = result_df.dropna(subset=['datetime_utc'])
+
+            print("Finished localization and conversion to UTC.")
+            return result_df
+
+        except Exception as e:
+            print(f"Error processing 15-minute data (vectorized): {e}")
+            import traceback
+            print(traceback.format_exc()) # Print full traceback for debugging
+            return pd.DataFrame()
+        
+     # New vectorized version for hourly data
+    
+    @with_progress(message="Processing hourly data (vectorized)...", interval=2)
+    def _process_hourly_data_vectorized(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix) using vectorized operations.
+        Creates timezone-aware UTC datetime series and converts to 15-min intervals.
+        """
+        try:
+            result_df = df.copy()
+            tz = pytz.timezone('Europe/Madrid')
+
+            # Ensure 'fecha' is datetime and 'hora' is string
+            result_df['fecha'] = pd.to_datetime(result_df['fecha'])
+            result_df['hora_str'] = result_df['hora'].astype(str)
+
+            # 1. Extract Base Hour and Suffix using regex
+            # Pattern captures:
+            #   Group 1: The starting hour (digits)
+            #   Group 2: Optional suffix 'a' or 'b'
+            # Examples: "01-02" -> ('01', None), "02-03a" -> ('02', 'a'), "23-00b" -> ('23', 'b')
+            # Handles cases without hyphen too: "2" -> ('2', None) - if they occur
+            pat = r'^(\d{1,2})(?:-\d{1,2})?([ab]?)$'
+            extracted = result_df['hora_str'].str.extract(pat, expand=True)
+            extracted.columns = ['base_hour_str', 'suffix']
+
+            # Convert base hour to numeric, coerce errors to NaT/NaN
+            base_hour = pd.to_numeric(extracted['base_hour_str'], errors='coerce')
+
+            # Drop rows where base hour couldn't be parsed
+            valid_mask = base_hour.notna()
+            result_df = result_df[valid_mask].copy()
+            base_hour = base_hour[valid_mask]
+            extracted = extracted[valid_mask]
+            
+            if result_df.empty:
+                print("Warning: Hourly data empty after parsing base hour.")
+                return pd.DataFrame()
+
+            # 2. Create Naive Timestamps
+            # Combine date part of 'fecha' with the extracted 'base_hour'
+            # Important: Use dt.normalize() to set time to 00:00:00 before adding hours
+            naive_dt = result_df['fecha'].dt.normalize() + pd.to_timedelta(base_hour, unit='h')
+
+            # 3. Prepare Localization Parameters
+            # Determine 'ambiguous' based on suffix 'a'/'b'
+            # Default for ambiguous times without suffix: True (first occurrence, matches old logic)
+            ambiguous_param = pd.Series(True, index=result_df.index) # Default
+            ambiguous_param[extracted['suffix'] == 'a'] = True
+            ambiguous_param[extracted['suffix'] == 'b'] = False
+
+            # 4. Localize Vectorized
+            # Use the 'ambiguous_param' Series.
+            # Use nonexistent='shift_forward' to handle spring forward hour automatically.
+            try:
+                # Ensure naive_dt is Series before using .dt accessor
+                if not isinstance(naive_dt, pd.Series):
+                     naive_dt = pd.Series(naive_dt)
+
+                local_dt = naive_dt.dt.tz_localize(tz, ambiguous=ambiguous_param, nonexistent='shift_forward')
+
+            except Exception as loc_err:
+                 # Handle potential errors during vector localization if needed
+                 print(f"Warning: Vectorized tz_localize for hourly data failed: {loc_err}. Errors may occur.")
+                 # Implement fallback or return empty if critical
+                 return pd.DataFrame()
+
+            # 5. Convert to UTC
+            result_df['datetime_utc'] = local_dt.dt.tz_convert('UTC')
+
+            # 6. Convert to 15-minute frequency using the utility function
+            # Ensure the utility function can handle the input DataFrame structure
+            result_df = self.date_utils.convert_hourly_to_15min(result_df) # Pass the df with datetime_utc
+
+            # Clean up intermediate columns
+            result_df = result_df.drop(columns=['hora_str'], errors='ignore')
+
+            return result_df
+
+        except Exception as e:
+            print(f"Error processing hourly data (vectorized): {e}")
+            import traceback
+            print(traceback.format_exc())
+            return pd.DataFrame()
+    
     def _parse_hourly_datetime_local(self, fecha, hora_str) -> pd.Timestamp:
         """
         Parse hourly format data (e.g., "00-01", "02-03a", "02-03b") into a timezone-aware
