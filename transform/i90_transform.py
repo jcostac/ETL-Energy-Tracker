@@ -55,6 +55,9 @@ class TransformadorI90:
         self.i90_precios_markets = self._compute_precios_markets()
 
     def _compute_volumenes_markets(self):
+        """
+        Computes the markets that have volumenes_sheets.
+        """
         markets = []
         for config_cls in I90Config.__subclasses__():
             config = config_cls()
@@ -64,6 +67,9 @@ class TransformadorI90:
         return markets
 
     def _compute_precios_markets(self):
+        """
+        Computes the markets that have precios_sheets.
+        """
         markets = []
         for config_cls in I90Config.__subclasses__():
             config = config_cls()
@@ -143,13 +149,13 @@ class TransformadorI90:
                 print(f"\n-- Market: {mercado} --")
                 try:
                     if transform_type == 'batch':
-                        self._transform_batch(mercado, dataset_type)
+                        self._process_batch_mode(mercado, dataset_type)
                     elif transform_type == 'single':
-                        self._transform_single(mercado, dataset_type, start_date)
+                        self._process_single_day(mercado, dataset_type, start_date)
                     elif transform_type == 'latest':
-                        self._transform_latest(mercado, dataset_type)
+                        self._process_latest_day(mercado, dataset_type)
                     elif transform_type == 'multiple':
-                        self._transform_multiple(mercado, dataset_type, start_date, end_date)
+                        self._process_multiple_day(mercado, dataset_type, start_date, end_date)
                 except Exception as e:
                      # Catch errors here to allow processing of other markets/types
                      print(f"❌ Failed to transform {dataset_type} for market {mercado} ({transform_type}): {e}")
@@ -178,7 +184,7 @@ class TransformadorI90:
                 print(f"Transformation resulted in empty or None DataFrame for {mercado} - {dataset_type}. Nothing to save.")
                 return
 
-            # --- Schema Adjustment for Secundaria Market based on Date ---
+            # --- Schema Adjustment for Secundaria Market based on Date (ie addiong a ZR column for the month where SRS takes effect---
             if mercado == 'secundaria' and dataset_type == 'volumenes_i90' and 'up' in processed_df.columns:
                 print("Applying date-based schema adjustment for secundaria market...")
                 threshold_date = pd.Timestamp('2024-11-20', tz='UTC')
@@ -211,7 +217,7 @@ class TransformadorI90:
                     else:
                          # Data is entirely before the threshold, keep 'up' as is.
                          print(f"Data chunk is entirely before {threshold_date.date()}. Keeping 'up' column.")
-            # ---------------------------------------------------------
+            # -------------------------------------------------------------
 
         except Exception as e:
             print(f"Error during transformation or schema adjustment for {mercado} - {dataset_type}: {e}")
@@ -257,8 +263,6 @@ class TransformadorI90:
             # print(processed_df.info())
             return
 
-    # --- Data Loading and Processing Logic (similar to TransformadorESIOS) ---
-
     def _process_df_based_on_transform_type(self, raw_df: pd.DataFrame, transform_type: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
         """
         Filters the raw DataFrame based on the transform type and date range.
@@ -268,51 +272,52 @@ class TransformadorI90:
             return raw_df
 
         # --- Datetime Column Handling ---
-        # The I90Processor._standardize_datetime should create 'datetime_utc'.
-        # We rely on that step having succeeded. If it failed, the df might be empty
+        # The I90Processor._standardize_datetime should create 'datetime_utc', but do do this, we first hacve to filter by date, hence the necessesity of a fecha column
+        # We rely on tghe "fecha" column for filtering by date to succeed.
         # or lack the column, leading to errors here or empty results.
-        if 'datetime_utc' not in raw_df.columns:
-            print("Error: 'datetime_utc' column missing in DataFrame passed to _process_df_based_on_transform_type. Cannot apply date filters.")
+        if "fecha" not in raw_df.columns:
+            print("Error: 'fecha' column missing in DataFrame passed to _process_df_based_on_transform_type. Cannot apply date filters.")
             # Depending on mode, either return empty or the original df if batch
-            return pd.DataFrame() if transform_type != 'batch' else raw_df
+            return pd.DataFrame() 
         else:
-            # Ensure it's datetime type (might be redundant if processor guarantees it)
-             if not pd.api.types.is_datetime64_any_dtype(raw_df['datetime_utc']):
-                 try:
-                     raw_df['datetime_utc'] = pd.to_datetime(raw_df['datetime_utc'], utc=True)
-                 except Exception as e:
-                     print(f"Error converting 'datetime_utc' in _process_df_based_on_transform_type: {e}. Returning empty DataFrame.")
-                     return pd.DataFrame()
+            # Ensure fecha column is datetime type for filtering
+            if not pd.api.types.is_datetime64_any_dtype(raw_df['fecha']):
+                try:
+                    raw_df['fecha'] = pd.to_datetime(raw_df['fecha'])
+                except Exception as e:
+                    print(f"Error converting 'fecha' in _process_df_based_on_transform_type: {e}. Returning empty DataFrame.")
+                    return pd.DataFrame()
+            
 
         # --- Filtering Logic ---
         try:
             if transform_type == 'latest':
                 if raw_df.empty: return raw_df
                 # Find the max date robustly
-                last_day = raw_df['datetime_utc'].dropna().dt.date.max()
+                last_day = raw_df['fecha'].dropna().dt.date.max()
                 if pd.isna(last_day):
                     print("Warning: Could not determine the latest day (max date is NaT). Returning empty DataFrame for 'latest' mode.")
                     return pd.DataFrame()
                 print(f"Filtering for latest mode: {last_day}")
-                # Ensure comparison works even if source has NaT datetimes
-                return raw_df[raw_df['datetime_utc'].dt.date == last_day].copy()
+               #return filtered df on last day
+                return raw_df[raw_df['fecha'].dt.date == last_day].copy()
 
             elif transform_type == 'batch':
-                unique_days = raw_df['datetime_utc'].dropna().dt.date.nunique()
+                unique_days = raw_df['fecha'].dropna().dt.date.nunique()
                 print(f"Processing in batch mode with {unique_days} unique days")
                 return raw_df # Process the entire dataframe
 
             elif transform_type == 'single':
                 target_date = pd.to_datetime(start_date).date()
                 print(f"Filtering for single mode: {target_date}")
-                return raw_df[raw_df['datetime_utc'].dt.date == target_date].copy()
+                return raw_df[raw_df['fecha'].dt.date == target_date].copy()
 
             elif transform_type == 'multiple':
                 start_dt = pd.to_datetime(start_date).date()
                 end_dt = pd.to_datetime(end_date).date()
                 if start_dt > end_dt: raise ValueError("Start date cannot be after end date.")
                 print(f"Filtering for multiple mode: {start_dt} to {end_dt}")
-                return raw_df[(raw_df['datetime_utc'].dt.date >= start_dt) & (raw_df['datetime_utc'].dt.date <= end_dt)].copy()
+                return raw_df[(raw_df['fecha'].dt.date >= start_dt) & (raw_df['fecha'].dt.date <= end_dt)].copy()
 
             else:
                 # This case should technically be caught by the public method check
@@ -322,8 +327,7 @@ class TransformadorI90:
              print(f"Error during date filtering ({transform_type} mode): {e}")
              return pd.DataFrame() # Return empty on filtering error
 
-
-    def _transform_batch(self, mercado: str, dataset_type: str):
+    def _process_batch_mode(self, mercado: str, dataset_type: str):
         """Process all available raw data for a market/dataset_type."""
         print(f"Starting BATCH transformation for {mercado} - {dataset_type}")
         try:
@@ -351,7 +355,7 @@ class TransformadorI90:
         except Exception as e:
             print(f"Error during batch processing setup for {mercado}/{dataset_type}: {e}")
 
-    def _transform_single(self, mercado: str, dataset_type: str, date: str):
+    def _process_single_day(self, mercado: str, dataset_type: str, date: str):
         """Process a single day's data."""
         print(f"Starting SINGLE transformation for {mercado} - {dataset_type} on {date}")
         try:
@@ -383,7 +387,7 @@ class TransformadorI90:
         except Exception as e:
             print(f"Error during single day processing for {mercado}/{dataset_type} on {date}: {e}")
 
-    def _transform_latest(self, mercado: str, dataset_type: str):
+    def _process_latest_day(self, mercado: str, dataset_type: str):
         """Process the latest day available in the raw data."""
         print(f"Starting LATEST transformation for {mercado} - {dataset_type}")
         latest_year, latest_month = None, None # Initialize for error message
@@ -423,7 +427,7 @@ class TransformadorI90:
         except Exception as e:
             print(f"Error during latest day processing for {mercado}/{dataset_type}: {e}")
 
-    def _transform_multiple(self, mercado: str, dataset_type: str, start_date: str, end_date: str):
+    def _process_multiple_day(self, mercado: str, dataset_type: str, start_date: str, end_date: str):
         """Process a range of days, reading multiple monthly files if needed."""
         print(f"Starting MULTIPLE transformation for {mercado} - {dataset_type} from {start_date} to {end_date}")
         try:

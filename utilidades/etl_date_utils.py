@@ -369,7 +369,14 @@ class DateUtilsETL:
         dt_utc_converted = pd.to_datetime(dt_local_series, utc=True)
 
         # Get the local timezone from the datetime object
-        local_timezone = dt_utc_converted.dt.tz.zone
+        converted_timezone = dt_utc_converted.dt.tz
+
+        # Check if the timezone is UTC
+        if converted_timezone is not None and str(converted_timezone) == 'UTC':
+            print(f"Conversion successful: local timezone is {converted_timezone}")
+        else:
+            print(f"Conversion failed: local timezone is {converted_timezone}")
+            raise ValueError("Unsuccessful conversion: local timezone is not UTC.")
         
         # Create a new DataFrame with the datetime column and timezone column
         result_df = pd.DataFrame({
