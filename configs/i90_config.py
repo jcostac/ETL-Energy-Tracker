@@ -334,7 +334,6 @@ class RRConfig(I90Config):
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for RR sheets ('06') in the provided snippet
 
-
 class CurtailmentConfig(I90Config):
     def __init__(self):
         """
@@ -374,7 +373,6 @@ class CurtailmentConfig(I90Config):
             # return ['Some', 'Demand', 'Filters']
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
-
 
 class P48Config(I90Config):
     def __init__(self):
@@ -416,7 +414,6 @@ class IndisponibilidadesConfig(I90Config):
 
         # Define Redespacho filter for volumenes sheet ('08')
         self.redespacho_filter_volumenes: List[str] = ["Indisponibilidad"]
-
 
 class RestriccionesConfig(I90Config):
     def __init__(self):

@@ -220,7 +220,7 @@ class I90Processor:
         
         return final_df
 
-    @with_progress(message="Datetime processing of hourly data...", interval=2)
+    @with_progress(message="Processing hourly data...", interval=2)
     def _process_hourly_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix for fall-back DST).
@@ -252,7 +252,7 @@ class I90Processor:
             print(traceback.format_exc())
             return pd.DataFrame()
 
-    @with_progress(message="Datetime processing of 15-minute data...", interval=2)
+    @with_progress(message="Processing 15-minute data...", interval=2)
     def _process_15min_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process 15-minute data (numeric index "1" to "96/92/100").
@@ -490,9 +490,7 @@ class I90Processor:
 
     # === COLUMN FINALIZATION ===
     def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """Selects, orders, and standardizes final columns, outputting 'up' for unit identifier."""
-
-        breakpoint()
+        """Selects, orders, and standardizes final columns, filtering by required columns."""
 
         if "Unidad de Programación" in df.columns:
             df = df.rename(columns={"Unidad de Programación": "up"})
@@ -506,8 +504,6 @@ class I90Processor:
 
         print(f"Filtering columns: {required_cols}")
         df = df[required_cols]
-
-        breakpoint()
 
         return df
 
@@ -577,8 +573,9 @@ class I90Processor:
         Returns:
             pd.DataFrame: Processed DataFrame or empty DataFrame with correct columns on error.
         """
+      
         print("\n" + "="*80)
-        print(f"🔄 STARTING I90 {dataset_type.upper()} TRANSFORMATION")
+        print(f"🔄 STARTING {dataset_type.upper()} TRANSFORMATION")
         print("="*80)
 
         if df.empty:

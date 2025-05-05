@@ -178,7 +178,7 @@ class TransformadorI90:
                 print(f"Transformation resulted in empty or None DataFrame for {mercado} - {dataset_type}.")
                 return pd.DataFrame()
             
-            print(f"Processed data has {len(processed_df)} rows:")
+            print(f"Processed data:")
             print(processed_df.head())
             return processed_df
         except Exception as e:
