@@ -373,10 +373,10 @@ class DateUtilsETL:
 
         # Check if the timezone is UTC
         if converted_timezone is not None and str(converted_timezone) == 'UTC':
-            print(f"Conversion successful: local timezone is {converted_timezone}")
+            print(f"Conversion successful: datetime object timezone is {converted_timezone}")
         else:
-            print(f"Conversion failed: local timezone is {converted_timezone}")
-            raise ValueError("Unsuccessful conversion: local timezone is not UTC.")
+            print(f"Conversion failed: datetime object timezone is {converted_timezone}")
+            raise ValueError("Unsuccessful conversion: datetime object timezone is not UTC.")
         
         # Create a new DataFrame with the datetime column and timezone column
         result_df = pd.DataFrame({

@@ -85,6 +85,7 @@ class ProgressIndicator:
         if not self.use_progress_bar:
             print("Processing complete!")
 
+# === DECORATOR ===
 def with_progress(message: str = "Processing...", interval: float = 2.0,
                  use_progress_bar: bool = False, total_steps: int = None):
     """
@@ -115,6 +116,7 @@ def with_progress(message: str = "Processing...", interval: float = 2.0,
         return wrapper
     return decorator
 
+# === RUN WITH PROGRESS FUNCTION ===
 def run_with_progress(func: Callable[..., T], message: str = "Processing...", 
                      interval: float = 2.0, use_progress_bar: bool = False,
                      total_steps: int = None, *args, **kwargs) -> T:
