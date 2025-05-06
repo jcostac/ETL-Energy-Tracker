@@ -360,7 +360,7 @@ class NLQueryGenerator:
         context = {
             "original_query": query,
             "detected_dataset_type": self._detect_dataset_type(query),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now()
         }
         
         return formatted_query, context
@@ -430,10 +430,10 @@ if __name__ == "__main__":
     
     # Get SQL and execute
     sql_spanish, context_spanish = query_engine.translate_to_sql(spanish_query)
-    print(f"Spanish query SQL: {sql_spanish}")
-    print(f"Context: {context_spanish}")
+    print(f"Spanish query SQL:\n{sql_spanish}")
+    print(f"\nQuery info:\n{context_spanish}")
     
     sql_english, context_english = query_engine.translate_to_sql(english_query)
-    print(f"English query SQL: {sql_english}")
-    print(f"Context: {context_english}")
+    print(f"English query SQL:\n{sql_english}")
+    print(f"\nQuery info:\n{context_english}")
     
