@@ -12,3 +12,4 @@ python-dotenv
 boto3
 xlrd
 openpyxl
+apache-airflow
