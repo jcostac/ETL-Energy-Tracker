@@ -28,10 +28,7 @@ class NLQueryGenerator:
         self.conn = duckdb.connect(database=':memory:') #in memory database
         self.parquet_path = ProcessedFileUtils().processed_path  #processed base path from storage_file_utils.py
         
-        # Set DuckDB configuration for hive partitioning
-        self.conn.execute("SET hive_partitioning = true")
-        self.conn.execute("SET hive_types_autocast = true")
-        
+
         # Load market mapping data
         market_map_path = os.path.join(os.path.dirname(__file__), 'market_map.json')
         with open(market_map_path, 'r') as f:
