@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from extract.i90_extractor import extract_i90_data
 from transform.i90_transform import transform_i90_data
 from transform.carga_i90 import process_i90_data
-from load.data_lake_loader import load_data_to_datalake
+from load.local_data_lake_loader import LocalDataLakeLoader
 
 default_args = {
     'owner': 'airflow',

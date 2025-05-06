@@ -3,10 +3,9 @@ from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 
 # Import necessary modules
-from extract.i90_extractor import extract_i90_data
-from transform.i90_transform import transform_i90_data
-from transform.carga_i90 import process_i90_data
-from load.data_lake_loader import load_data_to_datalake
+from extract.i90_extractor import I90PreciosExtractor
+from transform.i90_transform import I90Processor
+from load.local_data_lake_loader import LocalDataLakeLoader
 
 default_args = {
     'owner': 'airflow',
@@ -31,7 +30,7 @@ dag = DAG(
 # Task 1: Extract I90 price data
 extract_i90_prices = PythonOperator(
     task_id='extract_i90_prices',
-    python_callable=extract_i90_data,
+    python_callable=I90PreciosExtractor().extract_data_for_all_markets,
     op_kwargs={'data_type': 'prices'},
     dag=dag,
 )
@@ -39,7 +38,7 @@ extract_i90_prices = PythonOperator(
 # Task 2: Transform I90 price data
 transform_i90_prices = PythonOperator(
     task_id='transform_i90_prices',
-    python_callable=transform_i90_data,
+    python_callable=I90Processor().transform_data_for_all_markets,
     op_kwargs={'data_type': 'prices'},
     dag=dag,
 )
@@ -47,7 +46,7 @@ transform_i90_prices = PythonOperator(
 # Task 3: Process I90 price data with specialized logic
 load_i90_prices_specific = PythonOperator(
     task_id='load_i90_prices_specific',
-    python_callable=process_i90_data,
+    python_callable=LocalDataLakeLoader().save_processed_data,
     op_kwargs={'data_type': 'prices'},
     dag=dag,
 )
@@ -55,7 +54,7 @@ load_i90_prices_specific = PythonOperator(
 # Task 4: Load I90 price data to data lake
 load_i90_prices_to_datalake = PythonOperator(
     task_id='load_i90_prices_to_datalake',
-    python_callable=load_data_to_datalake,
+    python_callable=LocalDataLakeLoader().save_processed_data,
     op_kwargs={'source': 'i90', 'data_type': 'prices'},
     dag=dag,
 )

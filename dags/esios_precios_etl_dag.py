@@ -1,11 +1,11 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.operators import PythonOperator
 from datetime import datetime, timedelta
 
 # Import necessary modules
-from extract.esios_extractor import extract_esios_data
-from transform.esios_transform import transform_esios_data
-from load.data_lake_loader import load_data_to_datalake
+from extract.esios_extractor import ESIOSPreciosExtractor
+from transform.esios_transform import TransformadorESIOS
+from load.local_data_lake_loader import LocalDataLakeLoader
 
 default_args = {
     'owner': 'airflow',
@@ -30,7 +30,7 @@ dag = DAG(
 # Task 1: Extract ESIOS price data
 extract_esios_prices = PythonOperator(
     task_id='extract_esios_prices',
-    python_callable=extract_esios_data,
+    python_callable=ESIOSPreciosExtractor().extract_data_for_all_markets,
     op_kwargs={'data_type': 'prices'},
     dag=dag,
 )
@@ -38,7 +38,7 @@ extract_esios_prices = PythonOperator(
 # Task 2: Transform ESIOS price data
 transform_esios_prices = PythonOperator(
     task_id='transform_esios_prices',
-    python_callable=transform_esios_data,
+    python_callable=TransformadorESIOS().transform_data_for_all_markets,
     op_kwargs={'data_type': 'prices'},
     dag=dag,
 )
@@ -46,7 +46,7 @@ transform_esios_prices = PythonOperator(
 # Task 3: Load ESIOS price data to data lake
 load_esios_prices_to_datalake = PythonOperator(
     task_id='load_esios_prices_to_datalake',
-    python_callable=load_data_to_datalake,
+    python_callable=LocalDataLakeLoader().save_processed_data,
     op_kwargs={'source': 'esios', 'data_type': 'prices'},
     dag=dag,
 )
