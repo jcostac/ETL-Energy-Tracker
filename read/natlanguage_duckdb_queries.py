@@ -6,6 +6,13 @@ from datetime import datetime
 import google.generativeai as genai
 import duckdb
 from typing import Dict, Any, Tuple, List
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 from utilidades.storage_file_utils import ProcessedFileUtils
 
 class NLQueryGenerator:
@@ -408,7 +415,7 @@ class NLQueryGenerator:
             sql_query, _ = self.translate_to_sql(natural_language_query)
             # Execute and get the result directly as a DataFrame
             df = self.conn.execute(sql_query).df()
-            return df
+            return df, _
         except Exception as e:
             print(f"Error converting result to DataFrame: {e}")
             return pd.DataFrame()
@@ -422,19 +429,14 @@ if __name__ == "__main__":
     
     # Example queries
     spanish_query = "Dame los precios del mercado Diario entre el 1 de enero de 2023 y el 5 de enero de 2023"
-    english_query = "Show me volumes for UP 'ABC123' in Terciaria a subir market during February 2023"
+    english_query = "Show me volumes for UP 'ABO3' in Terciaria a subir market during February 2023"
     
     # Get SQL and execute
-    sql_spanish, _ = query_engine.translate_to_sql(spanish_query)
+    sql_spanish, context_spanish = query_engine.translate_to_sql(spanish_query)
     print(f"Spanish query SQL: {sql_spanish}")
+    print(f"Context: {context_spanish}")
     
-    # Execute and convert to DataFrame
-    df_spanish = query_engine.result_to_df(spanish_query)
-    print(f"Result shape: {df_spanish.shape}")
-    
-    sql_english, _ = query_engine.translate_to_sql(english_query)
+    sql_english, context_english = query_engine.translate_to_sql(english_query)
     print(f"English query SQL: {sql_english}")
+    print(f"Context: {context_english}")
     
-    # Execute and convert to DataFrame
-    df_english = query_engine.result_to_df(english_query)
-    print(f"Result shape: {df_english.shape}")
