@@ -188,4 +188,14 @@ tests/*
 #ignor all files in .cursor folder
 .cursor/*
 
+#ignore all files in venv folder
+venv/
 
+#ignore all files in airflow_venv folder
+airflow_venv/
+
+#ignore all files in .pyc folder
+*.pyc
+
+#ignore all files in __pycache__ folder
+__pycache__/

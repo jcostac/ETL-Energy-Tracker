@@ -13,3 +13,5 @@ boto3
 xlrd
 openpyxl
 apache-airflow
+duckdb
+google-generativeai
