@@ -2,7 +2,6 @@ from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta, timezone
 import pendulum
-# Import necessary modules
 from extract.esios_extractor import ESIOSPreciosExtractor
 from transform.esios_transform import TransformadorESIOS
 from load.local_data_lake_loader import LocalDataLakeLoader
@@ -11,13 +10,12 @@ from helpers.pipeline_status_helpers import process_extraction_output, process_t
 
 
 default_args = {
+    #DAG has no retry logic for failures. 
     'owner': 'jcosta',
     'depends_on_past': False,
     'email_on_failure': False, #set to false bc we have custom callbacks (email_triggers.py)
     'email_on_retry': False, #set to false bc we have custom callbacks (email_triggers.py)
     'email_on_success': False, #set to false bc we have custom callbacks (email_triggers.py)
-    'retries': 4, #4 retries
-    'retry_delay': timedelta(minutes=10), #10 minutes delay between retries
 }
 
 # -- DAG Definition --
@@ -31,7 +29,7 @@ dag_esios_precios = DAG(
     tags=['esios', 'electricidad', 'precios', 'etl'],
     dag_run_timeout=timedelta(hours=1), # This is the maximum time the DAG can run before being killed
     
-    #custom callbacks for fails and successes (email_triggers.py)
+    #custom callbacks for fails and successes (email_triggers.py), if any of the tasks fail, the email_triggers.py will be called for failure.
     on_failure_callback=dag_failure_email,
     on_success_callback=dag_success_email,
 )
@@ -46,7 +44,7 @@ extract_esios_prices = PythonOperator(
     on_failure_callback=task_failure_email
 )
 
-# -- Task 2: Process extraction output -> sends email if fails --
+# -- Task 2: Process extraction output -> sends email if fails 
 check_extraction_output = PythonOperator(
     task_id='check_extraction_output',
     python_callable=process_extraction_output,
@@ -62,7 +60,7 @@ transform_esios_prices = PythonOperator(
     dag=dag_esios_precios
 )
 
-# -- Task 4: Process transform output -> sends email if fails --
+# -- Task 4: Process transform output -> sends email if fails 
 check_transform_output = PythonOperator(
     task_id='check_transform_output',
     python_callable=process_transform_output,
@@ -79,14 +77,13 @@ load_esios_prices_to_datalake = PythonOperator(
     dag=dag_esios_precios,
 )
 
-# -- Task 6: Finalize pipeline status -> sends email if fails and success email if succeeds (since it is final step of the pipeline) --
+# -- Task 6: Finalize pipeline status -> sends email if fails 
 finalize_pipeline = PythonOperator(
     task_id='finalize_pipeline',
     python_callable=finalize_pipeline_status,
     provide_context=True,
     dag=dag_esios_precios,
-    on_failure_callback=task_failure_email,
-    on_success_callback=task_success_email
+    on_failure_callback=task_failure_email
 )
 
 # -- Finally: Define task dependencies --
