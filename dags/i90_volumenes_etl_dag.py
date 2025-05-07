@@ -21,7 +21,7 @@ default_args = {
 dag = DAG(
     'i90_volumenes_etl',
     default_args=default_args,
-    description='ETL pipeline for I90 market volume data',
+    description='ETL pipeline for downloading and processing I90 market volume data',
     schedule_interval='30 3 * * *',  # Daily at 03:30 UTC
     start_date=datetime(2023, 1, 1),
     catchup=False,
