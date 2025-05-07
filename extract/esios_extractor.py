@@ -147,23 +147,56 @@ class ESIOSPreciosExtractor:
             except Exception as e:
                 print(f"  - Error downloading {mercado} prices for {day_str}: {e}")
 
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
         """
         Extract data for all relevant markets from ESIOS API for a given date range.
         Uses the environment setting (DEV/PROD) for file saving format.
         """
+        # Initialize status tracking
+        status_details = {
+            "markets_processed": [],
+            "markets_failed": [],
+            "date_range": f"{fecha_inicio_carga} to {fecha_fin_carga}"
+        }
+        
         try:
-            self.extract_diario(fecha_inicio_carga, fecha_fin_carga)
-            self.extract_intra(fecha_inicio_carga, fecha_fin_carga)
-            self.extract_secundaria(fecha_inicio_carga, fecha_fin_carga)
-            self.extract_terciaria(fecha_inicio_carga, fecha_fin_carga)
-            self.extract_rr(fecha_inicio_carga, fecha_fin_carga)
-
+            # Track success for each market
+            success_diario = self._extract_with_status("diario", self.extract_diario, 
+                                                     fecha_inicio_carga, fecha_fin_carga, status_details)
+            success_intra = self._extract_with_status("intra", self.extract_intra, 
+                                                    fecha_inicio_carga, fecha_fin_carga, status_details)
+            success_secundaria = self._extract_with_status("secundaria", self.extract_secundaria, 
+                                                         fecha_inicio_carga, fecha_fin_carga, status_details)
+            success_terciaria = self._extract_with_status("terciaria", self.extract_terciaria, 
+                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
+            success_rr = self._extract_with_status("rr", self.extract_rr, 
+                                                 fecha_inicio_carga, fecha_fin_carga, status_details)
+            
+            # Overall success only if all markets succeeded
+            overall_success = (success_diario and success_intra and success_secundaria 
+                              and success_terciaria and success_rr)
+            
         except Exception as e:
-            print(f"Error extracting data: {e}")
-
-        finally:
-            print("Data extraction pipeline finished.")
+            overall_success = False
+            status_details["error"] = str(e)
+        
+        print("Data extraction pipeline finished.")
+        
+        # Return status for Airflow task
+        return {"success": overall_success, "details": status_details}
+        
+    def _extract_with_status(self, market_name, extract_function, fecha_inicio_carga, fecha_fin_carga, status_details):
+        """Helper method to track success status for each market extraction"""
+        try:
+            extract_function(fecha_inicio_carga, fecha_fin_carga)
+            status_details["markets_processed"].append(market_name)
+            return True
+        except Exception as e:
+            status_details["markets_failed"].append({
+                "market": market_name,
+                "error": str(e)
+            })
+            return False
 
     def extract_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """

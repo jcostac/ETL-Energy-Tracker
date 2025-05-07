@@ -543,90 +543,91 @@ class TransformadorESIOS:
 
         return processed_df_final # Return the single combined DF or None
 
-    def transform_data_for_all_markets(self, start_date: str = None, end_date: str = None, mercados: list[str] = None, mode: str = 'latest') -> dict[str, Optional[Union[pd.DataFrame, list[Optional[pd.DataFrame]]]]]:
+    def transform_data_for_all_markets(self, start_date: str = None, end_date: str = None, 
+                                      mercados: list[str] = None, mode: str = 'latest'):
         """
-        Transforms data for specified markets based on the mode and returns the results.
-
-        Args:
-            start_date: The start date. Required for 'single' and 'multiple' modes.
-            end_date: The end date. Required for 'multiple' mode.
-            mercados: List of market names. If None, processes all markets from config.
-            mode: One of 'latest', 'batch', 'single', 'multiple'. Default 'latest'.
-
-        Returns:
-            dict: A dictionary where keys are market names and values are the
-                  processed DataFrame (for single, latest, multiple) or a list of
-                  DataFrames (for batch), or None if processing failed for that market.
+        Transforms data for specified markets and returns status along with results.
         """
-        if mode not in self.transform_types:
-            raise ValueError(f"Invalid transform type: {mode}. Must be one of: {self.transform_types}")
-
-        # Add validation for required parameters
-        if mode == 'single' and not start_date:
-            raise ValueError("start_date must be provided for single mode")
-        if mode == 'multiple' and (not start_date or not end_date):
-            raise ValueError("Both start_date and end_date must be provided for multiple mode")
-
-        # Get list of all markets to process
-        if mercados is None:
-            mercados = ESIOSConfig().esios_precios_markets
-        elif isinstance(mercados, str): # Allow single market string
-            mercados = [mercados]
-
-        results = {} # Dictionary to store results per market
-
-        print(f"\n===== STARTING TRANSFORMATION RUN (Mode: {mode.upper()}) =====")
-        print(f"Markets to process: {', '.join(mercados)}")
-        if start_date: print(f"Start Date: {start_date}")
-        if end_date: print(f"End Date: {end_date}")
-        print("="*60)
-
-        for mercado in mercados:
-            print(f"\n--- Processing Market: {mercado.upper()} ---")
-            market_result = None
-            try:
-                if mode == 'batch':
-                    # Returns list[Optional[pd.DataFrame]]
-                    market_result = self._process_batch_mode(mercado)
-                elif mode == 'single':
-                    # Returns Optional[pd.DataFrame]
-                    market_result = self._process_single_day(mercado, start_date)
-                elif mode == 'latest':
-                    # Returns Optional[pd.DataFrame]
-                    market_result = self._process_latest_day(mercado)
-                elif mode == 'multiple':
-                    # Returns Optional[pd.DataFrame]
-                    market_result = self._process_date_range(mercado, start_date, end_date)
-
-                results[mercado] = market_result # Store the result (DF, list of DFs, or None)
-
-            except Exception as e:
-                print(f"❌ CRITICAL ERROR during top-level processing for {mercado}: {e}")
-                print(traceback.format_exc())
-                results[mercado] = None # Ensure None is stored on critical failure
-            finally:
-                 print(f"--- Finished Market: {mercado.upper()} ---")
-
-
-        print(f"\n===== TRANSFORMATION RUN FINISHED (Mode: {mode.upper()}) =====")
-        # Optionally print summary of results
-        print("Summary:")
-        for market, result in results.items():
-            status = "Failed/No Data"
-            if isinstance(result, pd.DataFrame):
-                if not result.empty:
-                    status = f"Success ({len(result)} records)"
-                else:
-                    status = "Success (Empty DF)"
-            elif isinstance(result, list):
-                 # Count successful DFs in the list for batch mode summary
-                 success_count = sum(1 for df in result if isinstance(df, pd.DataFrame) and not df.empty)
-                 total_items = len(result)
-                 status = f"Batch Success ({success_count}/{total_items} periods processed)"
-            print(f"- {market}: {status}")
-        print("="*60)
-
-        return results # Return the dictionary of results
+        # Initialize status tracking
+        status_details = {
+            "markets_processed": [],
+            "markets_failed": [],
+            "mode": mode,
+            "date_range": f"{start_date} to {end_date}" if end_date else start_date
+        }
+        
+        overall_success = True
+        results = {}
+        
+        # Validate inputs
+        try:
+            if mode not in self.transform_types:
+                raise ValueError(f"Invalid transform type: {mode}. Must be one of: {self.transform_types}")
+                
+            # Add validation for required parameters
+            if mode == 'single' and not start_date:
+                raise ValueError("start_date must be provided for single mode")
+            if mode == 'multiple' and (not start_date or not end_date):
+                raise ValueError("Both start_date and end_date must be provided for multiple mode")
+            
+            # Get list of all markets to process
+            if mercados is None:
+                mercados = ESIOSConfig().esios_precios_markets
+            elif isinstance(mercados, str): # Allow single market string
+                mercados = [mercados]
+                
+            # Process each market and track status
+            for mercado in mercados:
+                market_result = None
+                try:
+                    if mode == 'batch':
+                        market_result = self._process_batch_mode(mercado)
+                    elif mode == 'single':
+                        market_result = self._process_single_day(mercado, start_date)
+                    elif mode == 'latest':
+                        market_result = self._process_latest_day(mercado)
+                    elif mode == 'multiple':
+                        market_result = self._process_date_range(mercado, start_date, end_date)
+                    
+                    # Check if transformation was successful
+                    if market_result is not None and (
+                        (isinstance(market_result, pd.DataFrame) and not market_result.empty) or
+                        (isinstance(market_result, list) and any(df is not None and not df.empty for df in market_result))
+                    ):
+                        status_details["markets_processed"].append(mercado)
+                        results[mercado] = market_result
+                    else:
+                        status_details["markets_failed"].append({
+                            "market": mercado,
+                            "error": "Transformation produced no valid data"
+                        })
+                        overall_success = False
+                        results[mercado] = None  # Store None for failed transformations
+                        
+                except Exception as e:
+                    status_details["markets_failed"].append({
+                        "market": mercado,
+                        "error": str(e)
+                    })
+                    overall_success = False
+                    results[mercado] = None
+                    
+            # If all markets failed, consider the entire transformation failed
+            if not status_details["markets_processed"]:
+                overall_success = False
+                
+        except Exception as e:
+            overall_success = False
+            status_details["error"] = str(e)
+            
+        # Return both the results and the status
+        return {
+            "data": results,
+            "status": {
+                "success": overall_success,
+                "details": status_details
+            }
+        }
 
     def process_diario_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
         """Transforms data for the 'diario' market."""
