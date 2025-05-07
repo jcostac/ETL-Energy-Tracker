@@ -20,7 +20,7 @@ default_args = {
     'retry_delay': timedelta(minutes=10), #10 minutes delay between retries
 }
 
-# DAG Definition
+# -- DAG Definition --
 dag_esios_precios = DAG(
     'esios_precios_etl', #unique identifier for the DAG
     default_args=default_args,
@@ -37,7 +37,7 @@ dag_esios_precios = DAG(
 )
 
 
-# Task 1: Extract ESIOS price data
+# -- Task 1: Extract ESIOS price data --
 extract_esios_prices = PythonOperator(
     task_id='extract_esios_prices',
     python_callable=ESIOSPreciosExtractor().extract_data_for_all_markets,
@@ -46,25 +46,23 @@ extract_esios_prices = PythonOperator(
     on_failure_callback=task_failure_email
 )
 
-# Task 2: Process extraction output
+# -- Task 2: Process extraction output -> sends email if fails --
 check_extraction_output = PythonOperator(
     task_id='check_extraction_output',
     python_callable=process_extraction_output,
     provide_context=True,
-    dag=dag_esios_precios,
-    on_failure_callback=task_failure_email
+    dag=dag_esios_precios
 )
 
-# Task 3: Transform ESIOS price data
+# -- Task 3: Transform ESIOS price data --
 transform_esios_prices = PythonOperator(
     task_id='transform_esios_prices',
     python_callable=TransformadorESIOS().transform_data_for_all_markets,
     op_kwargs={'start_date': '{{ ds }}', 'end_date': '{{ ds }}', 'mode': 'single'},
-    dag=dag_esios_precios,
-    on_failure_callback=task_failure_email
+    dag=dag_esios_precios
 )
 
-# Task 4: Process transform output
+# -- Task 4: Process transform output -> sends email if fails --
 check_transform_output = PythonOperator(
     task_id='check_transform_output',
     python_callable=process_transform_output,
@@ -73,16 +71,15 @@ check_transform_output = PythonOperator(
     on_failure_callback=task_failure_email
 )
 
-# Task 5: Load ESIOS price data
+# -- Task 5: Load ESIOS price data --
 load_esios_prices_to_datalake = PythonOperator(
     task_id='load_esios_prices_to_datalake',
     python_callable=LocalDataLakeLoader().load_transformed_data_esios,
     op_kwargs={'transformed_data_dict': "{{ ti.xcom_pull(task_ids='process_transform') }}"},
     dag=dag_esios_precios,
-    on_failure_callback=task_failure_email
 )
 
-# Task 6: Finalize pipeline status
+# -- Task 6: Finalize pipeline status -> sends email if fails and success email if succeeds (since it is final step of the pipeline) --
 finalize_pipeline = PythonOperator(
     task_id='finalize_pipeline',
     python_callable=finalize_pipeline_status,
@@ -92,5 +89,5 @@ finalize_pipeline = PythonOperator(
     on_success_callback=task_success_email
 )
 
-# Define task dependencies
+# -- Finally: Define task dependencies --
 extract_esios_prices >> check_extraction_output >> transform_esios_prices >> check_transform_output >> load_esios_prices_to_datalake >> finalize_pipeline
