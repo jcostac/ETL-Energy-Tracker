@@ -46,7 +46,7 @@ class LocalDataLakeLoader(DataLakeLoader):
         print(f"LocalDataLakeLoader initialized. Processed data path: {self.file_utils.processed_path}")
 
 
-    def save_processed_data(self, processed_df: pd.DataFrame, mercado: str, value_col: str, dataset_type: str) -> None:
+    def _save_processed_data(self, processed_df: pd.DataFrame, mercado: str, value_col: str, dataset_type: str) -> None:
         """
         Saves the processed DataFrame to the local data lake as a partitioned Parquet file.
 
@@ -91,7 +91,79 @@ class LocalDataLakeLoader(DataLakeLoader):
             print("="*80 + "\n")
             return
 
+    def load_transformed_data_esios(self, transformed_data_dict, **kwargs):
+        """
+        Process the dictionary output from transform phase and load each market's data
+        
+        Args:
+            transformed_data_dict: Dictionary with market names as keys and DataFrames as values
+        """
+        results = []
+        
+        for mercado, df in transformed_data_dict.items():
+            if df is not None and not df.empty:
+                # For each market, save its data
+                self._save_processed_data(
+                    processed_df=df,
+                    mercado=mercado,
+                    value_col='precio',  # Assuming the value column is 'precio'
+                    dataset_type='precios'
+                )
+                results.append(f"Loaded {len(df)} records for market {mercado}")
+            else:
+                results.append(f"No data to load for market {mercado}")
+    
+        return results
+    
+    def load_transformed_data_precios_i90(self, transformed_data_dict, **kwargs):
+        """
+        Process the dictionary output from transform phase and load each market's i90 price data
+        
+        Args:
+            transformed_data_dict: Dictionary with market names as keys and DataFrames as values
+        """
+        results = []
+        
+        for mercado, df in transformed_data_dict.items():
+            if df is not None and not df.empty:
+                # For each market, save its data
+                self._save_processed_data(
+                    processed_df=df,
+                    mercado=mercado,
+                    value_col='precio',  # Using precio_i90 as the value column
+                    dataset_type='precios_i90'
+                )
+                results.append(f"Loaded {len(df)} records for i90 prices market {mercado}")
+            else:
+                results.append(f"No i90 price data to load for market {mercado}")
 
+        return results
+
+    def load_transformed_data_volumenes_i90(self, transformed_data_dict, **kwargs):
+        """
+        Process the dictionary output from transform phase and load each market's i90 volume data
+        
+        Args:
+            transformed_data_dict: Dictionary with market names as keys and DataFrames as values
+        """
+        results = []
+        
+        for mercado, df in transformed_data_dict.items():
+            if df is not None and not df.empty:
+                # For each market, save its data
+                self._save_processed_data(
+                    processed_df=df,
+                    mercado=mercado,
+                    value_col='volumenes',  # Using volumen_i90 as the value column
+                    dataset_type='volumenes_i90'
+                )
+                results.append(f"Loaded {len(df)} records for i90 volumes market {mercado}")
+            else:
+                results.append(f"No i90 volume data to load for market {mercado}")
+
+        return results
+    
+    
 if __name__ == "__main__":
     print("--- Running LocalDataLakeLoader Example ---")
     # Example usage: Create a dummy DataFrame

@@ -3,8 +3,7 @@ from __future__ import annotations
 import pendulum
 
 from airflow.models.dag import DAG
-from airflow.operators.python import PythonOperator
-
+from airflow.providers.standard.operators.python import PythonOperator
 # Assuming your scripts are importable
 from extract.esios_extractor import ESIOSPreciosExtractor
 from transform.esios_transform import TransformadorESIOS
@@ -24,7 +23,15 @@ default_args = {
 # --- Helper Functions to be called by PythonOperator ---
 
 def extract_daily_data(ds, **kwargs):
-    """Extracts data for a specific day."""
+    """Extracts data for a specific day.
+    
+    Args:
+        ds: The date to extract data for.
+        kwargs: Additional keyword arguments.
+
+    Returns:
+       Nothing. The extractor saves files, so no explicit return needed since transform task reads from those files. 
+    """
     print(f"Extracting data for date: {ds}")
     extractor = ESIOSPreciosExtractor()
     # For a daily backfill, start and end date are the same
@@ -33,7 +40,15 @@ def extract_daily_data(ds, **kwargs):
     print(f"Extraction complete for {ds}")
 
 def transform_daily_data(ds, **kwargs):
-    """Transforms data for a specific day."""
+    """Transforms data for a specific day.
+    
+    Args:
+        ds: The date to transform data for.
+        kwargs: Additional keyword arguments.
+
+    Returns:
+        A dictionary of processed data for each market.
+    """
     print(f"Transforming data for date: {ds}")
     transformer = TransformadorESIOS()
     # Mode 'single' uses the start_date for the specific day

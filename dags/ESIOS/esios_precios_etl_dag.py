@@ -26,7 +26,7 @@ dag_esios_precios = DAG(
     description='ETL pipeline for downloading and processing ESIOS electricity price data',
     schedule_interval='0 22 * * *',  # Daily at 22:00 UTC
     start_date=pendulum.datetime(2025,  1, 1, tz="UTC"), # May 1st 2025
-    catchup=False, # This will backfill data for all days since the start date
+    catchup=True, # This will backfill data for all days since the start date
     tags=['esios', 'electricidad', 'precios', 'etl'],
     dag_run_timeout=timedelta(hours=1), # This is the maximum time the DAG can run before being killed
     
@@ -39,29 +39,30 @@ dag_esios_precios = DAG(
 extract_esios_prices = PythonOperator(
     task_id='extract_esios_prices',
     python_callable=ESIOSPreciosExtractor().extract_data_for_all_markets,
-    op_kwargs={'data_type': 'prices'},
+    op_kwargs={'fecha_inicio_carga': '{{ ds }}', 'fecha_fin_carga': '{{ ds }}'}, #ds is the date of the DAG run (YYYY-MM-DD)
     dag=dag_esios_precios,
 
     #custom callbacks for fails and successes (email_triggers.py)
     on_failure_callback=task_failure_email
 )
 
-# Task 2: Transform ESIOS price data
+# Task 2: Transform ESIOS price data -> output is a dictionary with market names as keys and DataFrames as values
 transform_esios_prices = PythonOperator(
     task_id='transform_esios_prices',
     python_callable=TransformadorESIOS().transform_data_for_all_markets,
-    op_kwargs={'data_type': 'prices'},
+    op_kwargs={'start_date': '{{ ds }}', 'end_date': '{{ ds }}', 'mode': 'single'}, #all markets will be processed in single mode for that day
     dag=dag_esios_precios,
 
     #custom callbacks for fails and successes (email_triggers.py)
     on_failure_callback=task_failure_email
 )
 
-# Task 3: Load ESIOS price data to data lake
+
+# Task 3: Load ESIOS price data to data lake using the output of the transform task
 load_esios_prices_to_datalake = PythonOperator(
     task_id='load_esios_prices_to_datalake',
-    python_callable=LocalDataLakeLoader().save_processed_data,
-    op_kwargs={'source': 'esios', 'data_type': 'prices'},
+    python_callable=LocalDataLakeLoader().load_transformed_data_esios,
+    op_kwargs={'transformed_data_dict': transform_esios_prices.output}, #this is the output of the transform task ie the dictionary of processed data for each market
     dag=dag_esios_precios,
 
     #custom callbacks for fails and successes (email_triggers.py)

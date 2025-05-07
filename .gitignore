@@ -199,3 +199,6 @@ airflow_venv/
 
 #ignore all files in __pycache__ folder
 __pycache__/
+
+#ignore .vscode folder
+.vscode/
