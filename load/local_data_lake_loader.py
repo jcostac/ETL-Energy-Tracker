@@ -2,6 +2,8 @@
 LocalDataLakeLoader implementation for storing data in the local filesystem.
 """
 
+__all__ = ['LocalDataLakeLoader']
+
 from typing import Optional, Union
 from pathlib import Path
 import pandas as pd
@@ -98,21 +100,25 @@ class LocalDataLakeLoader():
             transformed_data_dict: Dictionary with market names as keys and DataFrames as values
         """
         results = []
+        success = True  # Track overall success
         
         for mercado, df in transformed_data_dict.items():
             if df is not None and not df.empty:
-                # For each market, save its data
-                self._save_processed_data(
-                    processed_df=df,
-                    mercado=mercado,
-                    value_col='precio',  # Assuming the value column is 'precio'
-                    dataset_type='precios'
-                )
-                results.append(f"Loaded {len(df)} records for market {mercado}")
+                try:
+                    self._save_processed_data(
+                        processed_df=df,
+                        mercado=mercado,
+                        value_col='precio',
+                        dataset_type='precios'
+                    )
+                    results.append(f"Loaded {len(df)} records for market {mercado}")
+                except Exception as e:
+                    success = False
+                    results.append(f"FAILED loading for market {mercado}: {str(e)}")
             else:
                 results.append(f"No data to load for market {mercado}")
-    
-        return results
+        
+        return {"success": success, "messages": results}
     
     def load_transformed_data_precios_i90(self, transformed_data_dict, **kwargs):
         """
