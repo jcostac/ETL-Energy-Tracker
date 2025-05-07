@@ -5,7 +5,7 @@ import os
 # Email recipients can be defined as constants or loaded from environment variables
 RECIPIENTS = os.environ.get('AIRFLOW_ALERT_EMAILS', 'jcosta@optimizeenergy.es,psanchez@optimizeenergy.es').split(',')
 
-def dag_success_email_func(**kwargs: Dict[str, Any]) -> None:
+def dag_success_email(**kwargs: Dict[str, Any]) -> None:
     """Send email notification when a DAG completes successfully.
     
     Args:
@@ -16,14 +16,14 @@ def dag_success_email_func(**kwargs: Dict[str, Any]) -> None:
     
     send_email(
         to=RECIPIENTS,
-        subject=f"Airflow Success: {dag_id}",
+        subject=f"✅ Airflow DAG Success: {dag_id}",
         html_content=f"""
         <p>Your DAG <b>{dag_id}</b> completed successfully!</p>
         <p>Execution date: {execution_date}</p>
         """,
     )
 
-def dag_failure_email_func(**kwargs: Dict[str, Any]) -> None:
+def dag_failure_email(**kwargs: Dict[str, Any]) -> None:
     """Send email notification when a DAG fails.
     
     Args:
@@ -35,7 +35,7 @@ def dag_failure_email_func(**kwargs: Dict[str, Any]) -> None:
     
     send_email(
         to=RECIPIENTS,
-        subject=f"❌ Airflow Failure: {dag_id}",
+        subject=f"❌ Airflow DAG Failure: {dag_id}",
         html_content=f"""
         <p>Your DAG <b>{dag_id}</b> failed!</p>
         <p>Execution date: {execution_date}</p>
@@ -56,7 +56,7 @@ def task_success_email(**kwargs: Dict[str, Any]) -> None:
     
     send_email(
         to=RECIPIENTS,
-        subject=f"Airflow Task Success: {task_id} in {dag_id}",
+        subject=f"✅ Airflow Task Success: {task_id} in {dag_id}",
         html_content=f"""
         <p>Task <b>{task_id}</b> in DAG <b>{dag_id}</b> completed successfully!</p>
         <p>Execution date: {execution_date}</p>
