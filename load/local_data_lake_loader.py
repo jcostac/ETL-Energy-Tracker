@@ -15,12 +15,11 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 # Corrected import path assuming utilidades is at the project root
 from utilidades.storage_file_utils import ProcessedFileUtils
-from load._data_lake_loader import DataLakeLoader
 # Import DATA_LAKE_BASE_PATH if needed for default base path
 from configs.storage_config import DATA_LAKE_BASE_PATH
 
 
-class LocalDataLakeLoader(DataLakeLoader):
+class LocalDataLakeLoader():
     """
     Implementation of DataLakeLoader for storing data in the local filesystem
     using ProcessedFileUtils.
@@ -185,7 +184,7 @@ if __name__ == "__main__":
     local_loader = LocalDataLakeLoader()
 
     # Save the dummy data
-    local_loader.save_processed_data(
+    local_loader._save_processed_data(
         processed_df=sample_df,
         mercado='diario', # Example market
         value_col='precio',
