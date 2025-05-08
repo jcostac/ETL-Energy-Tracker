@@ -6,7 +6,7 @@ from extract.esios_extractor import ESIOSPreciosExtractor
 from transform.esios_transform import TransformadorESIOS
 from load.local_data_lake_loader import LocalDataLakeLoader
 from helpers.email_triggers import dag_failure_email, dag_success_email, task_failure_email, task_success_email
-from helpers.pipeline_status_helpers import process_extraction_output, process_transform_output, finalize_pipeline_status, process_load_output
+from helpers.pipeline_status_helpers import update_pipeline_stage_status
 
 
 default_args = {
@@ -42,10 +42,14 @@ extract_esios_prices = PythonOperator(
     dag=dag_esios_precios
 )
 
-# -- Task 2: Process extraction output -> sends email if fails 
-check_extraction_output = PythonOperator(
-    task_id='check_extraction_output',
-    python_callable=process_extraction_output,
+# -- Task 2: Process extraction output and update status
+check_extraction = PythonOperator(
+    task_id='check_extraction',
+    python_callable=update_pipeline_stage_status,
+    op_kwargs={
+        'stage_name': 'extraction',
+        'current_stage_task_id': 'extract_esios_prices'
+    },
     provide_context=True,
     dag=dag_esios_precios,
     on_failure_callback=task_failure_email
@@ -55,14 +59,22 @@ check_extraction_output = PythonOperator(
 transform_esios_prices = PythonOperator(
     task_id='transform_esios_prices',
     python_callable=TransformadorESIOS().transform_data_for_all_markets,
-    op_kwargs={'fecha_inicio': '{{ ds }}', 'fecha_fin': '{{ ds }}', 'mode': 'single'},
+    op_kwargs={
+        'fecha_inicio': '{{ ds }}', 
+        'fecha_fin': '{{ ds }}', 
+        'mode': 'single'
+    },
     dag=dag_esios_precios
 )
 
-# -- Task 4: Process transform output -> sends email if fails 
-check_transform_output = PythonOperator(
-    task_id='check_transform_output',
-    python_callable=process_transform_output,
+# -- Task 4: Process transform output and update status
+check_transform = PythonOperator(
+    task_id='check_transform',
+    python_callable=update_pipeline_stage_status,
+    op_kwargs={
+        'stage_name': 'transformation',
+        'current_stage_task_id': 'transform_esios_prices'
+    },
     provide_context=True,
     dag=dag_esios_precios,
     on_failure_callback=task_failure_email
@@ -72,26 +84,24 @@ check_transform_output = PythonOperator(
 load_esios_prices_to_datalake = PythonOperator(
     task_id='load_esios_prices_to_datalake',
     python_callable=LocalDataLakeLoader().load_transformed_data_esios,
-    op_kwargs={'transformed_data_dict': "{{ ti.xcom_pull(task_ids='process_transform') }}"},
+    op_kwargs={
+        'transformed_data_dict': "{{ ti.xcom_pull(task_ids='check_transform') }}"
+    },
     dag=dag_esios_precios,
 )
 
-# -- Task 6: Process load output -> sends email if fails 
-process_load_output = PythonOperator(
-    task_id='process_load_output',
-    python_callable=process_load_output,
-    provide_context=True,
-    dag=dag_esios_precios,
-    on_failure_callback=task_failure_email
-)
-# -- Task 7: Finalize pipeline status -> sends email if fails 
+# -- Task 6: Process load output and finalize pipeline status
 finalize_pipeline = PythonOperator(
     task_id='finalize_pipeline',
-    python_callable=finalize_pipeline_status,
+    python_callable=update_pipeline_stage_status,
+    op_kwargs={
+        'stage_name': 'load',
+        'current_stage_task_id': 'load_esios_prices_to_datalake'
+    },
     provide_context=True,
     dag=dag_esios_precios,
     on_failure_callback=task_failure_email
 )
 
 # -- Finally: Define task dependencies --
-extract_esios_prices >> check_extraction_output >> transform_esios_prices >> check_transform_output >> load_esios_prices_to_datalake >> finalize_pipeline
+extract_esios_prices >> check_extraction >> transform_esios_prices >> check_transform >> load_esios_prices_to_datalake >> finalize_pipeline

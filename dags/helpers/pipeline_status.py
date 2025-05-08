@@ -48,4 +48,3 @@ class ETLPipelineStatus:
             "transformation": self.transform_status,
             "loading": self.load_status
         }
-        
