@@ -84,3 +84,25 @@ def finalize_pipeline_status(**context):
     
     # Log success message
     print(f"Pipeline completed successfully: {pipeline_status.get_summary()}")
+
+def process_load_output(context):
+    """
+    Process the output from the load task and check market-level success.
+    """
+    ti = context['ti']
+    load_result = ti.xcom_pull(task_ids='load_esios_prices_to_datalake')
+    
+    if not load_result:
+        raise ValueError("No load result found in XCom")
+    
+    # Check overall success
+    if not load_result['success']:
+        failed_markets = [market for market, success in load_result['market_status'].items() if not success]
+        error_msg = f"Load failed for markets: {', '.join(failed_markets)}"
+        raise ValueError(error_msg)
+    
+    # Log success messages
+    for message in load_result['messages']:
+        print(message)
+    
+    return load_result

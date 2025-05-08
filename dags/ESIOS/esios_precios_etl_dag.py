@@ -6,7 +6,7 @@ from extract.esios_extractor import ESIOSPreciosExtractor
 from transform.esios_transform import TransformadorESIOS
 from load.local_data_lake_loader import LocalDataLakeLoader
 from helpers.email_triggers import dag_failure_email, dag_success_email, task_failure_email, task_success_email
-from helpers.pipeline_status_helpers import process_extraction_output, process_transform_output, finalize_pipeline_status
+from helpers.pipeline_status_helpers import process_extraction_output, process_transform_output, finalize_pipeline_status, process_load_output
 
 
 default_args = {
@@ -23,8 +23,8 @@ dag_esios_precios = DAG(
     'esios_precios_etl', #unique identifier for the DAG
     default_args=default_args,
     description='ETL pipeline for downloading and processing ESIOS electricity price data',
-    schedule_interval='0 22 * * *',  # Daily at 22:00 UTC
-    start_date=pendulum.datetime(2025,  1, 1, tz="UTC"), # May 1st 2025
+    schedule_interval='0 23 * * *',  # Daily at 22:00 UTC
+    start_date=pendulum.datetime(2025,  1, 1), # May 1st 2025
     catchup=True, # This will backfill data for all days since the start date
     tags=['esios', 'electricidad', 'precios', 'etl'],
     dag_run_timeout=timedelta(hours=1), # This is the maximum time the DAG can run before being killed
@@ -76,7 +76,15 @@ load_esios_prices_to_datalake = PythonOperator(
     dag=dag_esios_precios,
 )
 
-# -- Task 6: Finalize pipeline status -> sends email if fails 
+# -- Task 6: Process load output -> sends email if fails 
+process_load_output = PythonOperator(
+    task_id='process_load_output',
+    python_callable=process_load_output,
+    provide_context=True,
+    dag=dag_esios_precios,
+    on_failure_callback=task_failure_email
+)
+# -- Task 7: Finalize pipeline status -> sends email if fails 
 finalize_pipeline = PythonOperator(
     task_id='finalize_pipeline',
     python_callable=finalize_pipeline_status,

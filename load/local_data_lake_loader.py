@@ -90,7 +90,7 @@ class LocalDataLakeLoader():
             print(f"Market: {mercado}")
             print(f"Error: {str(e)}")
             print("="*80 + "\n")
-            return
+            raise
 
     def load_transformed_data(self, transformed_data_dict: dict, dataset_type: str, value_col: str, **kwargs) -> dict:
         """
@@ -102,18 +102,23 @@ class LocalDataLakeLoader():
                 - "status": Dictionary with transformation status information
             dataset_type: Type of dataset (e.g., 'precios', 'precios_i90', 'volumenes_i90')
             value_col: Name of the value column in the DataFrame
+
+        Returns:
+            Dictionary containing:
+                - "success": Boolean indicating if the operation was successful
+                - "messages": List of messages indicating the status of the operation
         """
         results = []
-        success = True
+        market_success = {}  # Track success per market
 
         try:
             data_dict = transformed_data_dict.get("data")
-
             if data_dict is None or not data_dict:
-                success = False
                 raise ValueError("The 'data' key is missing or contains no data.")
             
             for mercado, df in data_dict.items():
+                market_success[mercado] = False  # Initialize market success as False
+                
                 if df is not None and not df.empty:
                     try:
                         self._save_processed_data(
@@ -123,17 +128,28 @@ class LocalDataLakeLoader():
                             dataset_type=dataset_type
                         )
                         results.append(f"✅ Successfully loaded {len(df)} records for {dataset_type} market {mercado}")
+                        market_success[mercado] = True  # Mark market as successful
                     except Exception as e:
-                        success = False
                         results.append(f"❌ Failed loading for market {mercado}: {str(e)}")
+                        market_success[mercado] = False  # Explicitly set to False on error
                 else:
                     results.append(f"ℹ️ No {dataset_type} data to load for market {mercado}")
+                    market_success[mercado] = False  # Set to False for empty data
 
         except ValueError as ve:
             results.append(str(ve))
-            success = False
+            # Mark all markets as failed if there's a data structure error
+            for mercado in data_dict.keys():
+                market_success[mercado] = False
 
-        return {"success": success, "messages": results}
+        # Overall success is True only if all markets succeeded
+        overall_success = all(market_success.values())
+        
+        return {
+            "success": overall_success, 
+            "messages": results,
+            "market_status": market_success  # Include per-market status in response
+        }
 
     def load_transformed_data_esios(self, transformed_data_dict, **kwargs):
         """

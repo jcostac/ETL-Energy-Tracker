@@ -469,6 +469,8 @@ class ProcessedFileUtils(StorageFileUtils):
         """
         Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of processed data
         """
+        if df.empty:
+            raise ValueError("Cannot process empty DataFrame")
 
         #print duplicate number before dropping
         print(f"Number of duplicates before dropping: {df.duplicated().sum()}")
@@ -481,11 +483,14 @@ class ProcessedFileUtils(StorageFileUtils):
                 df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "up"], keep='last')
             elif dataset_type == 'volumenes_i3':
                 df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
+            elif dataset_type == 'precios_i90':
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "up"], keep='last')
             else:
                 df = df.drop_duplicates(subset=['datetime_utc', 'id_mercado', 'precio'], keep='last')
+        except KeyError as e:
+            raise KeyError(f"Missing required column for deduplication: {str(e)}")
         except Exception as e:
-            print(f"Error dropping duplicates: {e}")
-            raise
+            raise Exception(f"Error during deduplication: {str(e)}")
         
         return df
     
@@ -503,89 +508,47 @@ class ProcessedFileUtils(StorageFileUtils):
     def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_col: str, dataset_type: str) -> None:
         """
         Processes a DataFrame and saves/appends it as partitioned parquet files using Hive partitioning.
-        Handles both creating new files and appending to existing files with deduplication.
-
-        Args:
-            df (pd.DataFrame): The DataFrame containing the data to be saved/appended.
-            mercado (str): The market name (used for partitioning and added as a column).
-            value_col (str): The name of the main value column (e.g., 'precio', 'volumenes_i90').
-            dataset_type (str): The type of dataset ('precios', 'volumenes_i90', etc.)
         """
         if df.empty:
-            print(f" Input DataFrame for {mercado} is empty. Skipping parquet write/append.")
-            return
+            raise ValueError(f"Input DataFrame for {mercado} is empty. Cannot proceed with write operation.")
         
-        # Prepare the input DataFrame ie add partition columns and ensure datetime is UTC naive
-        df = self._prepare_input_dataframe(df, mercado)
+        try:
+            # Prepare the input DataFrame
+            df = self._prepare_input_dataframe(df, mercado)
 
-        # Get unique partitions from the input DataFrame
-        partition_cols = ['mercado', 'id_mercado', 'year', 'month']
-        if not self._validate_partition_columns(df, partition_cols):
-            return
+            # Get unique partitions from the input DataFrame
+            partition_cols = ['mercado', 'id_mercado', 'year', 'month']
+            if not self._validate_partition_columns(df, partition_cols):
+                raise ValueError(f"Missing required partition columns in DataFrame")
 
-        # Update the partition processing section
-        print("\n" + "="*80)
-        print(f"🔄 PROCESSING PARTITIONS FOR {mercado.upper()}")
-        print("="*80)
-        
-        unique_partitions_df = df[partition_cols].drop_duplicates()
-        print(f"\n�� Found {len(unique_partitions_df)} partition(s) to process")
-        
-        # Process each partition
-        for _, partition in unique_partitions_df.iterrows():
-            print("\n" + "-"*50)
-            print("📂 PARTITION DETAILS")
-            print("-"*50)
-            print(f"Market: {partition['mercado'].upper()}")
-            print(f"Market ID: {partition['id_mercado']}")
-            print(f"Period: {partition['year']}-{partition['month']:02d}")
+            # Process partitions
+            unique_partitions_df = df[partition_cols].drop_duplicates()
             
-            try:
-                # Check for existing file
-                output_file_path = self._build_partition_path(partition, partition_cols, dataset_type)
-                
-                if os.path.exists(output_file_path):
-                    print("\n📥 READING EXISTING DATA")
-                    print("-"*50)
-                    try:
-                        existing_data_df = pd.read_parquet(output_file_path)
-                        existing_data_df = self._ensure_datetime_utc_naive(existing_data_df)
-                        print(f"✅ Successfully loaded {len(existing_data_df):,} existing records")
-                    except Exception as e:
-                        print(f"⚠️  Failed to read existing file:")
-                        print(f"   Error: {str(e)}")
-                        print("   Proceeding with new data only")
-                        existing_data_df = pd.DataFrame()
-                else:
-                    print("\n📌 No existing file found")
-                    print("   Creating new partition file")
-                    existing_data_df = pd.DataFrame()
+            for _, partition in unique_partitions_df.iterrows():
+                try:
+                    output_file_path = self._build_partition_path(partition, partition_cols, dataset_type)
+                    
+                    # Handle existing file
+                    existing_data_df = self._read_existing_partition_file(output_file_path, partition)
+                    
+                    # Filter new data
+                    new_data_partition_df = self._filter_df_for_partition(df, partition, partition_cols)
+                    
+                    # Combine and write
+                    self._combine_and_write_partition(
+                        new_data_df=new_data_partition_df,
+                        existing_data_df=existing_data_df,
+                        partition=partition,
+                        partition_cols=partition_cols,
+                        output_file_path=output_file_path,
+                        value_col=value_col,
+                        dataset_type=dataset_type
+                    )
+                except Exception as e:
+                    raise Exception(f"Failed to process partition {partition.to_dict()}: {str(e)}")
 
-                # Filter new data for this partition
-                new_data_partition_df = self._filter_df_for_partition(df, partition, partition_cols)
-                
-                if new_data_partition_df.empty:
-                    print(f"[DEBUG] No new data for partition: {partition.to_dict()}. Checking for existing file.")
-                
-                # Combine, deduplicate, and write data
-                self._combine_and_write_partition(
-                    new_data_df=new_data_partition_df,
-                    existing_data_df=existing_data_df,
-                    partition=partition,
-                    partition_cols=partition_cols,
-                    output_file_path=output_file_path,
-                    value_col=value_col,
-                    dataset_type=dataset_type
-                )
-
-            except Exception as e:
-                print("\n❌ PARTITION PROCESSING FAILED")
-                print(f"Details: {str(e)}")
-                continue
-
-        print("\n" + "="*80)
-        print(f"✅ COMPLETED PROCESSING ALL PARTITIONS FOR {mercado.upper()}")
-        print("="*80 + "\n")
+        except Exception as e:
+            raise Exception(f"Failed to write processed parquet: {str(e)}")
 
     def _prepare_input_dataframe(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
@@ -679,94 +642,59 @@ class ProcessedFileUtils(StorageFileUtils):
         return df[partition_mask].copy()
 
     def _read_existing_partition_file(self, file_path: str, partition) -> pd.DataFrame:
-        """
-        Reads an existing partition file if it exists.
-        
-        Args:
-            file_path (str): Path to the potential existing file.
-            partition: Partition values for adding back to the DataFrame.
+        """Reads an existing partition file if it exists."""
+        try:
+            if not os.path.exists(file_path):
+                return pd.DataFrame()
+
+            existing_data_df = pd.read_parquet(file_path)
+            existing_data_df = self._ensure_datetime_utc_naive(existing_data_df)
             
-        Returns:
-            pd.DataFrame: Existing data or empty DataFrame if no file exists.
-        """
-        existing_data_df = pd.DataFrame()
-        if os.path.exists(file_path):
-            print("--------------------------------")
-            print(f" Existing file found for {partition['mercado'].upper()}, with id_mercado: {partition['id_mercado']}, for year: {partition['year']}, month: {partition['month']}. Reading...")
-            try:
-                # Read existing data
-                existing_data_df = pd.read_parquet(file_path)
-                existing_data_df = self._ensure_datetime_utc_naive(existing_data_df)
-                print(f" Read {len(existing_data_df)} rows from existing file.")
-                
-                # Add partition columns back if they were dropped
-                for col, value in partition.items():
-                    if col not in existing_data_df.columns:
-                        existing_data_df[col] = value
-                        
-            except Exception as e:
-                print(f"[WARNING] Could not read existing file {file_path}: {e}. Will only write new data if available.")
-                existing_data_df = pd.DataFrame()
-        else:
-            print(f" No existing file found at {file_path}. Writing new data.")
-            
-        return existing_data_df
+            # Add partition columns back if they were dropped
+            for col, value in partition.items():
+                if col not in existing_data_df.columns:
+                    existing_data_df[col] = value
+                    
+            return existing_data_df
+
+        except Exception as e:
+            raise Exception(f"Failed to read existing partition file {file_path}: {str(e)}")
 
     def _combine_and_write_partition(self, new_data_df: pd.DataFrame, existing_data_df: pd.DataFrame,
                                     partition, partition_cols: list, output_file_path: str,
                                     value_col: str, dataset_type: str) -> None:
         """Combines new and existing data, deduplicates, and writes the result."""
-        print("\n" + "-"*50)
-        print("📊 PARTITION PROCESSING")
-        print(f"Market: {partition['mercado'].upper()}")
-        print(f"Year: {partition['year']}, Month: {partition['month']:02d}")
-        print("-"*50)
+        try:
+            if new_data_df.empty and existing_data_df.empty:
+                raise ValueError("No data available for this partition")
 
-        if new_data_df.empty and existing_data_df.empty:
-            print("ℹ️  No data available for this partition")
-            return
+            # Data combination step
+            if not new_data_df.empty and not existing_data_df.empty:
+                combined_df = pd.concat([existing_data_df, new_data_df], ignore_index=True)
+            elif not new_data_df.empty:
+                combined_df = new_data_df
+            else:
+                combined_df = existing_data_df
 
-        # Data combination step
-        if not new_data_df.empty and not existing_data_df.empty:
-            print("\n🔄 COMBINING DATA")
-            print(f"   New records: {len(new_data_df)}")
-            print(f"   Existing records: {len(existing_data_df)}")
-            combined_df = pd.concat([existing_data_df, new_data_df], ignore_index=True)
-            print(f"   Combined total: {len(combined_df)}")
-        elif not new_data_df.empty:
-            print("\n📥 USING NEW DATA ONLY")
-            print(f"   Records: {len(new_data_df)}")
-            combined_df = new_data_df
-        else:
-            print("\n📂 USING EXISTING DATA ONLY")
-            print(f"   Records: {len(existing_data_df)}")
-            combined_df = existing_data_df
+            # Deduplication step
+            final_df = self.drop_processed_duplicates(combined_df, dataset_type)
+            if final_df.empty:
+                raise ValueError("No data remains after deduplication")
 
-        # Deduplication step
-        print("\n🧹 DEDUPLICATING DATA")
-        print(f"Initial count: {len(combined_df)}")
-        final_df = self.drop_processed_duplicates(combined_df, dataset_type)
-        print(f"Final count: {len(final_df)}")
+            # Prepare for writing
+            final_df_sorted = self._prepare_dataframe_for_writing(final_df, partition_cols)
+            if final_df_sorted is None:
+                raise ValueError("Failed to prepare data for writing")
 
-        if final_df.empty:
-            print("\n⚠️  No data remains after deduplication")
-            return
+            # Write file
+            row_group_size = min(self.row_group_size, len(final_df_sorted))
+            if row_group_size == 0:
+                raise ValueError("No rows to write")
 
-        # Prepare for writing
-        print("\n📝 PREPARING DATA")
-        final_df_sorted = self._prepare_dataframe_for_writing(final_df, partition_cols)
-        if final_df_sorted is None:
-            print("❌ Failed to prepare data for writing")
-            return
+            self._write_final_parquet(final_df_sorted, output_file_path, value_col, row_group_size)
 
-        # Write file
-        row_group_size = min(self.row_group_size, len(final_df_sorted))
-        if row_group_size == 0:
-            print("⚠️  No rows to write")
-            return
-
-        print("\n💾 WRITING FILE")
-        self._write_final_parquet(final_df_sorted, output_file_path, value_col, row_group_size)
+        except Exception as e:
+            raise Exception(f"Failed to combine and write partition: {str(e)}")
 
     def _prepare_dataframe_for_writing(self, df: pd.DataFrame, partition_cols: list) -> Optional[pd.DataFrame]:
         """
@@ -786,7 +714,7 @@ class ProcessedFileUtils(StorageFileUtils):
             return df_sorted
         except Exception as e:
             print(f"[ERROR] Failed to prepare DataFrame for writing: {e}")
-            return None
+            raise
 
     def _write_final_parquet(self, df: pd.DataFrame, output_file: str, value_col: str, row_group_size: int) -> None:
         """Writes the final Parquet file."""
@@ -801,7 +729,7 @@ class ProcessedFileUtils(StorageFileUtils):
             table = self._to_pyarrow_table(df)
             if table is None:
                 print("❌ Conversion failed")
-                return
+                raise Exception("Conversion failed")
 
             # Configure write options
             print("\n⚙️ Configuring write options...")
@@ -831,6 +759,7 @@ class ProcessedFileUtils(StorageFileUtils):
             print("\n❌ WRITE FAILED")
             print(f"Error: {str(e)}")
             print("-"*40)
+            raise
 
     def _ensure_datetime_utc_naive(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -862,7 +791,7 @@ class ProcessedFileUtils(StorageFileUtils):
         except Exception as e:
             print(f"[ERROR] Error converting DataFrame to PyArrow Table: {e}")
             print(f"[DEBUG] DataFrame dtypes:\n{df.dtypes}")
-            return None
+            raise
 
     def _filter_partition(self, table: pa.Table, partition, partition_cols: list) -> pa.Table:
         """
@@ -877,9 +806,14 @@ class ProcessedFileUtils(StorageFileUtils):
             pa.Table: Filtered PyArrow Table for the partition.
         """
         mask = True
-        for col in partition_cols:
-            mask = pa.compute.and_(mask, pa.compute.equal(table[col], partition[col]))
-        return table.filter(mask)
+        try:
+            for col in partition_cols:
+                mask = pa.compute.and_(mask, pa.compute.equal(table[col], partition[col]))
+            return table.filter(mask)
+        except Exception as e:
+            print(f"[ERROR] Error filtering partition: {e}")
+            raise
+
 
     def _drop_partition_cols(self, table: pa.Table, partition_cols: list) -> pa.Table:
         """
@@ -892,13 +826,17 @@ class ProcessedFileUtils(StorageFileUtils):
         Returns:
             pa.Table: Table with partition columns dropped.
         """
-        print(f" Dropping partition columns: {partition_cols}")
-        cols_to_drop = [col for col in partition_cols if col in table.column_names]
-        if not cols_to_drop:
-            
+        try:
+            print(f" Dropping partition columns: {partition_cols}")
+            cols_to_drop = [col for col in partition_cols if col in table.column_names]
+            if not cols_to_drop:
+                print(" No partition columns to drop")
+                return table
+            table = table.drop(cols_to_drop)
             return table
-        table = table.drop(cols_to_drop)
-        return table
+        except Exception as e:
+            print(f"[ERROR] Error dropping partition columns: {e}")
+            raise
 
     def _build_partition_path(self, partition, partition_cols: list, dataset_type: str) -> str:
         """
