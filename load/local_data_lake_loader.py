@@ -92,111 +92,110 @@ class LocalDataLakeLoader():
             print("="*80 + "\n")
             return
 
+    def load_transformed_data(self, transformed_data_dict: dict, dataset_type: str, value_col: str, **kwargs) -> dict:
+        """
+        Generic method to process and load transformed data for any dataset type.
+        
+        Args:
+            transformed_data_dict: Dictionary containing:
+                - "data": Dictionary with market names as keys and DataFrames as values
+                - "status": Dictionary with transformation status information
+            dataset_type: Type of dataset (e.g., 'precios', 'precios_i90', 'volumenes_i90')
+            value_col: Name of the value column in the DataFrame
+        """
+        results = []
+        success = True
+
+        try:
+            data_dict = transformed_data_dict.get("data")
+
+            if data_dict is None or not data_dict:
+                success = False
+                raise ValueError("The 'data' key is missing or contains no data.")
+            
+            for mercado, df in data_dict.items():
+                if df is not None and not df.empty:
+                    try:
+                        self._save_processed_data(
+                            processed_df=df,
+                            mercado=mercado,
+                            value_col=value_col,
+                            dataset_type=dataset_type
+                        )
+                        results.append(f"✅ Successfully loaded {len(df)} records for {dataset_type} market {mercado}")
+                    except Exception as e:
+                        success = False
+                        results.append(f"❌ Failed loading for market {mercado}: {str(e)}")
+                else:
+                    results.append(f"ℹ️ No {dataset_type} data to load for market {mercado}")
+
+        except ValueError as ve:
+            results.append(str(ve))
+            success = False
+
+        return {"success": success, "messages": results}
+
     def load_transformed_data_esios(self, transformed_data_dict, **kwargs):
         """
         Process the dictionary output from transform phase and load each market's data
         
         Args:
-            transformed_data_dict: Dictionary with market names as keys and DataFrames as values
+            transformed_data_dict: Dictionary containing:
+                - "data": Dictionary with market names as keys and DataFrames as values
+                - "status": Dictionary with transformation status information
         """
-        results = []
-        success = True  # Track overall success
-        
-        for mercado, df in transformed_data_dict.items():
-            if df is not None and not df.empty:
-                try:
-                    self._save_processed_data(
-                        processed_df=df,
-                        mercado=mercado,
-                        value_col='precio',
-                        dataset_type='precios'
-                    )
-                    results.append(f"Loaded {len(df)} records for market {mercado}")
-                except Exception as e:
-                    success = False
-                    results.append(f"FAILED loading for market {mercado}: {str(e)}")
-            else:
-                results.append(f"No data to load for market {mercado}")
-        
-        return {"success": success, "messages": results}
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='precios',
+            value_col='precio',
+            **kwargs
+        )
     
     def load_transformed_data_precios_i90(self, transformed_data_dict, **kwargs):
         """
         Process the dictionary output from transform phase and load each market's i90 price data
         
         Args:
-            transformed_data_dict: Dictionary with market names as keys and DataFrames as values
+            transformed_data_dict: Dictionary containing:
+                - "data": Dictionary with market names as keys and DataFrames as values
+                - "status": Dictionary with transformation status information
         """
-        results = []
-        
-        for mercado, df in transformed_data_dict.items():
-            if df is not None and not df.empty:
-                # For each market, save its data
-                self._save_processed_data(
-                    processed_df=df,
-                    mercado=mercado,
-                    value_col='precio',  # Using precio_i90 as the value column
-                    dataset_type='precios_i90'
-                )
-                results.append(f"Loaded {len(df)} records for i90 prices market {mercado}")
-            else:
-                results.append(f"No i90 price data to load for market {mercado}")
-
-        return results
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='precios_i90',
+            value_col='precio',
+            **kwargs
+        )
 
     def load_transformed_data_volumenes_i90(self, transformed_data_dict, **kwargs):
         """
         Process the dictionary output from transform phase and load each market's i90 volume data
         
         Args:
-            transformed_data_dict: Dictionary with market names as keys and DataFrames as values
+            transformed_data_dict: Dictionary containing:
+                - "data": Dictionary with market names as keys and DataFrames as values
+                - "status": Dictionary with transformation status information
         """
-        results = []
-        
-        for mercado, df in transformed_data_dict.items():
-            if df is not None and not df.empty:
-                # For each market, save its data
-                self._save_processed_data(
-                    processed_df=df,
-                    mercado=mercado,
-                    value_col='volumenes',  # Using volumen_i90 as the value column
-                    dataset_type='volumenes_i90'
-                )
-                results.append(f"Loaded {len(df)} records for i90 volumes market {mercado}")
-            else:
-                results.append(f"No i90 volume data to load for market {mercado}")
-
-        return results
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='volumenes_i90',
+            value_col='volumenes',
+            **kwargs
+        )
     
     
 if __name__ == "__main__":
-    print("--- Running LocalDataLakeLoader Example ---")
-    # Example usage: Create a dummy DataFrame
-    data = {
-        'datetime_utc': pd.to_datetime(['2023-01-01 00:00:00', '2023-01-01 01:00:00', '2023-02-01 00:00:00']),
-        'precio': [50.5, 52.1, 60.0],
-        'id_mercado': [1, 1, 1] # Example, ensure this exists in your data
-        # Add other columns expected by ProcessedFileUtils if necessary
+    loader = LocalDataLakeLoader()
+    transformed_data_dict = {
+        'data': {
+            'diario': "df",
+            'secundaria': "df"
+        },
+        'status': {
+            'diario': "xyz",
+            'secundaria': "abc"
+        }
     }
-    sample_df = pd.DataFrame(data)
-    # Ensure datetime_utc is timezone-naive or UTC before passing, as ProcessedFileUtils expects
-    if sample_df['datetime_utc'].dt.tz:
-         sample_df['datetime_utc'] = sample_df['datetime_utc'].dt.tz_convert('UTC').dt.tz_localize(None)
-    else:
-         sample_df['datetime_utc'] = sample_df['datetime_utc'] # Assume naive is UTC
-
-
-    # Instantiate the loader (uses default base path from config)
-    local_loader = LocalDataLakeLoader()
-
-    # Save the dummy data
-    local_loader._save_processed_data(
-        processed_df=sample_df,
-        mercado='diario', # Example market
-        value_col='precio',
-        dataset_type='precios'
-    )
-
-    print("--- LocalDataLakeLoader Example Finished ---") 
+    loader.load_transformed_data_esios(transformed_data_dict)
 
 

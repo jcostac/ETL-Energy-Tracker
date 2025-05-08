@@ -546,7 +546,22 @@ class TransformadorESIOS:
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None, 
                                       mercados: list[str] = None, mode: str = 'latest'):
         """
-        Transforms data for specified markets and returns status along with results.
+        A function that transforms data for specified markets and returns status along with results.
+
+        Args:
+            fecha_inicio (str): Start date in YYYY-MM-DD format
+            fecha_fin (str): End date in YYYY-MM-DD format
+            mercados (list[str]): List of market names to process
+            mode (str): Mode to process data ('single', 'multiple', 'batch', 'latest')
+
+        Returns:
+            dict: Dictionary containing:
+                - 'data': Dictionary of processed dataframes for each market
+                - 'status': Dictionary with:
+                    - 'success': Boolean indicating if the transformation was successful
+                    - 'details': Dictionary with:
+                        - 'markets_processed': List of markets that were processed
+                        - 'markets_failed': List of markets that failed to process
         """
         # Initialize status tracking
         status_details = {
