@@ -55,7 +55,7 @@ check_extraction_output = PythonOperator(
 transform_esios_prices = PythonOperator(
     task_id='transform_esios_prices',
     python_callable=TransformadorESIOS().transform_data_for_all_markets,
-    op_kwargs={'start_date': '{{ ds }}', 'end_date': '{{ ds }}', 'mode': 'single'},
+    op_kwargs={'fecha_inicio': '{{ ds }}', 'fecha_fin': '{{ ds }}', 'mode': 'single'},
     dag=dag_esios_precios
 )
 

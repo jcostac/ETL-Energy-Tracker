@@ -34,7 +34,7 @@ class TransformadorESIOS:
         self.dataset_type = 'precios'
         self.transform_types = ['latest', 'batch', 'single', 'multiple']
     
-    def _filter_data_by_mode(self, raw_df: pd.DataFrame, mode: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    def _filter_data_by_mode(self, raw_df: pd.DataFrame, mode: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:
         """
          Transform the dataframe based on the transform type. If single pick the last day in the dataframe.
          If batch process the entire dataframe.
@@ -42,27 +42,27 @@ class TransformadorESIOS:
          Args:
             raw_df (pd.DataFrame): The dataframe to transform.
             mode (str): The type of transformation to perform.
-            start_date (str): The start date to process. Optional for single and multiple modes.
-            end_date (str): The end date to process. Optional for multiple modes.
+            fecha_inicio (str): The start date to process. Optional for single and multiple modes.
+            fecha_fin (str): The end date to process. Optional for multiple modes.
 
          Returns:
             pd.DataFrame: The transformed dataframe.
 
         Note:
-            - If mode is 'single' or 'multiple', start_date and end_date must be provided.
-            - For single mode, we only use the start_date to filter the dataframe.
-            - For multiple mode, we take all days in the range start_date to end_date (inclusive).
+            - If mode is 'single' or 'multiple', fecha_inicio and fecha_fin must be provided.
+            - For single mode, we only use the fecha_inicio to filter the dataframe.
+            - For multiple mode, we take all days in the range fecha_inicio to fecha_fin (inclusive).
         """
 
         # First ensure datetime_utc is properly converted
         if 'datetime_utc' in raw_df.columns:
             raw_df['datetime_utc'] = pd.to_datetime(raw_df['datetime_utc'])
 
-        #check that start_date and end_date are provided for single and multiple modes
-        if mode == 'multiple' and (start_date is None or end_date is None):
-            raise ValueError("start_date and end_date must be provided for multiple mode")
-        if mode == 'single' and start_date is None:
-            raise ValueError("start_date must be provided for single mode")
+        #check that fecha_inicio and fecha_fin are provided for single and multiple modes
+        if mode == 'multiple' and (fecha_inicio is None or fecha_fin is None):
+            raise ValueError("fecha_inicio and fecha_fin must be provided for multiple mode")
+        if mode == 'single' and fecha_inicio is None:
+            raise ValueError("fecha_inicio must be provided for single mode")
 
         if not raw_df.empty:
             print(f"ℹ️Processing in {mode.upper()} mode")
@@ -85,7 +85,7 @@ class TransformadorESIOS:
             #3. SINGLE mode
             elif mode == 'single':  
                 # Convert to pandas Timestamp for consistent comparison
-                target_date = pd.to_datetime(start_date).date()
+                target_date = pd.to_datetime(fecha_inicio).date()
 
                 # Process a single day
                 print(f"Single day selected: {target_date}")
@@ -98,16 +98,16 @@ class TransformadorESIOS:
             #4. MULTIPLE mode
             elif mode == 'multiple':
                 #convert from naive to utc
-                target_start_date = pd.to_datetime(start_date).date()
-                target_end_date = pd.to_datetime(end_date).date()
+                target_fecha_inicio = pd.to_datetime(fecha_inicio).date()
+                target_fecha_fin = pd.to_datetime(fecha_fin).date()
 
                 # Process a range of days
-                print(f"Processing range of days: {target_start_date} to {target_end_date}")
+                print(f"Processing range of days: {target_fecha_inicio} to {target_fecha_fin}")
 
                 # Use direct comparison instead of isin with date_range
                 filtered_df = raw_df[
-                    (raw_df['datetime_utc'].dt.date >= target_start_date) & 
-                    (raw_df['datetime_utc'].dt.date <= target_end_date)
+                    (raw_df['datetime_utc'].dt.date >= target_fecha_inicio) & 
+                    (raw_df['datetime_utc'].dt.date <= target_fecha_fin)
                 ]
                 return filtered_df
             
@@ -296,7 +296,7 @@ class TransformadorESIOS:
 
             print("\n2. Filtering for target date...")
             # Use 'single' mode for filtering
-            filtered_df = self._filter_data_by_mode(raw_df, mode='single', start_date=date)
+            filtered_df = self._filter_data_by_mode(raw_df, mode='single', fecha_inicio=date)
 
             if filtered_df.empty:
                 print("\n❌ NO DATA FOUND FOR TARGET DATE")
@@ -427,27 +427,27 @@ class TransformadorESIOS:
 
         return processed_df # Return the result (DF or None)
 
-    def _process_date_range(self, mercado: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+    def _process_date_range(self, mercado: str, fecha_inicio: str, fecha_fin: str) -> Optional[pd.DataFrame]:
         """Processes data for a specified date range and returns a single combined processed DataFrame."""
         print("\n" + "="*80)
         print(f"🔄 STARTING MULTIPLE DAY TRANSFORM (Date Range)")
         print(f"Market: {mercado.upper()}")
-        print(f"Period: {start_date} to {end_date}")
+        print(f"Period: {fecha_inicio} to {fecha_fin}")
         print("="*80 + "\n")
         processed_df_final = None # Initialize return variable
 
         try:
             # Parse dates using DateUtilsETL for consistency
-            start_date_dt = pd.to_datetime(start_date)
-            end_date_dt = pd.to_datetime(end_date)
+            fecha_inicio_dt = pd.to_datetime(fecha_inicio)
+            fecha_fin_dt = pd.to_datetime(fecha_fin)
 
-            if start_date_dt > end_date_dt:
+            if fecha_inicio_dt > fecha_fin_dt:
                  raise ValueError("Start date cannot be after end date.")
 
             # Determine the range of year-month combinations needed
-            current_date = start_date_dt
+            current_date = fecha_inicio_dt
             year_months = set()
-            while current_date <= end_date_dt:
+            while current_date <= fecha_fin_dt:
                 year_months.add((current_date.year, current_date.month))
                 # Move to the first day of the next month
                 if current_date.month == 12:
@@ -484,7 +484,7 @@ class TransformadorESIOS:
 
             if not processed_any_file or not all_raw_dfs:
                  print("❌ ERROR: No raw data files could be read for the specified range.")
-                 print(f"No data processed for {mercado} between {start_date} and {end_date}")
+                 print(f"No data processed for {mercado} between {fecha_inicio} and {fecha_fin}")
                  print("="*80 + "\n")
                  return None
 
@@ -500,13 +500,13 @@ class TransformadorESIOS:
             filtered_df = self._filter_data_by_mode(
                 combined_raw_df,
                 'multiple',
-                start_date=start_date,
-                end_date=end_date
+                fecha_inicio=fecha_inicio,
+                fecha_fin=fecha_fin
             )
 
             if filtered_df.empty:
                 print("❌ ERROR: No data found within the specified date range after filtering.")
-                print(f"No records for {mercado} between {start_date} and {end_date}")
+                print(f"No records for {mercado} between {fecha_inicio} and {fecha_fin}")
                 print("="*80 + "\n")
                 return None
 
@@ -519,7 +519,7 @@ class TransformadorESIOS:
             if processed_df_final is not None and not processed_df_final.empty:
                  print("\n✅ PROCESS COMPLETE")
                  print(f"Successfully transformed {mercado} data for the period.")
-                 print(f"Period: {start_date} to {end_date}. Records: {len(processed_df_final)}")
+                 print(f"Period: {fecha_inicio} to {fecha_fin}. Records: {len(processed_df_final)}")
             elif processed_df_final is None:
                  print("\n❌ TRANSFORMATION FAILED")
             else: # Empty DataFrame
@@ -529,13 +529,13 @@ class TransformadorESIOS:
 
         except ValueError as ve:
              print("\n❌ VALIDATION ERROR")
-             print(f"Error processing date range for {mercado} ({start_date} to {end_date})")
+             print(f"Error processing date range for {mercado} ({fecha_inicio} to {fecha_fin})")
              print(f"Details: {str(ve)}")
              print("="*80 + "\n")
              processed_df_final = None
         except Exception as e:
             print("\n❌ UNEXPECTED ERROR")
-            print(f"Error processing date range for {mercado} ({start_date} to {end_date})")
+            print(f"Error processing date range for {mercado} ({fecha_inicio} to {fecha_fin})")
             print(f"Details: {str(e)}")
             print(traceback.format_exc())
             print("="*80 + "\n")
@@ -543,7 +543,7 @@ class TransformadorESIOS:
 
         return processed_df_final # Return the single combined DF or None
 
-    def transform_data_for_all_markets(self, start_date: str = None, end_date: str = None, 
+    def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None, 
                                       mercados: list[str] = None, mode: str = 'latest'):
         """
         Transforms data for specified markets and returns status along with results.
@@ -553,7 +553,7 @@ class TransformadorESIOS:
             "markets_processed": [],
             "markets_failed": [],
             "mode": mode,
-            "date_range": f"{start_date} to {end_date}" if end_date else start_date
+            "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
         }
         
         overall_success = True
@@ -565,10 +565,10 @@ class TransformadorESIOS:
                 raise ValueError(f"Invalid transform type: {mode}. Must be one of: {self.transform_types}")
                 
             # Add validation for required parameters
-            if mode == 'single' and not start_date:
-                raise ValueError("start_date must be provided for single mode")
-            if mode == 'multiple' and (not start_date or not end_date):
-                raise ValueError("Both start_date and end_date must be provided for multiple mode")
+            if mode == 'single' and not fecha_inicio:
+                raise ValueError("fecha_inicio must be provided for single mode")
+            if mode == 'multiple' and (not fecha_inicio or not fecha_fin):
+                raise ValueError("Both fecha_inicio and fecha_fin must be provided for multiple mode")
             
             # Get list of all markets to process
             if mercados is None:
@@ -583,11 +583,11 @@ class TransformadorESIOS:
                     if mode == 'batch':
                         market_result = self._process_batch_mode(mercado)
                     elif mode == 'single':
-                        market_result = self._process_single_day(mercado, start_date)
+                        market_result = self._process_single_day(mercado, fecha_inicio)
                     elif mode == 'latest':
                         market_result = self._process_latest_day(mercado)
                     elif mode == 'multiple':
-                        market_result = self._process_date_range(mercado, start_date, end_date)
+                        market_result = self._process_date_range(mercado, fecha_inicio, fecha_fin)
                     
                     # Check if transformation was successful
                     if market_result is not None and (
