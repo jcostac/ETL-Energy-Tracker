@@ -2,6 +2,14 @@ from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from datetime import datetime, timedelta, timezone
 import pendulum
+import sys
+import os
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 from extract.esios_extractor import ESIOSPreciosExtractor
 from transform.esios_transform import TransformadorESIOS
 from load.local_data_lake_loader import LocalDataLakeLoader
@@ -23,11 +31,11 @@ dag_esios_precios = DAG(
     'esios_precios_etl', #unique identifier for the DAG
     default_args=default_args,
     description='ETL pipeline for downloading and processing ESIOS electricity price data',
-    schedule_interval='0 23 * * *',  # Daily at 22:00 UTC
+    schedule='0 23 * * *',  # Daily at 22:00 UTC
     start_date=pendulum.datetime(2025,  1, 1), # May 1st 2025
     catchup=True, # This will backfill data for all days since the start date
     tags=['esios', 'electricidad', 'precios', 'etl'],
-    dag_run_timeout=timedelta(hours=1), # This is the maximum time the DAG can run before being killed
+    #dag_run_timeout=timedelta(hours=1), # This is the maximum time the DAG can run before being killed
     
     #custom callbacks for fails (email_triggers.py), if any of the tasks fail, the email_triggers.py will be called for failure.
     on_failure_callback=dag_failure_email

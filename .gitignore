@@ -202,3 +202,6 @@ __pycache__/
 
 #ignore .vscode folder
 .vscode/
+
+#ignore root tests folder
+tests/

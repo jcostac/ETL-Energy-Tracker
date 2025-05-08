@@ -1,4 +1,4 @@
-from dags.helpers.pipeline_status import ETLPipelineStatus
+from helpers.pipeline_status import ETLPipelineStatus
 
 
 def update_pipeline_stage_status(stage_name: str, current_stage_task_id: str, **context) -> any:
@@ -94,7 +94,7 @@ def _get_previous_pipeline_status(ti) -> ETLPipelineStatus:
     return pipeline_status
 
 
-def _handle_extraction_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) -> tuple[bool, dict, any]:
+def _handle_extraction_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) :
     """
     Handles the logic for the extraction stage.
 
@@ -111,7 +111,7 @@ def _handle_extraction_stage(stage_output: dict, pipeline_status: ETLPipelineSta
     return success, details, stage_output
 
 
-def _handle_transformation_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) -> tuple[bool, dict, any]:
+def _handle_transformation_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) :
     """
     Handles the logic for the transformation stage.
 
@@ -130,7 +130,7 @@ def _handle_transformation_stage(stage_output: dict, pipeline_status: ETLPipelin
     return success, details, data_to_return
 
 
-def _handle_load_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) -> tuple[bool, list, any, str | None]:
+def _handle_load_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) :
     """
     Handles the logic for the load stage.
 
