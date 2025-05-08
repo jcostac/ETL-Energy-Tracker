@@ -29,9 +29,8 @@ dag_esios_precios = DAG(
     tags=['esios', 'electricidad', 'precios', 'etl'],
     dag_run_timeout=timedelta(hours=1), # This is the maximum time the DAG can run before being killed
     
-    #custom callbacks for fails and successes (email_triggers.py), if any of the tasks fail, the email_triggers.py will be called for failure.
-    on_failure_callback=dag_failure_email,
-    on_success_callback=dag_success_email,
+    #custom callbacks for fails (email_triggers.py), if any of the tasks fail, the email_triggers.py will be called for failure.
+    on_failure_callback=dag_failure_email
 )
 
 
@@ -40,8 +39,7 @@ extract_esios_prices = PythonOperator(
     task_id='extract_esios_prices',
     python_callable=ESIOSPreciosExtractor().extract_data_for_all_markets,
     op_kwargs={'fecha_inicio_carga': '{{ ds }}', 'fecha_fin_carga': '{{ ds }}'},
-    dag=dag_esios_precios,
-    on_failure_callback=task_failure_email
+    dag=dag_esios_precios
 )
 
 # -- Task 2: Process extraction output -> sends email if fails 
@@ -49,7 +47,8 @@ check_extraction_output = PythonOperator(
     task_id='check_extraction_output',
     python_callable=process_extraction_output,
     provide_context=True,
-    dag=dag_esios_precios
+    dag=dag_esios_precios,
+    on_failure_callback=task_failure_email
 )
 
 # -- Task 3: Transform ESIOS price data --

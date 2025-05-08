@@ -4,7 +4,7 @@ Utility class for database operations
 
 __all__ = ['DatabaseUtils', 'DuckDBUtils'] #Export the class
 
-from sqlalchemy import create_engine, text, Engine
+from sqlalchemy import create_engine, text
 import pandas as pd
 from typing import Optional, Union, List
 import sys
@@ -40,7 +40,7 @@ class DatabaseUtils:
         except Exception as e:
             raise ConnectionError(f"Failed to connect to database {database_name}: {str(e)}")
 
-    def read_table(engine: Engine, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None) -> pd.DataFrame:
+    def read_table(engine: object, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None) -> pd.DataFrame:
         """Read data from a table into a DataFrame
         
         Args:
@@ -67,7 +67,7 @@ class DatabaseUtils:
             raise ValueError(f"Error reading table {table_name}: {str(e)}")
 
     @staticmethod
-    def write_table(engine: Engine, df: pd.DataFrame, table_name: str, 
+    def write_table(engine: object, df: pd.DataFrame, table_name: str, 
                     if_exists: str = 'append', index: bool = False) -> None:
         """Write DataFrame to database table, this method is used to write data to a table. 
         Args:
@@ -83,7 +83,7 @@ class DatabaseUtils:
             raise ValueError(f"Error writing to table {table_name}: {str(e)}")
 
     @staticmethod
-    def update_table(engine, df: pd.DataFrame, table_name: str, key_columns: List[str]) -> None:
+    def update_table(engine: object, df: pd.DataFrame, table_name: str, key_columns: List[str]) -> None:
         """
         Update existing records in a table without dropping it
         

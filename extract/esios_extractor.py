@@ -129,23 +129,23 @@ class ESIOSPreciosExtractor:
                 if df is not None and not df.empty:
                     # Determine file format based on self.dev flag
                     if self.dev and not self.prod:
-                        status = "DEVELOPMEMT "
+                        environment = "DEVELOPMENT "
                         self.raw_file_utils.write_raw_csv(
                             year=year, month=month, df=df,
                             dataset_type='precios', mercado=mercado
                         )
                     else:
-                        status = "PRODUCTION "
+                        environment = "PRODUCTION "
                         self.raw_file_utils.write_raw_parquet(
                             year=year, month=month, df=df,
                             dataset_type='precios', mercado=mercado
                         )
-                    print(f"  - Successfully processed and saved {status}{mercado} prices for {day_str}")
+                    print(f"✅ Successfully  saved raw {mercado} prices for {day_str} in {environment} environment")
                 else:
-                    print(f"  - No {mercado} price data found or extracted for {day_str}")
+                    print(f" ⚠️ No {mercado} price data found for {day_str}. Nothing was saved to raw folder.")
 
             except Exception as e:
-                print(f"  - Error downloading {mercado} prices for {day_str}: {e}")
+                print(f"  ❌ Error downloading {mercado} prices for {day_str}: {e}")
 
     def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
         """
@@ -156,21 +156,29 @@ class ESIOSPreciosExtractor:
         status_details = {
             "markets_processed": [],
             "markets_failed": [],
-            "date_range": f"{fecha_inicio_carga} to {fecha_fin_carga}"
-        }
+            "date_range": f"{fecha_inicio_carga if fecha_inicio_carga else (datetime.now() - timedelta(days=self.download_window)).date()} to {fecha_fin_carga if fecha_fin_carga else ((datetime.now() - timedelta(days=self.download_window) + timedelta(days=1)).date())}"
+        } #set fecha_inicio_carga and fecha_fin_carga to now()-93 days to now()-92 days if no dates are provided
+
         
         try:
             # Track success for each market
+            print ("\n--------- Diario ---------")
             success_diario = self._extract_with_status("diario", self.extract_diario, 
                                                      fecha_inicio_carga, fecha_fin_carga, status_details)
+        
+            print ("\n--------- Intra ---------")
             success_intra = self._extract_with_status("intra", self.extract_intra, 
                                                     fecha_inicio_carga, fecha_fin_carga, status_details)
+            print ("\n--------- Secundaria ---------")
             success_secundaria = self._extract_with_status("secundaria", self.extract_secundaria, 
                                                          fecha_inicio_carga, fecha_fin_carga, status_details)
+            print ("\n--------- Terciaria ---------")
             success_terciaria = self._extract_with_status("terciaria", self.extract_terciaria, 
                                                         fecha_inicio_carga, fecha_fin_carga, status_details)
+            print ("\n--------- RR ---------")
             success_rr = self._extract_with_status("rr", self.extract_rr, 
                                                  fecha_inicio_carga, fecha_fin_carga, status_details)
+            print ("\n--------------------------------")
             
             # Overall success only if all markets succeeded
             overall_success = (success_diario and success_intra and success_secundaria 
@@ -180,7 +188,7 @@ class ESIOSPreciosExtractor:
             overall_success = False
             status_details["error"] = str(e)
         
-        print("Data extraction pipeline finished.")
+        print("ℹ️ Data extraction pipeline finished.")
         
         # Return status for Airflow task
         return {"success": overall_success, "details": status_details}
@@ -333,7 +341,8 @@ class ESIOSPreciosExtractor:
         return
 
 
-def example_usage():
+if __name__ == "__main__":
+    #--example usage
     esios_extractor = ESIOSPreciosExtractor()
     esios_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
 

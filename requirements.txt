@@ -1,9 +1,10 @@
 pandas
 pyarrow
 deprecated
-SQLAlchemy
+sqlalchemy==1.4.54 #this version is compatible with airflow 3.0.0, specially flask-appbuilder 4.5.3  whichrequires SQLAlchemy<1.5
 pretty_errors
 pytz
+pymysql
 tqdm
 numpy
 requests
