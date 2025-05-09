@@ -1,7 +1,7 @@
 import pretty_errors
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.providers.standard.operators.email import EmailOperator  # Corrected import path
+from airflow.operators.email import EmailOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.email import send_email
 
