@@ -152,12 +152,17 @@ class ESIOSPreciosExtractor:
         Extract data for all relevant markets from ESIOS API for a given date range.
         Uses the environment setting (DEV/PROD) for file saving format.
         """
-        # Initialize status tracking
+        if (fecha_fin_carga is None and fecha_inicio_carga is None) or fecha_fin_carga == fecha_inicio_carga:
+            date_range_str = f"Single day download for {(datetime.now() - timedelta(days=self.download_window)).strftime('%Y-%m-%d')}"
+        else:
+            date_range_str = f"{fecha_inicio_carga} to {fecha_fin_carga}"
+
+        # Initialize status trackingS
         status_details = {
             "markets_downloaded": [],
             "markets_failed": [],
-            "date_range": f"{fecha_inicio_carga if fecha_inicio_carga else (datetime.now() - timedelta(days=self.download_window)).date()} to {fecha_fin_carga if fecha_fin_carga else ((datetime.now() - timedelta(days=self.download_window) + timedelta(days=1)).date())}"
-        } #set fecha_inicio_carga and fecha_fin_carga to now()-93 days to now()-92 days if no dates are provided
+            "date_range": date_range_str
+        }
 
         
         try:
