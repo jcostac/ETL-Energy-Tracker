@@ -153,9 +153,9 @@ class I90Extractor:
             print(f"Validation failed: latest_i90_pestañas_con_error is not a list ({type(self.latest_i90_pestañas_con_error)}).")
             return False
 
-        # Validate zip file name format (contains YYYYMMDD)
-        # Assumes filename format like 'I90DIA_YYYYMMDD.zip'
-        zip_match = re.search(r'(\d{8})', self.latest_i90_zip_file_name)
+        # Validate zip file name format (contains YYYY-MM-DD)
+        # Zip filename format is 'I90DIA_YYYY-MM-DD.zip'
+        zip_match = re.search(r'(\d{4}-\d{2}-\d{2})', self.latest_i90_zip_file_name)
         if not zip_match:
             print(f"Validation failed: Could not find YYYYMMDD date pattern in zip file name: {self.latest_i90_zip_file_name}")
             return False
