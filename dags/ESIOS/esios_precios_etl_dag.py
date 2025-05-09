@@ -41,11 +41,32 @@ dag_esios_precios = DAG(
     on_failure_callback=dag_failure_email
 )
 
+# Task functions to defer instantiation on load
+def extract_esios_prices_func(fecha_inicio_carga, fecha_fin_carga):
+    extractor = ESIOSPreciosExtractor()
+    return extractor.extract_data_for_all_markets(
+        fecha_inicio_carga=fecha_inicio_carga,
+        fecha_fin_carga=fecha_fin_carga
+    )
+
+def transform_esios_prices_func(fecha_inicio, fecha_fin, mode):
+    transformer = TransformadorESIOS()
+    return transformer.transform_data_for_all_markets(
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+        mode=mode
+    )
+
+def load_esios_prices_func(transformed_data_dict):
+    loader = LocalDataLakeLoader()
+    return loader.load_transformed_data_esios(
+        transformed_data_dict=transformed_data_dict
+    )
 
 # -- Task 1: Extract ESIOS price data --
 extract_esios_prices = PythonOperator(
     task_id='extract_esios_prices',
-    python_callable=ESIOSPreciosExtractor().extract_data_for_all_markets,
+    python_callable=extract_esios_prices_func,
     op_kwargs={'fecha_inicio_carga': '{{ ds }}', 'fecha_fin_carga': '{{ ds }}'},
     dag=dag_esios_precios
 )
@@ -66,7 +87,7 @@ check_extraction = PythonOperator(
 # -- Task 3: Transform ESIOS price data --
 transform_esios_prices = PythonOperator(
     task_id='transform_esios_prices',
-    python_callable=TransformadorESIOS().transform_data_for_all_markets,
+    python_callable=transform_esios_prices_func,
     op_kwargs={
         'fecha_inicio': '{{ ds }}', 
         'fecha_fin': '{{ ds }}', 
@@ -91,7 +112,7 @@ check_transform = PythonOperator(
 # -- Task 5: Load ESIOS price data --
 load_esios_prices_to_datalake = PythonOperator(
     task_id='load_esios_prices_to_datalake',
-    python_callable=LocalDataLakeLoader().load_transformed_data_esios,
+    python_callable=load_esios_prices_func,
     op_kwargs={
         'transformed_data_dict': "{{ ti.xcom_pull(task_ids='check_transform') }}"
     },

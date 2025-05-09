@@ -38,10 +38,33 @@ dag = DAG(
     on_failure_callback=dag_failure_email
 )
 
+# Task functions to defer instantiation on load
+def extract_i90_prices_func(fecha_inicio_carga, fecha_fin_carga):
+    extractor = I90PreciosExtractor()
+    return extractor.extract_data_for_all_markets(
+        fecha_inicio_carga=fecha_inicio_carga,
+        fecha_fin_carga=fecha_fin_carga
+    )
+
+def transform_i90_prices_func(start_date, end_date, dataset_types, transform_type):
+    transformer = TransformadorI90()
+    return transformer.transform_data_for_all_markets(
+        start_date=start_date,
+        end_date=end_date,
+        dataset_type=dataset_types,
+        transform_type=transform_type
+    )
+
+def load_i90_prices_func(transformed_data_dict):
+    loader = LocalDataLakeLoader()
+    return loader.load_transformed_data_precios_i90(
+        transformed_data_dict=transformed_data_dict
+    )
+
 # Task 1: Extract I90 price data
 extract_i90_prices = PythonOperator(
     task_id='extract_i90_prices',
-    python_callable=I90PreciosExtractor().extract_data_for_all_markets,
+    python_callable=extract_i90_prices_func,
     op_kwargs={'fecha_inicio_carga': '{{ ds }}', 'fecha_fin_carga': '{{ ds }}'},
     dag=dag,
 )
@@ -62,7 +85,7 @@ check_extraction_i90_prices = PythonOperator(
 # Task 3: Transform I90 price data
 transform_i90_prices = PythonOperator(
     task_id='transform_i90_prices',
-    python_callable=TransformadorI90().transform_data_for_all_markets,
+    python_callable=transform_i90_prices_func,
     op_kwargs={
         'start_date': '{{ ds }}',
         'end_date': '{{ ds }}',
@@ -88,7 +111,7 @@ check_transform_i90_prices = PythonOperator(
 # Task 5: Load I90 price data to data lake
 load_i90_prices_to_datalake = PythonOperator(
     task_id='load_i90_prices_to_datalake',
-    python_callable=LocalDataLakeLoader().load_transformed_data_precios_i90,
+    python_callable=load_i90_prices_func,
     op_kwargs={
         'transformed_data_dict': "{{ ti.xcom_pull(task_ids='check_transform_i90_prices') }}" },
     dag=dag,
