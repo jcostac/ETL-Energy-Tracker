@@ -339,13 +339,18 @@ class TransformadorI90:
                 for month in months:
                     print(f"Processing {mercado}/{dataset_type} for {year}-{month:02d}")
                     try:
+                        #get filenames for the year and month
                         filenames = self.raw_file_utils.get_raw_file_list(year, month, mercado)
                         for filename in filenames:
+                            #extract dataset_type from filename
                             dataset_type = self._extract_dataset_type_from_filename(filename)
+                            #read the file
                             raw_df = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
+                            #transform the data
                             processed_df = self._transform_data(raw_df, mercado, dataset_type)
-                        if processed_df is not None and not processed_df.empty:
-                            processed_dfs.append(processed_df)
+                            #append the processed dataframe to the list
+                            if processed_df is not None and not processed_df.empty:
+                                processed_dfs.append(processed_df)
                     except FileNotFoundError:
                         print(f"Raw file not found for {year}-{month:02d}. Skipping.")
                     except Exception as e:
