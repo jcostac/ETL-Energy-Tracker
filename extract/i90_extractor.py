@@ -81,9 +81,9 @@ class I90Extractor:
 
         # If no fecha inicio y fecha fin, set default values
         elif fecha_inicio_carga is None and fecha_fin_carga is None:
-            # Get datetime range for 93 days ago to 92 days from now
+            # Get datetime range for 93 days ago 
             fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window) 
-            fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window) + timedelta(days=1)
+            fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window)
             
             # Convert to string format
             fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') 
@@ -128,7 +128,7 @@ class I90Extractor:
 
         return
 
-    def validate_i90_attributes(self):
+    def validate_i90_correct_download(self):
         """Validates the presence and format of the latest I90 download attributes. Used to check if i90 data was downloaded correctly"""
 
         # Check for None values
@@ -205,9 +205,9 @@ class I90Extractor:
         """
         # Initialize status tracking
         status_details = {
-            "markets_processed": [],  # Changed to dict to track by day and market
+            "markets_downloaded": [],  # Changed to dict to track by day and market
             "markets_failed": [],
-            "date_range": f"{fecha_inicio_carga} to {fecha_fin_carga}"
+            "date_range": f"{fecha_inicio_carga if fecha_inicio_carga else datetime.now() - timedelta(days=self.download_window).date()} to {fecha_fin_carga if fecha_fin_carga else datetime.now() - timedelta(days=self.download_window).date()}"
         }
         
         try:
@@ -217,19 +217,18 @@ class I90Extractor:
             
             overall_success = True #overall success is true if no failed markets
             for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
-                day_str = day.strftime('%Y-%m-%d')
                 
                 try:
                     # Download the i90 file for the given day
                     self.download_i90_data(day)
                     
                     # Check if the i90 file attributes are set
-                    if not self.validate_i90_attributes():
+                    if not self.validate_i90_correct_download():
                         print(f"Skipping day {day.date()}: I90 file attributes invalid.")
                         status_details["markets_failed"].append({
-                            "day": day_str,
                             "market": "all",
-                            "error": "Invalid I90 file attributes"
+                            "error": "Invalid I90 file attributes",
+                            "day": day.date()
                         })
                         overall_success = False
                         return {"success": overall_success, "details": status_details}
@@ -248,9 +247,9 @@ class I90Extractor:
 
                 except Exception as e:
                     status_details["markets_failed"].append({
-                        "day": day_str,
                         "market": "all",
-                        "error": str(e)
+                        "error": str(e),
+                        "day": day.date()
                     })
                     overall_success = False
                     print(f"Error during extraction for {day.date()}: {e}")
@@ -268,7 +267,11 @@ class I90Extractor:
             
         except Exception as e:
             overall_success = False
-            status_details["error"] = str(e)
+            status_details["markets_failed"].append({
+                "market": "all",
+                "error": str(e),
+                "day": day.date()
+            })
         
         return {"success": overall_success, "details": status_details}
 
@@ -282,12 +285,16 @@ class I90Extractor:
         """Helper method to track success status for each market extraction"""
         try:
             extract_function(day)
-            status_details["markets_processed"].append(market_name)
+            status_details["markets_downloaded"].append({
+                "market": market_name,
+                "day": day.date()
+            })
             return status_details
         except Exception as e:
             status_details["markets_failed"].append({
                 "market": market_name,
-                "error": str(e)
+                "error": str(e),
+                "day": day.date()
             })
             print(f"❌ Error extracting {market_name} data for {day.date()}: {e}")
             return status_details

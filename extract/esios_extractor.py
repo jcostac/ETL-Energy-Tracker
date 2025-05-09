@@ -154,7 +154,7 @@ class ESIOSPreciosExtractor:
         """
         # Initialize status tracking
         status_details = {
-            "markets_processed": [],
+            "markets_downloaded": [],
             "markets_failed": [],
             "date_range": f"{fecha_inicio_carga if fecha_inicio_carga else (datetime.now() - timedelta(days=self.download_window)).date()} to {fecha_fin_carga if fecha_fin_carga else ((datetime.now() - timedelta(days=self.download_window) + timedelta(days=1)).date())}"
         } #set fecha_inicio_carga and fecha_fin_carga to now()-93 days to now()-92 days if no dates are provided
@@ -197,7 +197,7 @@ class ESIOSPreciosExtractor:
         """Helper method to track success status for each market extraction"""
         try:
             extract_function(fecha_inicio_carga, fecha_fin_carga)
-            status_details["markets_processed"].append(market_name)
+            status_details["markets_downloaded"].append(market_name)
             return True
         except Exception as e:
             status_details["markets_failed"].append({
