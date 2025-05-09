@@ -162,7 +162,7 @@ class I90Extractor:
         zip_date_str = zip_match.group(1)
         try:
             # Attempt to parse the extracted date string to confirm format
-            datetime.strptime(zip_date_str, '%Y%m%d')
+            datetime.strptime(zip_date_str, '%Y-%m-%d')
         except ValueError:
             print(f"Validation failed: Invalid date format '{zip_date_str}' found in zip file name: {self.latest_i90_zip_file_name}")
             return False
