@@ -55,14 +55,19 @@ class DatabaseUtils:
         try:
             # Construct query
             select_clause = "*" if not columns else ", ".join(columns)
-            query = f"SELECT {select_clause} FROM {table_name}"
+            query_str = f"SELECT {select_clause} FROM {table_name}"
             if where_clause:
-                query += f" WHERE {where_clause}"
-                
-            # Read data
+                query_str += f" WHERE {where_clause}"
+            
+            # Create a SQLAlchemy TextClause
+            query = text(query_str)
+            
+            # Execute the query and convert to DataFrame
             with engine.connect() as conn:
-                df = pd.read_sql(text(query), conn)
+                result = conn.execute(query)
+                df = pd.DataFrame(result.fetchall())
                 return df
+            
         except Exception as e:
             raise ValueError(f"Error reading table {table_name}: {str(e)}")
 
@@ -296,6 +301,20 @@ def example_usage():
     # 2024-03-19 | 2    | 51.0  | 200                               
 
 if __name__ == "__main__":
-    engine = DatabaseUtils.create_engine("pruebas_BT")
-    df = DatabaseUtils.read_table(engine, "Mercados")
-    print(df)
+    try:
+        # Create engine
+        engine = DatabaseUtils.create_engine("pruebas_BT")
+        print("Database engine created successfully")
+        
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            print("Database connection test successful")
+        
+        # Try reading the table
+        df = DatabaseUtils.read_table(engine, "Mercados")
+        print("Successfully read Mercados table")
+        print(df.head())
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
