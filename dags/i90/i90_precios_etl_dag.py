@@ -66,7 +66,7 @@ transform_i90_prices = PythonOperator(
     op_kwargs={
         'start_date': '{{ ds }}',
         'end_date': '{{ ds }}',
-        'dataset_types': ['precios_i90'],
+        'dataset_types':'precios_i90',
         'transform_type': 'single'
     },
     dag=dag,

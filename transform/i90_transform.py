@@ -252,6 +252,7 @@ class TransformadorI90:
             print(f"Processed data:")
             print(processed_df.head())
             return processed_df
+        
         except Exception as e:
             print(f"Error during transformation for {mercado} - {dataset_type}: {e}")
             print("Raw DF info before failed transform:")
@@ -351,6 +352,7 @@ class TransformadorI90:
                             #append the processed dataframe to the list
                             if processed_df is not None and not processed_df.empty:
                                 processed_dfs.append(processed_df)
+                                
                     except FileNotFoundError:
                         print(f"Raw file not found for {year}-{month:02d}. Skipping.")
                     except Exception as e:

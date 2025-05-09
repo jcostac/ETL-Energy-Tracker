@@ -66,7 +66,7 @@ transform_i90_volumes = PythonOperator(
     op_kwargs={
         'start_date': '{{ ds }}',
         'end_date': '{{ ds }}',
-        'dataset_types': ['volumenes_i90'],
+        'dataset_types': 'volumenes_i90',
         'transform_type': 'single'
     },
     dag=dag,
