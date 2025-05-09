@@ -726,15 +726,8 @@ class I90Processor:
                 print(f"📍 STEP {i}/{total_steps}: {step_func.__name__.replace('_', ' ').title()}")
                 print("-"*50)
 
-                # Some steps expect different argument signatures
-                if step_func == self._apply_market_filters_and_id:
-                    df_processed = step_func(df_processed, **step_kwargs)
-                elif step_func == self._select_and_finalize_columns:
-                    df_processed = step_func(df_processed, **step_kwargs)
-                elif step_func == self._validate_raw_data or step_func == self._validate_final_data:
-                    df_processed = step_func(df_processed, **step_kwargs)
-                else:
-                    df_processed = step_func(df_processed)
+                # Apply the function with its arguments
+                df_processed = step_func(df_processed, **step_kwargs)
 
                 print(f"\n📊 Data Status:")
                 print(f"   Rows: {df_processed.shape[0]}")
@@ -751,18 +744,16 @@ class I90Processor:
             return df_processed
 
         except ValueError as e:
-            print("\n❌ VALIDATION ERROR")
+            print("\n❌ PROCESSING PIPELINE ERROR")
             print(f"Error: {str(e)}")
             print("="*80 + "\n")
-            return self._empty_output_df(dataset_type)
+            raise
 
         except Exception as e:
             print("\n❌ UNEXPECTED ERROR")
             print(f"Error: {str(e)}")
-            import traceback
             print(traceback.format_exc())
             print("="*80 + "\n")
-            return self._empty_output_df(dataset_type)
-
+            raise
  
  

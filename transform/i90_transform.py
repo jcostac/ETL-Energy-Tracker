@@ -99,90 +99,141 @@ class TransformadorI90:
 
     def transform_data_for_all_markets(self, start_date: Optional[str] = None, end_date: Optional[str] = None,
                                          mercados: Optional[List[str]] = None,
-                                         dataset_types: Optional[List[str]] = None,
-                                         transform_type: str = 'latest') -> dict:
+                                         dataset_type: str = None,
+                                         transform_type: str = 'latest',) -> dict:
         """
         Transforms data for specified markets and dataset types based on the transform_type.
-        Returns: Dict[market, DataFrame or list]
+        Returns: Dictionary containing:
+            - 'data': Dictionary of processed dataframes for each market
+            - 'status': Dictionary with:
+                - 'success': Boolean indicating if the transformation was successful
+                - 'details': Dictionary with:
+                    - 'markets_processed': List of markets that were processed
+                    - 'markets_failed': List of markets that failed to process
+                    - 'mode': The transform type used
+                    - 'date_range': The date range processed
         """
-        if transform_type not in self.transform_types:
-            raise ValueError(f"Invalid transform type: {transform_type}. Must be one of: {self.transform_types}")
-        if transform_type in ['single', 'multiple'] and not start_date:
-            raise ValueError(f"start_date is required for transform_type '{transform_type}'")
-        if transform_type == 'multiple' and not end_date:
-            raise ValueError(f"end_date is required for transform_type 'multiple'")
-
-        if dataset_types is None:
-            dataset_types = self.dataset_types
-        else:
-            invalid_types = [dt for dt in dataset_types if dt not in self.dataset_types]
-            if invalid_types:
-                raise ValueError(f"Invalid dataset_type(s) provided: {invalid_types}. Must be in {self.dataset_types}")
-
-        # --- FLAT results dict ---
+        # Initialize status tracking
+        status_details = {
+            "markets_processed": [],
+            "markets_failed": [],
+            "mode": transform_type,
+            "date_range": f"{start_date} to {end_date}" if end_date else start_date
+        }
+        
+        overall_success = True
         results = {}
 
-        print(f"\n===== STARTING TRANSFORMATION RUN (Mode: {transform_type.upper()}) =====")
-        print(f"Dataset types to process: {', '.join(dataset_types)}")
-        if start_date: print(f"Start Date: {start_date}")
-        if end_date: print(f"End Date: {end_date}")
-        print("="*60)
+        try:
+            if transform_type not in self.transform_types:
+                raise ValueError(f"Invalid transform type: {transform_type}. Must be one of: {self.transform_types}")
+            if transform_type in ['single', 'multiple'] and not start_date:
+                raise ValueError(f"start_date is required for transform_type '{transform_type}'")
+            if transform_type == 'multiple' and not end_date:
+                raise ValueError(f"end_date is required for transform_type 'multiple'")
 
-        # Only process one dataset_type at a time for flat output
-        if len(dataset_types) > 1:
-            print("Warning: Only the first dataset_type will be processed for flat output to match ESIOS pipeline.")
-        dataset_type = dataset_types[0]
+            if dataset_type is None:
+                raise ValueError(f"dataset_type must be provided. Must be one of {self.dataset_types}")
+            else:
+                if dataset_type not in self.dataset_types:
+                    raise ValueError(f"Invalid dataset_type provided: {dataset_type}. Must be in {self.dataset_types}")
 
-        # Determine relevant markets for this dataset type
-        if mercados is None:
-            relevant_markets = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets if dataset_type == 'precios_i90' else []
-        else:
-            known_markets_for_type = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets
-            invalid_markets = [m for m in mercados if m not in known_markets_for_type]
-            if invalid_markets:
-                print(f"Warning: Market(s) {invalid_markets} are not typically associated with dataset type {dataset_type} or are unknown. Skipping them for this type.")
-            relevant_markets = [m for m in mercados if m in known_markets_for_type]
+            print(f"\n===== STARTING TRANSFORMATION RUN (Mode: {transform_type.upper()}) =====")
+            print(f"Dataset type to process: {dataset_type}")
+            if start_date: print(f"Start Date: {start_date}")
+            if end_date: print(f"End Date: {end_date}")
+            print("="*60)
 
-        if not relevant_markets:
-            print(f"No relevant markets specified or configured for dataset type: {dataset_type}")
-            return results
+            # Determine relevant markets for this dataset type
+            if mercados is None:
+                relevant_markets = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets if dataset_type == 'precios_i90' else []
+            else:
+                known_markets_for_type = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets
+                invalid_markets = [m for m in mercados if m not in known_markets_for_type]
+                if invalid_markets:
+                    print(f"Warning: Market(s) {invalid_markets} are not associated with dataset type {dataset_type} or are unknown. Skipping them for this type.")
+                relevant_markets = [m for m in mercados if m in known_markets_for_type]
 
-        for mercado in relevant_markets:
-            print(f"\n-- Market: {mercado} --")
-            try:
-                if transform_type == 'batch':
-                    market_result = self._process_batch_mode(mercado, dataset_type)
-                elif transform_type == 'single':
-                    market_result = self._process_single_day(mercado, dataset_type, start_date)
-                elif transform_type == 'latest':
-                    market_result = self._process_latest_day(mercado, dataset_type)
-                elif transform_type == 'multiple':
-                    market_result = self._process_date_range(mercado, dataset_type, start_date, end_date)
-                results[mercado] = market_result
-            except Exception as e:
-                results[mercado] = None
-                print(f"❌ Failed to transform {dataset_type} for market {mercado} ({transform_type}): {e}")
-                print(traceback.format_exc())
-                continue
+            if not relevant_markets:
+                print(f"No relevant markets specified or configured for dataset type: {dataset_type}")
+                return {"data": results, "status": {"success": False, "details": f"No relevant markets specified or configured for dataset type: {dataset_type}."}}
 
-        print(f"\n===== TRANSFORMATION RUN FINISHED (Mode: {transform_type.upper()}) =====")
-        # Optionally print summary of results
-        print("Summary:")
-        for market, result in results.items():
-            status = "Failed/No Data"
-            if isinstance(result, pd.DataFrame):
-                if not result.empty:
-                    status = f"Success ({len(result)} records)"
-                else:
-                    status = "Success (Empty DF)"
-            elif isinstance(result, list):
-                success_count = sum(1 for df in result if isinstance(df, pd.DataFrame) and not df.empty)
-                total_items = len(result)
-                status = f"Batch Success ({success_count}/{total_items} periods processed)"
-            print(f"- {market}: {status}")
-        print("="*60)
+            for mercado in relevant_markets:
+                print(f"\n-- Market: {mercado} --")
+                try:
+                    if transform_type == 'batch':
+                        market_result = self._process_batch_mode(mercado, dataset_type)
+                    elif transform_type == 'single':
+                        market_result = self._process_single_day(mercado, dataset_type, start_date)
+                    elif transform_type == 'latest':
+                        market_result = self._process_latest_day(mercado, dataset_type)
+                    elif transform_type == 'multiple':
+                        market_result = self._process_date_range(mercado, dataset_type, start_date, end_date)
 
-        return results
+                    # Check if transformation was successful
+                    if market_result is not None:
+                        if isinstance(market_result, pd.DataFrame):
+                            if not market_result.empty:
+                                status_details["markets_processed"].append(mercado)
+                                results[mercado] = market_result
+                            else:
+                                print(f"⚠️ Transformation for market {mercado} resulted in an empty DataFrame. Continuing with other markets.")
+                                results[mercado] = market_result  # Still store the empty DataFrame
+                        elif isinstance(market_result, list):
+                            if any(df is not None and not df.empty for df in market_result):
+                                status_details["markets_processed"].append(mercado)
+                                results[mercado] = market_result
+                            else:
+                                print(f"⚠️ Transformation for market {mercado} resulted in a list of empty DataFrames. Continuing with other markets.")
+                                results[mercado] = market_result  # Store the list of empty DataFrames
+                        else:
+                            status_details["markets_failed"].append({
+                                "market": mercado,
+                                "error": "Transformation produced no valid data"
+                            })
+                            overall_success = False
+                            results[mercado] = None
+                            continue
+
+                except Exception as e:
+                    status_details["markets_failed"].append({
+                        "market": mercado,
+                        "error": str(e)
+                    })
+                    overall_success = False
+                    results[mercado] = None
+                    print(f"❌ Failed to transform {dataset_type} for market {mercado} ({transform_type}): {e}")
+                    print(traceback.format_exc())
+                    continue
+
+            print(f"\n===== TRANSFORMATION RUN FINISHED (Mode: {transform_type.upper()}) =====")
+            # Print summary of results
+            print("Summary:")
+            for market, result in results.items():
+                status = "Failed/No Data"
+                if isinstance(result, pd.DataFrame):
+                    if not result.empty:
+                        status = f"Success ({len(result)} records)"
+                    else:
+                        status = "Success (Empty DF)"
+                elif isinstance(result, list):
+                    success_count = sum(1 for df in result if isinstance(df, pd.DataFrame) and not df.empty)
+                    total_items = len(result)
+                    status = f"Batch Success ({success_count}/{total_items} periods processed)"
+                print(f"- {market}: {status}")
+            print("="*60)
+
+        except Exception as e:
+            overall_success = False
+            status_details["error"] = str(e)
+
+        return {
+            "data": results,
+            "status": {
+                "success": overall_success,
+                "details": status_details
+            }
+        }
 
     def _transform_data(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str) -> pd.DataFrame:
         """Transforms data using the processor and returns the processed DataFrame."""
@@ -288,10 +339,11 @@ class TransformadorI90:
                 for month in months:
                     print(f"Processing {mercado}/{dataset_type} for {year}-{month:02d}")
                     try:
-                        raw_file_path = self.raw_file_utils.get_raw_file_path(year, month, mercado)
-                        dataset_type = self._extract_dataset_type_from_filename(raw_file_path)
-                        raw_df = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
-                        processed_df = self._transform_data(raw_df, mercado, dataset_type)
+                        filenames = self.raw_file_utils.get_raw_file_list(year, month, mercado)
+                        for filename in filenames:
+                            dataset_type = self._extract_dataset_type_from_filename(filename)
+                            raw_df = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
+                            processed_df = self._transform_data(raw_df, mercado, dataset_type)
                         if processed_df is not None and not processed_df.empty:
                             processed_dfs.append(processed_df)
                     except FileNotFoundError:
