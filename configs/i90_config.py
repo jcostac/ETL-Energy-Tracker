@@ -16,12 +16,18 @@ class I90Config:
 
         self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date
 
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        self._bbdd_engine = None
 
         self.id_mercado_map, self.precios_sheet, self.volumenes_sheet, self.sentido_map = self.get_id_mercado_sheet_mapping()
 
         self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temporary')
 
+    @property
+    def bbdd_engine(self):
+        if not self._bbdd_engine:
+            self._bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        return self._bbdd_engine
+    
     def get_id_mercado_sheet_mapping(self) -> tuple[dict[str, str], dict[str, Optional[str]], dict[str, Optional[str]], dict[str, str]]:
         """
         Obtiene el mapping de los IDs de los mercados de ESIOS y sus números de hoja correspondientes.

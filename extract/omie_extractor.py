@@ -10,8 +10,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from configs.omie_config import OMIEConfig
-from extract.omie_downloaders import IntraOMIEDownloader, ContinuoOMIEDownloader
-from utilidades.raw_file_utils import RawFileUtils
+from extract._descargador_omie import IntraOMIEDownloader, ContinuoOMIEDownloader
+from utilidades.storage_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils
 
@@ -27,14 +27,14 @@ class OMIEExtractor:
         # Initialize downloaders
         self.intra_downloader = IntraOMIEDownloader()
         self.continuo_downloader = ContinuoOMIEDownloader()
-        
+            
         # Initialize utils
         self.raw_file_utils = RawFileUtils()
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
         self.env_utils = EnvUtils()
         
         # Set the maximum download window (in days)
-        self.download_window = 93  # OMIE typically has data available with 90 day delay
+        self.download_window = 93  # OMIE typically has data available with 90 day delay}
+
 
     def fecha_input_validation(self, fecha_inicio_carga: str, fecha_fin_carga: str) -> tuple[str, str]:
         """
@@ -197,7 +197,7 @@ class OMIEExtractor:
         
         return {"success": overall_success, "details": status_details}
 
-    def _extract_intra_session(self, zip_file: str, day: datetime, session: int, 
+    def extract_intra_session(self, zip_file: str, day: datetime, session: int, 
                                unidades: List[str], dict_unidades: Dict[str, int], 
                                status_details: Dict) -> Dict:
         """
@@ -282,7 +282,7 @@ class OMIEExtractor:
             
             raise
 
-    def _extract_continuo_data(self, zip_file: str, day: datetime, 
+    def extract_continuo_data(self, zip_file: str, day: datetime, 
                                unidades: List[str], dict_unidades: Dict[str, int], 
                                filtered_transition_dates: Dict, status_details: Dict) -> Dict:
         """

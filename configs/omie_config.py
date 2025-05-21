@@ -12,7 +12,7 @@ class OMIEConfig:
     
     def __init__(self):
         """Initialize OMIE configuration"""
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        self._bbdd_engine = None
         
         # ID mercado mapping
         self.id_mercado_map = {
@@ -30,6 +30,13 @@ class OMIEConfig:
         self.temporary_download_path = os.path.join(os.path.dirname(__file__), '../tmp')
         os.makedirs(self.temporary_download_path, exist_ok=True)
 
+    @property
+    def bbdd_engine(self):
+        if not self._bbdd_engine:
+            self._bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        return self._bbdd_engine
+    
+
     def get_lista_UPs(self, UP_ids: Optional[List[int]] = None) -> Tuple[List[str], Dict[str, int]]:
         """
         Get the list of programming units from the database.
@@ -40,6 +47,8 @@ class OMIEConfig:
         Returns:
             Tuple[List[str], Dict[str, int]]: List of programming unit names and dictionary mapping names to IDs
         """
+        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+
         # Build the WHERE clause for filtering by region and optionally by UP_ids
         where_clause = 'a.region = "ES"'
         if UP_ids:
@@ -67,6 +76,8 @@ class OMIEConfig:
         Returns:
             pd.DataFrame: DataFrame with error data containing dates and error types
         """
+        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+
         # Use DatabaseUtils.read_table to fetch error data
         df_errores = DatabaseUtils.read_table(
             self.bbdd_engine,
