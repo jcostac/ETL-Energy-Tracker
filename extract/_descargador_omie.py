@@ -1,209 +1,473 @@
 import requests
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import pandas as pd
 import zipfile
 import os
-import time
-
-class OMIEDownloader:
-    """Base class for downloading data from OMIE"""
-    
+import pretty_errors
+from pathlib import Path
+import sys
+# Get the absolute path to the project root directory
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT))
+# Use absolute imports
+from configs.omie_config import DiarioConfig, IntraConfig, IntraContinuoConfig
+ 
+class OMIEDescarga:
+    """
+    Base class for downloading OMIE program data files for intradiario and diario.
+    """
+ 
     def __init__(self):
-        """Initialize the OMIE downloader"""
-        # Temporary download path
-        self.temporary_download_path = os.path.join(os.path.dirname(__file__), '../tmp')
-        os.makedirs(self.temporary_download_path, exist_ok=True)
-    
-    def _download_file(self, base_url: str, file_name_prefix: str, year: int, month: int) -> str:
+        self.tracking_folder = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "downloads", "tracking")
+        )
+        self.config = None
+           
+    def descarga_datos_omie_mensuales(self, month: int = None, year: int = None, months_ago: int = 4) -> None:
         """
-        Download a file for a specific month.
-
-        Args:
-            base_url (str): The base URL for the download.
-            file_name_prefix (str): The prefix for the file name.
-            year (int): Year to download.
-            month (int): Month to download.
-
-        Returns:
-            str: Path to the downloaded zip file.
+        Downloads the 'curva agregada de oferta y demanda' for the latest available full month (current month - 4).
+        The file is saved with a prefix indicating the type (e.g., 'diario_' or 'intradiario_').
+        Returns processed data as a CSV.
         """
-        file_name = f"{file_name_prefix}_{year}{str(month).zfill(2)}"
-        address = f"{base_url}{file_name}.zip"
-        zip_path = f"{self.temporary_download_path}/{file_name}.zip"
-        
-        print(f"Downloading file for {year}-{month:02d} from {address}")
-        resp = requests.get(address)
-        
-        with open(zip_path, "wb") as fd:
-            fd.write(resp.content)
-        
-        print(f"Downloaded zip file to {zip_path}")
-        return zip_path
-
-    def _extract_file_from_zip(self, zip_path: str, file_name_to_extract: str) -> str:
-        """
-        Extract a specific file from a zip archive.
-
-        Args:
-            zip_path (str): Path to the zip file.
-            file_name_to_extract (str): The name of the file to extract from the zip.
-            
-        Returns:
-            str: Path to the extracted file, or None if extraction fails.
-        """
-        extracted_file_path = f"{self.temporary_download_path}/{file_name_to_extract}"
-        
-        try:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extract(file_name_to_extract, self.temporary_download_path)
-            
-            print(f"Extracted file: {file_name_to_extract}")
-            return extracted_file_path
-        except KeyError:
-            print(f"File {file_name_to_extract} not found in zip.")
-            return None
-        except Exception as e:
-            print(f"Error extracting file: {e}")
-            return None
-
-    def _read_data_from_file(self, file_path: str) -> pd.DataFrame:
-        """
-        Read data from a CSV file.
-
-        Args:
-            file_path (str): Path to the CSV file.
-
-        Returns:
-            pd.DataFrame: Raw data from the file.
-        """
-        if not file_path or not os.path.exists(file_path):
-            return pd.DataFrame()
-        
-        try:
-            df = pd.read_csv(file_path, sep=";", skiprows=2, encoding='latin-1')
-            return df
-        except Exception as e:
-            print(f"Error reading file {file_path}: {e}")
-            return pd.DataFrame()
-    
-    def cleanup_files(self, file_name: str) -> None:
-        """
-        Clean up temporary files after processing
-        
-        Args:
-            file_name (str): Base name of the files to clean up
-        """
-        # Implementation to be completed based on specific file patterns
-        for attempt in range(3):  # Try up to 3 times
+ 
+        #get the date for which we have a complete month of data (check if it is at least todays month -4)
+        target_date = self._date_validation(month, year, months_ago)
+ 
+        # Format the year and month as a string with leading zeros if necessary ex: 202504
+        year_month = f"{target_date.year}{str(target_date.month).zfill(2)}"
+ 
+        # Format the filename using the year_month string ex: curva_pbc_uof_202504.zip
+        filename = self.filename_pattern.format(year_month=year_month)
+ 
+        # Construct the full URL for the file ex: https://www.omie.es/es/file-download?parents=curva_pbc_uof&filename=curva_pbc_uof_202504.zip
+        url = f"{self.base_url}{filename}"
+ 
+ 
+        response = requests.get(url)
+ 
+        if response.status_code == 200:
+            # Save the zip file to tracking folder
+            temp_zip_filename = f"{self.mercado}_{filename}"
+            temp_zip_path = self._save_file(temp_zip_filename, response.content, self.tracking_folder)
+ 
+            # Process the zip file
             try:
-                if os.path.exists(file_name):
-                    os.remove(file_name)
-                break
-            except PermissionError:
-                print(f"File {file_name} is in use. Attempt {attempt + 1} of 3.")
-                time.sleep(1)  # Wait for 1 second before retrying
+                with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                    file_list = zip_ref.namelist()
+ 
+ 
+                    # Initialize an empty list to store data from each curva agregada
+                    all_dfs = []
+ 
+                    # Process each file in the zip
+                    for file in file_list:
+                        with zip_ref.open(file) as f:
+ 
+                            # Read the CSV data
+                            df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
+ 
+                            # Process the dataframe
+                            df = self._process_df(df, file)
+ 
+                            # Add the dataframe to our list
+                            all_dfs.append(df)
+ 
+                    # Concatenate all dataframes into a single monthly dataframe
+                    if all_dfs:
+                        monthly_df = pd.concat(all_dfs, ignore_index=True)
+                        # Save the concatenated data as a single CSV in the tracking folder
+                        csv_filename = f"volumenes_omie.csv"
+                        self._save_file(csv_filename, monthly_df, self.tracking_folder)
+                    else:
+                        print(f"No data files found in {filename}")
+ 
             except Exception as e:
-                print(f"Error removing file {file_name}: {str(e)}")
-                break
-
-class IntraOMIEDownloader(OMIEDownloader):
-    """Downloader for intraday market data from OMIE"""
-    
+                print(f"Error processing {file}: {e}")
+                raise e
+ 
+            finally:
+                # Clean up the temporary zip file
+                os.remove(temp_zip_path)
+ 
+        else:
+            raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
+       
+        breakpoint()
+ 
+    def descarga_datos_omie_latest_day(self, month: int = None, year: int = None, months_ago: int = 3) -> None:
+        """
+        Downloads the 'curva agregada de oferta y demanda' for the latest available day of the last available day of the month (current month - 3).
+        """
+ 
+        target_date = self._date_validation(month, year, months_ago)
+ 
+        # Format the year and month as a string with leading zeros if necessary ex: 202504
+        year_month = f"{target_date.year}{str(target_date.month).zfill(2)}"
+ 
+        # Format the filename using the year_month string ex: curva_pbc_uof_202504.zip
+        filename = self.filename_pattern.format(year_month=year_month)
+ 
+        # Construct the full URL for the file ex: https://www.omie.es/es/file-download?parents=curva_pbc_uof&filename=curva_pbc_uof_202504.zip
+        url = f"{self.base_url}{filename}"
+ 
+ 
+        response = requests.get(url)
+ 
+        if response.status_code == 200:
+            # Save the zip file to tracking folder
+            temp_zip_filename = f"{self.mercado}_{filename}"
+            temp_zip_path = self._save_file(temp_zip_filename, response.content, self.tracking_folder)
+ 
+            # Process the zip file
+            try:
+                with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                    file_list = zip_ref.namelist()
+ 
+ 
+                    # Initialize an empty list to store data from each curva agregada
+                    all_dfs = []
+ 
+                    # get the latest file by date created in the zip
+                    latest_file = max(file_list, key=lambda x: os.path.getctime(os.path.join(temp_zip_path, x)))
+ 
+                    #get latest file date
+                    latest_file_date = self._extract_date_from_filename(latest_file)
+ 
+                    #get error dates
+                    error_dates = self.config.get_error_data()['fecha']
+ 
+                    #do not process files that have an error
+                    if latest_file_date in error_dates:
+                        print(f"Latest file on {latest_file_date} has an error. Skipping...")
+                        return
+ 
+ 
+                    # Process each file in the zip
+                    with zip_ref.open(latest_file) as f:
+ 
+                            # Read the CSV data
+                            df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
+ 
+                            # Process the dataframe
+                            df = self._process_df(df, latest_file)
+ 
+                            # Add the dataframe to our list
+                            all_dfs.append(df)
+ 
+                    # Concatenate all dataframes into a single monthly dataframe
+                    if all_dfs:
+                        monthly_df = pd.concat(all_dfs, ignore_index=True)
+                        # Save the concatenated data as a single CSV in the tracking folder
+                        csv_filename = f"volumenes_omie.csv"
+                        self._save_file(csv_filename, monthly_df, self.tracking_folder)
+                    else:
+                        print(f"No data files found in {filename}")
+ 
+            except Exception as e:
+                print(f"Error processing {latest_file}: {e}")
+                raise e
+ 
+            finally:
+                # Clean up the temporary zip file
+                os.remove(temp_zip_path)
+ 
+        else:
+            raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
+ 
+        breakpoint()
+   
+    def descarga_omie_datos(self, fecha_inicio: str, fecha_fin: str) -> dict:
+        """
+        Descarga los datos diarios de OMIE para un rango de fechas.
+       
+        Args:
+            fecha_inicio (str): Start date in format YYYY-MM-DD
+            fecha_fin (str): End date in format YYYY-MM-DD
+           
+        Returns:
+            dict: Dictionary with monthly data containing files for the specified days
+        """
+        # Validate dates
+        start_date, end_date = self._date_validation(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
+       
+        # Get all months in range
+        current_date = start_date.replace(day=1)
+        end_month = end_date.replace(day=1)
+       
+        # Dictionary to store data per month
+        monthly_data = {}
+ 
+        # Get error data
+       
+        # Download data for each month in the range
+        while current_date <= end_month:
+            year = current_date.year
+            month = current_date.month
+           
+            # Format the year and month for filename
+            year_month = f"{year}{str(month).zfill(2)}"
+           
+            # Format the filename using the year_month string
+            filename = self.filename_pattern.format(year_month=year_month)
+           
+            # Construct the full URL for the file
+            url = f"{self.base_url}{filename}"
+           
+            print(f"Downloading {filename} for {year_month}...")
+            response = requests.get(url)
+           
+            if response.status_code == 200:
+                # Save the zip file to tracking folder
+                temp_zip_filename = f"{self.mercado}_{filename}"
+                temp_zip_path = self._save_file(temp_zip_filename, response.content, self.tracking_folder)
+               
+                try:
+                    with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                        file_list = zip_ref.namelist()
+                       
+                        # Filter files for the requested days ie store files that need to be read from the zip
+                        filtered_files = []
+                        for file in file_list:
+                            try:
+                                file_date = self._extract_date_from_filename(file)
+                               
+                                #do not process files that have an error
+                                error_dates = self.config.get_error_data()['fecha']
+ 
+                                # Check if the file date is within the range of dates
+                                if (start_date <= file_date <= end_date) and (file_date not in error_dates):
+                                    filtered_files.append(file)
+ 
+                            except ValueError:
+                                # If date parsing fails, skip this file
+                                continue
+                       
+                        # If there are files to be read from the zip, process them
+                        if filtered_files:
+                            monthly_data[year_month] = []
+                           
+                            # Process the filtered files
+                            for file in filtered_files:
+                                with zip_ref.open(file) as f:
+                                    # Read the CSV data
+                                    df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
+                                   
+                                    # Process the dataframe
+                                    processed_df = self._process_df(df, file)
+                                   
+                                    # Store the processed dataframe in the year_month key
+                                    monthly_data[year_month].append(processed_df)
+                           
+                            print(f"Processed {len(filtered_files)} files for {year_month}")
+                        else:
+                            print(f"No matching files found in {filename} for the date range")
+               
+                except Exception as e:
+                    print(f"Error processing {filename}: {e}")
+                    raise e
+               
+                finally:
+                    # Clean up the temporary zip file
+                    os.remove(temp_zip_path)
+           
+            else:
+                print(f"Failed to download {filename}. Status code: {response.status_code}")
+           
+            # Move to next month
+            current_date = current_date + relativedelta(months=1)
+       
+        return monthly_data
+   
+    def _process_df(self, df: pd.DataFrame, file_name: str = None) -> pd.DataFrame:
+        """
+        Process the OMIE dataframe to standardize column names and data types.
+       
+        Args:
+            df (pd.DataFrame): Raw dataframe from OMIE CSV file
+            file_name (str): Optional filename to extract session info for intraday market
+           
+        Returns:
+            pd.DataFrame: Processed dataframe with standardized columns
+        """
+        # Process energy column
+        if 'Energía Compra/Venta' in df.columns:
+            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace('.', '')
+            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.')
+            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].astype(float)
+ 
+        # Process date column
+        if 'Fecha' in df.columns:
+            df['Fecha'] = pd.to_datetime(df['Fecha'], format="%d/%m/%Y")
+ 
+        # Add session column for Intradiario if filename provided
+        if self.mercado == "intra":
+            # Extract session from filename (last two digits before .csv)
+            session_str = file_name[-6:-4]
+            if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
+                df['sesion'] = int(session_str)
+                df["sesion"] = df["sesion"].astype("Int64")
+ 
+        if self.mercado == "intra_continuo":
+ 
+            pass
+ 
+        # Drop any completely empty columns
+        df = df.dropna(axis=1, how='all')
+ 
+        return df
+   
+    def _date_validation(self, month: int = None, year: int = None, months_ago: int = 4,
+                         fecha_inicio: str = None, fecha_fin: str = None) -> datetime:
+        """
+        Validate the date provided by the user.
+       
+        Args:
+            month (int, optional): Month number (1-12)
+            year (int, optional): Year (e.g., 2025)
+            months_ago (int, optional): Number of months ago to check against
+            fecha_inicio (str, optional): Start date in format YYYY-MM-DD
+            fecha_fin (str, optional): End date in format YYYY-MM-DD
+           
+        Returns:
+            datetime: Validated target date
+        """
+        # Set minimum allowed date (93 days before current date)
+        min_allowed_date = datetime.today() - relativedelta(days=93)
+       
+        # Case 1: Validating fecha_inicio and fecha_fin
+        if fecha_inicio and fecha_fin:
+            start_date = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+            end_date = datetime.strptime(fecha_fin, "%Y-%m-%d")
+           
+            # Validate dates
+            if end_date < start_date:
+                raise ValueError("End date must be after start date")
+           
+            if end_date > min_allowed_date:
+                raise ValueError(f"End date must be at least 93 days before current date (before {min_allowed_date.strftime('%Y-%m-%d')})")
+           
+            return start_date, end_date
+       
+        # Case 2: Validating month and year
+        elif month and year:
+            target_date = datetime.strptime(f"{year}{str(month).zfill(2)}", "%Y%m")
+            if datetime(target_date.year, target_date.month, 1) > min_allowed_date.replace(day=1):
+                raise ValueError(f"The month and year provided are not valid. The month must be at least 93 days before current date.")
+            return target_date
+       
+        # Case 3: Default to months_ago from current date
+        else:
+            target_date = datetime.today()
+            target_date = target_date - relativedelta(months=months_ago)
+            return target_date
+ 
+    def _save_file(self, filename, content, directory):
+        """
+        Save the file to the specified directory.
+        If directory is not provided, use the default directory.
+        """
+ 
+        # Create the directory if it doesn't exist
+        os.makedirs(directory, exist_ok=True)
+ 
+        try:
+            # Save the file
+            if isinstance(content, bytes):
+                with open(f"{directory}/{filename}", "wb") as f:
+                    f.write(content)
+ 
+            # Save the dataframe as a CSV
+            elif isinstance(content, pd.DataFrame):
+                content.to_csv(f"{directory}/{filename}", index=False, encoding='utf-8')
+ 
+            # Save the string as a text file
+            else:
+                with open(f"{directory}/{filename}", "w", encoding='utf-8') as f:
+                    f.write(content)
+ 
+            print(f"File saved: {directory}/{filename}")
+            return f"{directory}/{filename}"
+ 
+        except Exception as e:
+            print(f"Error saving file: {e}")
+            raise e
+ 
+    def _extract_date_from_filename(self, filename: str) -> datetime:
+        """
+        Extract date from OMIE filename based on market type.
+       
+        Args:
+            filename (str): The filename to extract date from (e.g., 'curva_pbc_uof_20250105.1' or 'curva_pbc_uof_2025010503')
+           
+        Returns:
+            datetime: The extracted date
+           
+        Raises:
+            ValueError: If the date cannot be extracted from the filename
+        """
+        # Get the last part after underscore which contains the date
+        date_str = filename.split('_')[-1]
+       
+        try:
+            if self.mercado == "intra":
+                # For intra market, filename has format YYYYMMDDXX where XX is market session
+                if len(date_str) == 10:  # YYYYMMDDXX format
+                    date_str = date_str[:8]  # Take only YYYYMMDD
+                else:
+                    raise ValueError(f"Invalid intra market filename format: {filename}")
+            else:
+                # For other markets, handle format with .1
+                if '.' in date_str:
+                    date_str = date_str.split('.')[0]  # Remove the .1 part
+                elif len(date_str) != 8:  # Should be YYYYMMDD
+                    raise ValueError(f"Invalid filename format: {filename}")
+           
+            return datetime.strptime(date_str, "%Y%m%d")
+           
+        except ValueError as e:
+            raise ValueError(f"Failed to extract date from filename {filename}: {str(e)}")
+ 
+class DiarioOMIE(OMIEDescarga):
+    """
+    Downloader for OMIE Diario data curvas agregadas de oferta y demanda mensuales.
+    """
+ 
     def __init__(self):
-        """Initialize the intraday OMIE downloader"""
         super().__init__()
-        self.intra_url_base = "https://www.omie.es/es/file-download?parents=curva_pibc_uof&filename="
-        self.file_prefix = "curva_pibc_uof"
-    
-    def download_intra_file(self, year: int, month: int) -> str:
-        """
-        Download intraday file for a specific month
-        
-        Args:
-            year (int): Year to download
-            month (int): Month to download
-            
-        Returns:
-            str: Path to the downloaded zip file
-        """
-        return self._download_file(self.intra_url_base, self.file_prefix, year, month)
-    
-    def extract_session_file(self, zip_path: str, year: int, month: int, day: int, session: int) -> str:
-        """
-        Extract specific session file from zip
-        
-        Args:
-            zip_path (str): Path to zip file
-            year (int): Year for the session file
-            month (int): Month for the session file
-            day (int): Day for the session file
-            session (int): Session number (1-6)
-            
-        Returns:
-            str: Path to the extracted session file
-        """
-        file_name_base = f"{self.file_prefix}_{year}{str(month).zfill(2)}"
-        session_file_name = file_name_base + str(day).zfill(2) + str(session).zfill(2) + ".1"
-        return self._extract_file_from_zip(zip_path, session_file_name)
-    
-    def get_intra_data(self, session_path: str) -> pd.DataFrame:
-        """
-        Get intraday data from session file
-        
-        Args:
-            session_path (str): Path to session file
-            
-        Returns:
-            pd.DataFrame: Raw data from the session file
-        """
-        return self._read_data_from_file(session_path)
-
-class ContinuoOMIEDownloader(OMIEDownloader):
-    """Downloader for continuous market data from OMIE"""
-    
+        self.config = DiarioConfig()
+        self.base_url = self.config.base_url
+        self.mercado = self.config.mercado
+        self.filename_pattern = self.config.filename_pattern
+ 
+class IntradiarioOMIE(OMIEDescarga):
+    """
+    Downloader for OMIE Intradiario data curvas agregadas de oferta y demanda mensuales.
+    """
+ 
     def __init__(self):
-        """Initialize the continuous market OMIE downloader"""
         super().__init__()
-        self.continuo_url_base = "https://www.omie.es/es/file-download?parents=trades&filename="
-        self.file_prefix = "trades"
-    
-    def download_continuo_file(self, year: int, month: int) -> str:
-        """
-        Download continuous market file for a specific month
-        
-        Args:
-            year (int): Year to download
-            month (int): Month to download
-            
-        Returns:
-            str: Path to the downloaded zip file
-        """
-        return self._download_file(self.continuo_url_base, self.file_prefix, year, month)
-    
-    def extract_day_file(self, zip_path: str, year: int, month: int, day: int) -> str:
-        """
-        Extract specific day file from zip
-        
-        Args:
-            zip_path (str): Path to zip file
-            year (int): Year for the day file
-            month (int): Month for the day file
-            day (int): Day for the day file
-            
-        Returns:
-            str: Path to the extracted day file
-        """
-        file_name_base = f"{self.file_prefix}_{year}{str(month).zfill(2)}"
-        day_file_name = file_name_base + str(day).zfill(2) + ".1"
-        return self._extract_file_from_zip(zip_path, day_file_name)
-    
-    def get_continuo_data(self, day_path: str) -> pd.DataFrame:
-        """
-        Get continuous market data from day file
-        
-        Args:
-            day_path (str): Path to day file
-            
-        Returns:
-            pd.DataFrame: Raw data from the day file
-        """
-        return self._read_data_from_file(day_path)
+        self.config = IntraConfig()
+        self.base_url = self.config.base_url
+        self.mercado = self.config.mercado
+        self.filename_pattern = self.config.filename_pattern
+ 
+class ContinuoOMIE(OMIEDescarga):
+ 
+    "Downloader for OMIE Continuo data curvas agregadas de oferta y demanda mensuales."
+ 
+    def __init__(self):
+        super().__init__()
+        self.config = IntraContinuoConfig()
+        self.base_url = self.config.base_url
+        self.mercado = self.config.mercado
+        self.filename_pattern = self.config.filename_pattern
+ 
+ 
+if __name__ == "__main__":
+    diario = DiarioOMIE()
+    diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-31")
+ 
+    intradiario = IntradiarioOMIE()
+    intradiario.descarga_datos_omie_latest_day()
+    intradiario.descarga_datos_omie_mensuales()

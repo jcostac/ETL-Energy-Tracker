@@ -36,7 +36,6 @@ class OMIEConfig:
             self._bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
         return self._bbdd_engine
     
-
     def get_lista_UPs(self, UP_ids: Optional[List[int]] = None) -> Tuple[List[str], Dict[str, int]]:
         """
         Get the list of programming units from the database.
