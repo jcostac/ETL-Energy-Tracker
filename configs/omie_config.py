@@ -1,90 +1,116 @@
-import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from utilidades.db_utils import DatabaseUtils
 import pandas as pd
-from typing import Optional, List, Tuple, Dict
-
+import pretty_errors
+import sys
+from pathlib import Path
+ 
+# Get the absolute path to the project root directory
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT))
+ 
+from utilidades.db_utils import DatabaseUtils
+ 
+ 
 class OMIEConfig:
-    """
-    Configuration for OMIE data extraction
-    """
-    
+ 
     def __init__(self):
-        """Initialize OMIE configuration"""
-        self._bbdd_engine = None
-        
-        # ID mercado mapping
-        self.id_mercado_map = {
-            "diario": "1",
-            "continuo": "21",
-            # Intra sessions will be mapped based on session number
-            # e.g., "intra_1": "2", "intra_2": "3", etc.
-        }
-        
-        # Define the base URLs for OMIE data
-        self.intra_url_base = "https://www.omie.es/es/file-download?parents=curva_pibc_uof&filename="
-        self.continuo_url_base = "https://www.omie.es/es/file-download?parents=trades&filename="
-        
-        # Temporary download path
-        self.temporary_download_path = os.path.join(os.path.dirname(__file__), '../tmp')
-        os.makedirs(self.temporary_download_path, exist_ok=True)
-
+        self._base_url = ""
+        self._mercado = ""
+        self._filename_pattern = ""
+        self._engine = ""
+ 
     @property
-    def bbdd_engine(self):
-        if not self._bbdd_engine:
-            self._bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
-        return self._bbdd_engine
-    
-    def get_lista_UPs(self, UP_ids: Optional[List[int]] = None) -> Tuple[List[str], Dict[str, int]]:
-        """
-        Get the list of programming units from the database.
-        
-        Args:
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            
-        Returns:
-            Tuple[List[str], Dict[str, int]]: List of programming unit names and dictionary mapping names to IDs
-        """
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
-
-        # Build the WHERE clause for filtering by region and optionally by UP_ids
-        where_clause = 'a.region = "ES"'
-        if UP_ids:
-            UP_list = ", ".join([str(item) for item in UP_ids])
-            where_clause += f' AND u.id IN ({UP_list})'
-
-        # Use DatabaseUtils.read_table to fetch the data
-        df_up = DatabaseUtils.read_table(
-            self.bbdd_engine,
-            table_name="UPs u INNER JOIN Activos a ON u.activo_id = a.id",
-            columns=["u.id as id", "UP", "UOF"],
-            where_clause=where_clause
-        )
-        
-        # Extract the list of UP names and a dictionary mapping names to IDs
-        unidades = df_up['UOF'].tolist()
-        dict_unidades = dict(zip(unidades, df_up['id']))
-
-        return unidades, dict_unidades
-
+    def base_url(self):
+        return self._base_url
+ 
+    @base_url.setter
+    def base_url(self, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("base_url must be a non-empty string")
+        self._base_url = value
+ 
+    @property
+    def mercado(self):
+        return self._mercado
+ 
+    @mercado.setter
+    def mercado(self, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("mercado must be a non-empty string")
+        self._mercado = value
+ 
+    @property
+    def filename_pattern(self):
+        return self._filename_pattern
+ 
+    @filename_pattern.setter
+    def filename_pattern(self, value):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("filename_pattern must be a non-empty string")
+        if "{year_month}" not in value:
+            raise ValueError("filename_pattern must contain '{year_month}' placeholder")
+        self._filename_pattern = value
+ 
+    @property
+    def engine(self):
+        return self._engine
+ 
+    @engine.setter
+    def engine(self, engine: str):
+        if engine is None:
+            raise ValueError("Error setting engine: engine cannot be None")
+        self._engine = engine
+       
+ 
     def get_error_data(self) -> pd.DataFrame:
         """
         Get error data for OMIE files from the database.
-        
+       
         Returns:
             pd.DataFrame: DataFrame with error data containing dates and error types
         """
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
-
+       
+        self.engine = DatabaseUtils.create_engine('pruebas_BT')
+           
         # Use DatabaseUtils.read_table to fetch error data
         df_errores = DatabaseUtils.read_table(
-            self.bbdd_engine,
+            self.engine,
             table_name="Errores_i90_OMIE",
             columns=["fecha", "tipo_error"],
             where_clause='fuente_error = "omie-intra"'
         )
         # Convert 'fecha' column to date type
         df_errores['fecha'] = pd.to_datetime(df_errores['fecha']).dt.date
-
+ 
         return df_errores
+ 
+class DiarioConfig(OMIEConfig):
+    def __init__(self):
+        super().__init__()
+        self.base_url = "https://www.omie.es/es/file-download?parents=curva_pbc_uof&filename="
+        self.mercado = "diario"
+        self.filename_pattern = "curva_pbc_uof_{year_month}.zip"
+ 
+ 
+class IntraConfig(OMIEConfig):
+    def __init__(self):
+        super().__init__()
+        self.base_url = "https://www.omie.es/es/file-download?parents=curva_pibc_uof&filename="
+        self.mercado = "intra"
+        self.filename_pattern = "curva_pibc_uof_{year_month}.zip"
+ 
+ 
+class IntraContinuoConfig(OMIEConfig):
+    def __init__(self):
+        super().__init__()
+        self.base_url = f"https://www.omie.es/es/file-download?parents=trades&filename="
+        self.mercado = "intra_continuo"
+        self.filename_pattern = "trades_{year_month}.zip"
+ 
+ 
+ 
+if __name__ == "__main__":
+    config = IntraConfig()
+    config.engine = DatabaseUtils.create_engine('pruebas_BT')
+    print(config.get_error_data())
+ 
