@@ -104,24 +104,41 @@ class OMIEExtractor:
 
             try:
                 # Get data for the day using the diario downloader
-                df = self.diario_downloader.descarga_omie_datos(
+                diario_data = self.diario_downloader.descarga_omie_datos(
                     fecha_inicio_carga=day_str,
                     fecha_fin_carga=day_str
                 )
 
-                if df is not None and not df.empty:
-                    # Add ID column for raw storage
-                    df['id_mercado'] = 1  # ID for daily market
-                    
-                    self.raw_file_utils.write_raw_csv(
-                        year=year, month=month, df=df,
-                        dataset_type='volumenes_omie',
-                        mercado='diario'
-                    )
-                   
-                    print(f"✅ Successfully saved raw diario data for {day_str}")
-                else:
-                    print(f" ⚠️ No diario data found for {day_str}. Nothing was saved to raw folder.")
+                #diario data is a dict with keys as months and values as the dataframes for a market
+                for month_data in diario_data.values():
+
+                    # month_data is a list of DataFrames, so we need to iterate through it
+                    if isinstance(month_data, list):
+                        for df in month_data:
+                            if df is not None and not df.empty:
+                                # Add ID column for raw storage
+                                df['id_mercado'] = 1  # ID for daily market
+                                
+                                self.raw_file_utils.write_raw_csv(
+                                    year=year, month=month, df=df,
+                                    dataset_type='volumenes_omie',
+                                    mercado='diario'
+                                )
+                            
+                                print(f"✅ Successfully saved raw diario data for {day_str}")
+                            else:
+                                print(f" ⚠️ No diario data found for {day_str}. Nothing was saved to raw folder.")
+                    else:
+                        # Handle case where it's directly a DataFrame (fallback)
+                        df = month_data
+                        if df is not None and not df.empty:
+                            df['id_mercado'] = 1
+                            self.raw_file_utils.write_raw_csv(
+                                year=year, month=month, df=df,
+                                dataset_type='volumenes_omie',
+                                mercado='diario'
+                            )
+                            print(f"✅ Successfully saved raw diario data for {day_str}")
 
             except Exception as e:
                 error_msg = f"Error downloading diario data for {day_str}: {e}"
@@ -163,29 +180,27 @@ class OMIEExtractor:
 
             try:
                 # Get data for the day using the intra downloader
-                df = self.intra_downloader.descarga_omie_datos(
+                intra_data = self.intra_downloader.descarga_omie_datos(
                     fecha_inicio_carga=day_str,
                     fecha_fin_carga=day_str,
                     intras =intra_lst
                 )
 
-                if df is not None and not df.empty:
-                    # Add ID column for raw storage
-                    # For intra session 2, can be either 3 or 8 based on date
-                    if df['sesion'].iloc[0] == 2:
-                        df['id_mercado'] = 3 if day.date() <= date(2024, 6, 13) else 8
-                    else:
-                        df['id_mercado'] = df['sesion'] + 1
-                    
-                    self.raw_file_utils.write_raw_csv(
-                            year=year, month=month, df=df,
-                            dataset_type='volumenes_omie',
-                            mercado='intra'
-                        )
-                   
-                    print(f"✅ Successfully saved raw intra data for {day_str}")
-                else:
-                    print(f" ⚠️ No intra data found for {day_str}. Nothing was saved to raw folder.")
+                for month_data in intra_data.values():
+                    if isinstance(month_data, list):
+                        for df in month_data:
+                            if df is not None and not df.empty:
+                                # Add ID column for raw storage
+                                df['id_mercado'] = df['sesion'] + 1 #in mercaods mapping sesion 1 is id mercado 2 an so on...
+                                self.raw_file_utils.write_raw_csv(
+                                        year=year, month=month, df=df,
+                                        dataset_type='volumenes_omie',
+                                        mercado='intra'
+                                    )
+                            
+                                print(f"✅ Successfully saved raw intra data for {day_str}")
+                            else:
+                                print(f" ⚠️ No intra data found for {day_str}. Nothing was saved to raw folder.")
 
             except Exception as e:
                 print(f"  ❌ Error downloading intra data for {day_str}: {e}")
@@ -219,23 +234,26 @@ class OMIEExtractor:
 
             try:
                 # Get data for the day using the continuo downloader
-                df = self.continuo_downloader.descarga_omie_datos(
+                continuo_data = self.continuo_downloader.descarga_omie_datos(
                     fecha_inicio_carga=day_str,
                     fecha_fin_carga=day_str
                 )
 
-                if df is not None and not df.empty:
-                    # Add ID column for raw storage
-                    df['id_mercado'] = 21  # ID for continuous market
-                    
-                    self.raw_file_utils.write_raw_csv(
-                        year=year, month=month, df=df,
-                        dataset_type='volumenes_omie',
-                        mercado='continuo'
-                    )
-                    print(f"✅ Successfully saved raw continuo data for {day_str}")
-                else:
-                    print(f" ⚠️ No continuo data found for {day_str}. Nothing was saved to raw folder.")
+                for month_data in continuo_data.values():
+                    if isinstance(month_data, list):
+                        for df in month_data:
+                            if df is not None and not df.empty:
+                                # Add ID column for raw storage
+                                df['id_mercado'] = 21  # ID for continuous market
+                                
+                                self.raw_file_utils.write_raw_csv(
+                                    year=year, month=month, df=df,
+                                    dataset_type='volumenes_omie',
+                                    mercado='continuo'
+                                )
+                                print(f"✅ Successfully saved raw continuo data for {day_str}")
+                            else:
+                                print(f" ⚠️ No continuo data found for {day_str}. Nothing was saved to raw folder.")
 
             except Exception as e:
                 print(f"  ❌ Error downloading continuo data for {day_str}: {e}")
@@ -313,3 +331,8 @@ class OMIEExtractor:
                 "error": str(e)
             })
             return False
+
+if __name__ == "__main__":
+    omie_extractor = OMIEExtractor()
+    omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-01", fecha_fin_carga="2025-01-01")
+

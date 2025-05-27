@@ -90,8 +90,7 @@ class OMIEDownloader:
  
         else:
             raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
-       
-        breakpoint()
+  
  
     def descarga_datos_omie_latest_day(self, month: int = None, year: int = None, months_ago: int = 3) -> pd.DataFrame:
         """
@@ -171,7 +170,6 @@ class OMIEDownloader:
                     # Concatenate all dataframes into a single monthly dataframe
                     if all_dfs:
                         latest_day_df = pd.concat(all_dfs, ignore_index=True)
-                        breakpoint()
                         return latest_day_df
                     else:
                         print(f"No data files found in {filename}")
@@ -196,7 +194,7 @@ class OMIEDownloader:
         intras = [str(intra).zfill(2) for intra in intras]
         return intras
     
-    def descarga_omie_datos(self, fecha_inicio: str, fecha_fin: str, intras: list = None) -> dict:
+    def descarga_omie_datos(self, fecha_inicio_carga: str, fecha_fin_carga: str, intras: list = None) -> dict:
         """
         Descarga los datos diarios de OMIE para un rango de fechas.
        
@@ -208,7 +206,7 @@ class OMIEDownloader:
             dict: Dictionary with monthly data containing files for the specified days
         """
         # Validate dates
-        start_date, end_date = self._date_validation(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
+        start_date, end_date = self._date_validation(fecha_inicio=fecha_inicio_carga, fecha_fin=fecha_fin_carga)
        
         # Get all months in range
         current_date = start_date.replace(day=1)
@@ -289,7 +287,6 @@ class OMIEDownloader:
                                     monthly_data_dct[year_month].append(processed_df)
                            
                             print(f"Processed {len(filtered_files)} files for {year_month}")
-                            breakpoint()
                             return monthly_data_dct
                
                         else:
@@ -336,18 +333,18 @@ class OMIEDownloader:
         if self.mercado == "intra":
             # Extract session from filename - handle .1 extension properly
             if file_name.endswith('.1'):
-                # For files ending with .1: curva_pibc_uof_2025022503.1
-                # Session is at positions -8:-6 (the '03' part)
-                session_str = file_name[-8:-6]
+                # For files ending with .1: curva_pibc_uof_2025010102.1
+                # Session is the last 2 digits before .1
+                session_str = file_name[-4:-2]
+
             else:
-                # For files without .1 extension
-                session_str = file_name[-6:-4]
-            
-            print(f"Extracted session_str: '{session_str}'")
+                raise ValueError(f"Invalid filename format: {file_name}")
+
             
             if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
-                df['sesion'] = int(session_str)
+                df["sesion"] = int(session_str)
                 df["sesion"] = df["sesion"].astype("Int64")
+                print(f"Added [sesion] column with value: {session_str}")
             else:
                 print(f"Session '{session_str}' not in valid session list")
 
@@ -512,9 +509,13 @@ class ContinuoOMIEDownloader(OMIEDownloader):
  
  
 if __name__ == "__main__":
-   #diario = DiarioOMIEDownloader()
-   # diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01") 
+    #diario = DiarioOMIEDownloader()
+    #diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01") 
 
     intradiario = IntraOMIEDownloader()
-    intradiario.descarga_datos_omie_latest_day()
-    intradiario.descarga_datos_omie_mensuales()
+    intradiario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01")
+
+    continuo = ContinuoOMIEDownloader()
+    continuo.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01")
+    #intradiario.descarga_datos_omie_latest_day()
+    #intradiario.descarga_datos_omie_mensuales()
