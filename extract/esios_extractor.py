@@ -75,7 +75,7 @@ class ESIOSPreciosExtractor:
 
             #get datetitme range for 93 days ago to 92 days from now
             fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window) # 93 days ago
-            fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window) + timedelta(days=1) # yesterday to avoid issues with today's data
+            fecha_fin_carga_dt = fecha_inicio_carga_dt  # yesterday to avoid issues with today's data
             
             #convert to string format
             fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') 

@@ -17,9 +17,10 @@ xlrd
 openpyxl
 duckdb
 google-generativeai
-apache-airflow[celery]==2.10.5 --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.0.0/constraints-3.9.txt"
+apache-airflow[celery]==2.10.5 --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.5/constraints-3.9.txt"
 apache-airflow-providers-http
 apache-airflow-providers-fab
+graphviz
 apache-airflow-providers-common-sql
 apache-airflow-providers-mysql
-graphviz
+

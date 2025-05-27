@@ -205,3 +205,6 @@ __pycache__/
 
 #ignore root tests folder
 tests/
+
+#all sql files 
+*.sql

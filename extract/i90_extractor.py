@@ -9,7 +9,7 @@ import time
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from extract._descargador_i90 import I90Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, RestriccionesDL
+from extract._descargador_i90 import I90Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, RestriccionesDL, IntradiarioDL
 from utilidades.storage_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils
@@ -311,6 +311,7 @@ class I90VolumenesExtractor(I90Extractor):
     """
     def __init__(self):
         super().__init__()
+        self.intradiario_downloader = None #initialized in intra method with relevant day parameter passed to get correct number of intrasheets
 
     def _extract_and_save_volumenes(self, day: datetime, mercado: str, downloader) -> None:
         """Helper method to extract and save volumenes data for a given market."""
@@ -360,6 +361,10 @@ class I90VolumenesExtractor(I90Extractor):
     def extract_volumenes_diario(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'diario', self.diario_downloader)
 
+    def extract_volumenes_intradiario(self, day: datetime) -> None:
+        self.intradiario_downloader = IntradiarioDL(fecha=day)
+        self._extract_and_save_volumenes(day, 'intra', self.intradiario_downloader)
+
     def extract_volumenes_terciaria(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'terciaria', self.terciaria_downloader)
 
@@ -389,9 +394,11 @@ class I90VolumenesExtractor(I90Extractor):
         # Track success for each market
         print("\n--------- I90 Volumenes Extraction ---------")
         
+        
         # Define markets and their extraction functions
         markets = [
             ("diario", self.extract_volumenes_diario),
+            ("intra", self.extract_volumenes_intradiario),
             ("terciaria", self.extract_volumenes_terciaria),
             ("secundaria", self.extract_volumenes_secundaria),
             ("rr", self.extract_volumenes_rr),
@@ -462,7 +469,7 @@ class I90PreciosExtractor(I90Extractor):
             print(f"Error processing {mercado} precios for {day.date()}: {e}")
 
     # --- Public methods for markets with price data ---
-    # Note: Diario, Curtailment, P48 do not have get_i90_precios in their downloaders
+    # Note: Diario, Intra, Curtailment, P48 do not have get_i90_precios in their downloaders
 
     def extract_precios_secundaria(self, day: datetime) -> None:
         """
@@ -528,3 +535,5 @@ def example_usage():
     i90_volumenes_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
     i90_precios_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
 
+if __name__ == "__main__":
+    example_usage()

@@ -138,15 +138,19 @@ class RawFileUtils(StorageFileUtils):
         """
          # First remove exact duplicates across all columns
         df_before = len(df)
+        duplicates = df[df.duplicated(keep=False)]  # Get all duplicates
         df = df.drop_duplicates(keep='last')  
         exact_dups = df_before - len(df)
         
         if exact_dups > 0:
             print(f"Removed {exact_dups} exact duplicate rows")
+            print("Actual duplicates:")
+            print(duplicates.head(10))
+            print(duplicates.tail(10))
 
         return df
 
-    @deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
+    #@deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
     def write_raw_csv(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
         """
         Processes a DataFrame and saves/appends it as a CSV file in the appropriate directory structure.

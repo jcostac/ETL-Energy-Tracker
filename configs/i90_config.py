@@ -16,12 +16,29 @@ class I90Config:
 
         self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date
 
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        self._bbdd_engine = None
 
         self.id_mercado_map, self.precios_sheet, self.volumenes_sheet, self.sentido_map = self.get_id_mercado_sheet_mapping()
 
         self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temporary')
 
+    @property
+    def bbdd_engine(self):
+        if not self._bbdd_engine:
+            raise ValueError("Engine not set")
+        return self._bbdd_engine
+    
+    @bbdd_engine.setter
+    def bbdd_engine(self, engine):
+        self._bbdd_engine = engine
+        # Test if the engine is working by simply connecting and checking
+        try:
+            with self._bbdd_engine.connect() as connection:
+                connection.execute("SELECT 1")
+        except Exception as e:
+            print(f"Error in engine setting: {e}")
+            raise e
+    
     def get_id_mercado_sheet_mapping(self) -> tuple[dict[str, str], dict[str, Optional[str]], dict[str, Optional[str]], dict[str, str]]:
         """
         Obtiene el mapping de los IDs de los mercados de ESIOS y sus números de hoja correspondientes.
@@ -40,8 +57,11 @@ class I90Config:
                    Ej: {'1': '03', '2': '05', ...}
 
         """
+
+        self.bbdd_engine = DatabaseUtils.create_engine('energy_tracker')
+
         # Get all market ids where either sheet number is specified (not 0)
-        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados',
+        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'mercados_mapping',
                                                 columns=['id', 'mercado', 'sheet_i90_precios', 'sheet_i90_volumenes', 'is_quinceminutal', 'sentido'],
                                                 where_clause='(sheet_i90_volumenes != 0 OR sheet_i90_precios != 0)')
 
@@ -103,6 +123,8 @@ class I90Config:
         Returns:
             Tuple[List[str], Dict[str, int]]: List of programming unit names and dictionary mapping names to IDs
         """
+        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+
         # Build the WHERE clause for filtering by region and optionally by UP_ids
         where_clause = 'a.region = "ES"'
         if UP_ids:
@@ -138,10 +160,12 @@ class I90Config:
             mercados_list = ", ".join([str(item) for item in mercados_ids])
             where_clause += f' AND id IN ({mercados_list})'
 
+        self.bbdd_engine = DatabaseUtils.create_engine('energy_tracker')
+
         # Use DatabaseUtils.read_table to fetch the data
         df_mercados = DatabaseUtils.read_table(
             self.bbdd_engine,
-            table_name="Mercados",
+            table_name="mercados_mapping",
             columns=None,  # None means select all columns
             where_clause=where_clause
         )
@@ -161,6 +185,8 @@ class I90Config:
         Returns:
             pd.DataFrame: DataFrame with error data containing dates and error types
         """
+        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+
         # Use DatabaseUtils.read_table to fetch error data
         df_errores = DatabaseUtils.read_table(
             self.bbdd_engine,
@@ -266,6 +292,54 @@ class DiarioConfig(I90Config):
         self.market_ids: List[str] = [self.diaria_id]
 
         # get sheets of interest
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+        self.sheets_of_interest: List[str]
+        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+class IntradiarioConfig(I90Config):
+    def __init__(self, fecha):
+        """
+        Initialize the intradiario downloader with date-based market selection.
+        
+        Args:
+            fecha (datetime, optional): The date for which to configure markets.
+                                      If None, uses current date.
+        """
+        super().__init__()
+        
+        # Set the cutoff date for intra market reduction
+        self.intra_reduction_date = datetime(2024, 6, 13)
+        
+        # Use provided date or current date
+        if fecha is None:
+            raise ValueError("Fecha is required for IntradiarioConfig")
+        
+        # Get individual IDs for each Intra market (Intra 1 through Intra 7)
+        self.intra_1_id: str = self.id_mercado_map["Intra 1"]  # ID: 2
+        self.intra_2_id: str = self.id_mercado_map["Intra 2"]  # ID: 3  
+        self.intra_3_id: str = self.id_mercado_map["Intra 3"]  # ID: 4
+        self.intra_4_id: str = self.id_mercado_map["Intra 4"]  # ID: 5
+        self.intra_5_id: str = self.id_mercado_map["Intra 5"]  # ID: 6
+        self.intra_6_id: str = self.id_mercado_map["Intra 6"]  # ID: 7
+        self.intra_7_id: str = self.id_mercado_map["Intra 7"]  # ID: 8
+
+        # Determine which markets to include based on the date
+        if fecha >= self.intra_reduction_date:
+            # After June 13, 2024: only use Intra 1, 2, and 3
+            self.market_ids: List[str] = [
+                self.intra_1_id, self.intra_2_id, self.intra_3_id
+            ]
+            print(f"Using intra markets 1-3 (after intra reduction date) for date {fecha.date()}")
+        else:
+            # Before June 13, 2024: use all 7 intra markets
+            self.market_ids: List[str] = [
+                self.intra_1_id, self.intra_2_id, self.intra_3_id, 
+                self.intra_4_id, self.intra_5_id, self.intra_6_id, self.intra_7_id
+            ]
+            print(f"Using intra markets 1-7 (before intra reduction date) for date {fecha.date()}")
+
+        # Get sheets of interest based on the selected markets
         self.volumenes_sheets: List[str]
         self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
@@ -525,7 +599,6 @@ def print_config_info():
             continue
 
         print("\nDetailed Market Information:")
-        print(f"{'ID':<6} {'Sentido':<10} {'Redespacho Filter'}")
         print(f"{'-'*6} {'-'*10} {'-'*50}")
         for mid in market_ids:
             # Access sentido_map from the instance (inherited or overridden)
