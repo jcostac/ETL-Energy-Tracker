@@ -334,5 +334,5 @@ class OMIEExtractor:
 
 if __name__ == "__main__":
     omie_extractor = OMIEExtractor()
-    omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-01", fecha_fin_carga="2025-01-01")
+    omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-01", fecha_fin_carga="2025-01-03")
 
