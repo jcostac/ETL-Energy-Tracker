@@ -19,4 +19,4 @@ DATA_LAKE_BASE_PATH = DATA_LAKE_BASE_PATH_DEV if os.getenv('DEV') == 'True' else
 DB_URL = lambda database: f"mysql+pymysql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{database}"
 
 #valid dataset types for raw and processed files
-VALID_DATASET_TYPES = ['precios', 'volumenes_i90', 'volumenes_i3', 'ingresos', "precios_i90"]
+VALID_DATASET_TYPES = ['precios', 'volumenes_i90', 'volumenes_i3', 'ingresos', "precios_i90", "volumenes_omie"]

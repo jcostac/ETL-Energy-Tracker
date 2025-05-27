@@ -17,11 +17,17 @@ from utilidades.db_utils import DatabaseUtils
 class ESIOSConfig:
 
     def __init__(self):
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        self._bbdd_engine = None
         self.indicator_id_map, self.market_id_map = self.get_market_id_mapping() #returns a tuple of two dictionaries
 
         #valid markets for which we get esios precios data --> useful to check if ESIOS data is available for a market in processing
         self.esios_precios_markets = ['diario', 'intra', 'secundaria', 'terciaria', 'rr']
+
+    @property
+    def bbdd_engine(self):
+        if not self._bbdd_engine:
+            self._bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        return self._bbdd_engine
 
     def get_market_id_mapping(self) -> tuple[dict[str, str], dict[str, str]]:
         """
