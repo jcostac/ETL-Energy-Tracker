@@ -150,8 +150,7 @@ class OMIEDownloader:
                             # Process the dataframe
                             df = self._process_df(df, latest_file)
  
-                            # Add the dataframe to our list
-                            all_dfs.append(df)
+                            
  
                     # Concatenate all dataframes into a single monthly dataframe
                     if all_dfs:
@@ -170,17 +169,24 @@ class OMIEDownloader:
  
         else:
             raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
- 
-        breakpoint()
    
-    def descarga_omie_datos(self, fecha_inicio: str, fecha_fin: str) -> dict:
+    def _check_intras(self, intras: list) -> list:
+        """
+        Check if the intras are valid.If they pass an int convert to str ie 1-> "01"
+        """
+        if intras is None:
+            return None
+        intras = [str(intra).zfill(2) for intra in intras]
+        return intras
+    
+    def descarga_omie_datos(self, fecha_inicio: str, fecha_fin: str, intras: list = None) -> dict:
         """
         Descarga los datos diarios de OMIE para un rango de fechas.
        
         Args:
             fecha_inicio (str): Start date in format YYYY-MM-DD
             fecha_fin (str): End date in format YYYY-MM-DD
-           
+            intras (list): List of intras to download, default None is all available intras
         Returns:
             dict: Dictionary with monthly data containing files for the specified days
         """
@@ -225,6 +231,15 @@ class OMIEDownloader:
                         # Filter files for the requested days ie store files that need to be read from the zip
                         filtered_files = []
                         for file in file_list:
+
+                            #filter by intras we want to donwload if needed
+                            if intras is not None:
+                                #check intras are valid
+                                intras = self._check_intras(intras)
+                                #if intras is not None, filter files to process by intras
+                                if file[-6:-4] not in intras:
+                                    print(f"Skipping {file} because it is not the intras list provided for download")
+                                    continue
                             try:
                                 file_date = self._extract_date_from_filename(file)
                                
@@ -251,7 +266,7 @@ class OMIEDownloader:
                                     df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
                                    
                                     # Process the dataframe
-                                    processed_df = self._process_df(df, file)
+                                    processed_df = self._process_df(df, file, intras)
                                    
                                     # Store the processed dataframe in the year_month key
                                     monthly_data_dct[year_month].append(processed_df)
@@ -280,14 +295,14 @@ class OMIEDownloader:
        
         return monthly_data_dct
    
-    def _process_df(self, df: pd.DataFrame, file_name: str = None) -> pd.DataFrame:
+    def _process_df(self, df: pd.DataFrame, file_name: str = None, intras: list = None) -> pd.DataFrame:
         """
         Process the OMIE dataframe to standardize column names and data types.
        
         Args:
             df (pd.DataFrame): Raw dataframe from OMIE CSV file
             file_name (str): Optional filename to extract session info for intraday market
-           
+            intras (list): List of intras to filter df by, default None is all available intras
         Returns:
             pd.DataFrame: Processed dataframe with standardized columns
         """
@@ -308,9 +323,10 @@ class OMIEDownloader:
             if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
                 df['sesion'] = int(session_str)
                 df["sesion"] = df["sesion"].astype("Int64")
+
  
         if self.mercado == "intra_continuo":
- 
+            
             pass
  
         # Drop any completely empty columns

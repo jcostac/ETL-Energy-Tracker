@@ -113,23 +113,13 @@ class OMIEExtractor:
                     # Add ID column for raw storage
                     df['id_mercado'] = 1  # ID for daily market
                     
-                    # Determine file format based on environment
-                    dev, prod = self.env_utils.check_dev_env()
-                    if dev and not prod:
-                        environment = "DEVELOPMENT "
-                        self.raw_file_utils.write_raw_csv(
-                            year=year, month=month, df=df,
-                            dataset_type='volumenes_omie',
-                            mercado='diario'
-                        )
-                    else:
-                        environment = "PRODUCTION "
-                        self.raw_file_utils.write_raw_parquet(
-                            year=year, month=month, df=df,
-                            dataset_type='volumenes_omie',
-                            mercado='diario'
-                        )
-                    print(f"✅ Successfully saved raw diario data for {day_str} in {environment} environment")
+                    self.raw_file_utils.write_raw_csv(
+                        year=year, month=month, df=df,
+                        dataset_type='volumenes_omie',
+                        mercado='diario'
+                    )
+                   
+                    print(f"✅ Successfully saved raw diario data for {day_str}")
                 else:
                     print(f" ⚠️ No diario data found for {day_str}. Nothing was saved to raw folder.")
 
@@ -190,23 +180,13 @@ class OMIEExtractor:
                     else:
                         df['id_mercado'] = df['sesion'] + 1
                     
-                    # Determine file format based on environment
-                    dev, prod = self.env_utils.check_dev_env()
-                    if dev and not prod:
-                        environment = "DEVELOPMENT"
-                        self.raw_file_utils.write_raw_csv(
+                    self.raw_file_utils.write_raw_csv(
                             year=year, month=month, df=df,
                             dataset_type='volumenes_omie',
                             mercado='intra'
                         )
-                    else:
-                        environment = "PRODUCTION"
-                        self.raw_file_utils.write_raw_parquet(
-                            year=year, month=month, df=df,
-                            dataset_type='volumenes_omie',
-                            mercado='intra'
-                        )
-                    print(f"✅ Successfully saved raw intra data for {day_str} in {environment} environment")
+                   
+                    print(f"✅ Successfully saved raw intra data for {day_str}")
                 else:
                     print(f" ⚠️ No intra data found for {day_str}. Nothing was saved to raw folder.")
 
@@ -251,23 +231,12 @@ class OMIEExtractor:
                     # Add ID column for raw storage
                     df['id_mercado'] = 21  # ID for continuous market
                     
-                    # Determine file format based on environment
-                    dev, prod = self.env_utils.check_dev_env()
-                    if dev and not prod:
-                        environment = "DEVELOPMENT "
-                        self.raw_file_utils.write_raw_csv(
-                            year=year, month=month, df=df,
-                            dataset_type='volumenes_omie',
-                            mercado='continuo'
-                        )
-                    else:
-                        environment = "PRODUCTION "
-                        self.raw_file_utils.write_raw_parquet(
-                            year=year, month=month, df=df,
-                            dataset_type='volumenes_omie',
-                            mercado='continuo'
-                        )
-                    print(f"✅ Successfully saved raw continuo data for {day_str} in {environment} environment")
+                    self.raw_file_utils.write_raw_csv(
+                        year=year, month=month, df=df,
+                        dataset_type='volumenes_omie',
+                        mercado='continuo'
+                    )
+                    print(f"✅ Successfully saved raw continuo data for {day_str}")
                 else:
                     print(f" ⚠️ No continuo data found for {day_str}. Nothing was saved to raw folder.")
 
