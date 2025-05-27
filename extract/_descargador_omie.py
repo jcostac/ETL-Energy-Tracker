@@ -334,12 +334,22 @@ class OMIEDownloader:
  
         # Add session column for Intradiario if filename provided
         if self.mercado == "intra":
-            print(f"Processing {file_name}")
-            # Extract session from filename (last two digits before .csv)
-            session_str = file_name[-6:-4]
+            # Extract session from filename - handle .1 extension properly
+            if file_name.endswith('.1'):
+                # For files ending with .1: curva_pibc_uof_2025022503.1
+                # Session is at positions -8:-6 (the '03' part)
+                session_str = file_name[-8:-6]
+            else:
+                # For files without .1 extension
+                session_str = file_name[-6:-4]
+            
+            print(f"Extracted session_str: '{session_str}'")
+            
             if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
                 df['sesion'] = int(session_str)
                 df["sesion"] = df["sesion"].astype("Int64")
+            else:
+                print(f"Session '{session_str}' not in valid session list")
 
  
         if self.mercado == "continuo":
