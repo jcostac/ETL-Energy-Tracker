@@ -13,18 +13,18 @@ sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from configs.omie_config import DiarioConfig, IntraConfig, IntraContinuoConfig
  
-class OMIEDescarga:
+class OMIEDownloader:
     """
     Base class for downloading OMIE program data files for intradiario and diario.
     """
  
     def __init__(self):
         self.tracking_folder = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "downloads", "tracking")
+            os.path.join(os.path.dirname(__file__), "..", "data", "temporary")
         )
         self.config = None
            
-    def descarga_datos_omie_mensuales(self, month: int = None, year: int = None, months_ago: int = 4) -> None:
+    def descarga_datos_omie_mensuales(self, month: int = None, year: int = None, months_ago: int = 4) -> pd.DataFrame:
         """
         Downloads the 'curva agregada de oferta y demanda' for the latest available full month (current month - 4).
         The file is saved with a prefix indicating the type (e.g., 'diario_' or 'intradiario_').
@@ -76,9 +76,7 @@ class OMIEDescarga:
                     # Concatenate all dataframes into a single monthly dataframe
                     if all_dfs:
                         monthly_df = pd.concat(all_dfs, ignore_index=True)
-                        # Save the concatenated data as a single CSV in the tracking folder
-                        csv_filename = f"volumenes_omie.csv"
-                        self._save_file(csv_filename, monthly_df, self.tracking_folder)
+                        return monthly_df
                     else:
                         print(f"No data files found in {filename}")
  
@@ -95,7 +93,7 @@ class OMIEDescarga:
        
         breakpoint()
  
-    def descarga_datos_omie_latest_day(self, month: int = None, year: int = None, months_ago: int = 3) -> None:
+    def descarga_datos_omie_latest_day(self, month: int = None, year: int = None, months_ago: int = 3) -> pd.DataFrame:
         """
         Downloads the 'curva agregada de oferta y demanda' for the latest available day of the last available day of the month (current month - 3).
         """
@@ -129,7 +127,7 @@ class OMIEDescarga:
                     all_dfs = []
  
                     # get the latest file by date created in the zip
-                    latest_file = max(file_list, key=lambda x: os.path.getctime(os.path.join(temp_zip_path, x)))
+                    latest_file = max(file_list, key=lambda x: zip_ref.getinfo(x).date_time)
  
                     #get latest file date
                     latest_file_date = self._extract_date_from_filename(latest_file)
@@ -140,7 +138,7 @@ class OMIEDescarga:
                     #do not process files that have an error
                     if latest_file_date in error_dates:
                         print(f"Latest file on {latest_file_date} has an error. Skipping...")
-                        return
+                        return pd.DataFrame()
  
  
                     # Process each file in the zip
@@ -157,10 +155,8 @@ class OMIEDescarga:
  
                     # Concatenate all dataframes into a single monthly dataframe
                     if all_dfs:
-                        monthly_df = pd.concat(all_dfs, ignore_index=True)
-                        # Save the concatenated data as a single CSV in the tracking folder
-                        csv_filename = f"volumenes_omie.csv"
-                        self._save_file(csv_filename, monthly_df, self.tracking_folder)
+                        latest_day_df = pd.concat(all_dfs, ignore_index=True)
+                        return latest_day_df
                     else:
                         print(f"No data files found in {filename}")
  
@@ -196,7 +192,7 @@ class OMIEDescarga:
         end_month = end_date.replace(day=1)
        
         # Dictionary to store data per month
-        monthly_data = {}
+        monthly_data_dct = {}
  
         # Get error data
        
@@ -245,7 +241,8 @@ class OMIEDescarga:
                        
                         # If there are files to be read from the zip, process them
                         if filtered_files:
-                            monthly_data[year_month] = []
+                            #create a list at the year_month key to store the processed dataframes
+                            monthly_data_dct[year_month] = []
                            
                             # Process the filtered files
                             for file in filtered_files:
@@ -257,12 +254,16 @@ class OMIEDescarga:
                                     processed_df = self._process_df(df, file)
                                    
                                     # Store the processed dataframe in the year_month key
-                                    monthly_data[year_month].append(processed_df)
+                                    monthly_data_dct[year_month].append(processed_df)
                            
                             print(f"Processed {len(filtered_files)} files for {year_month}")
+                            breakpoint()
+                            return monthly_data_dct
+               
                         else:
                             print(f"No matching files found in {filename} for the date range")
-               
+
+                        
                 except Exception as e:
                     print(f"Error processing {filename}: {e}")
                     raise e
@@ -277,7 +278,7 @@ class OMIEDescarga:
             # Move to next month
             current_date = current_date + relativedelta(months=1)
        
-        return monthly_data
+        return monthly_data_dct
    
     def _process_df(self, df: pd.DataFrame, file_name: str = None) -> pd.DataFrame:
         """
@@ -428,7 +429,7 @@ class OMIEDescarga:
         except ValueError as e:
             raise ValueError(f"Failed to extract date from filename {filename}: {str(e)}")
  
-class DiarioOMIE(OMIEDescarga):
+class DiarioOMIEDownloader(OMIEDownloader):
     """
     Downloader for OMIE Diario data curvas agregadas de oferta y demanda mensuales.
     """
@@ -440,7 +441,7 @@ class DiarioOMIE(OMIEDescarga):
         self.mercado = self.config.mercado
         self.filename_pattern = self.config.filename_pattern
  
-class IntradiarioOMIE(OMIEDescarga):
+class IntraOMIEDownloader(OMIEDownloader):
     """
     Downloader for OMIE Intradiario data curvas agregadas de oferta y demanda mensuales.
     """
@@ -452,7 +453,7 @@ class IntradiarioOMIE(OMIEDescarga):
         self.mercado = self.config.mercado
         self.filename_pattern = self.config.filename_pattern
  
-class ContinuoOMIE(OMIEDescarga):
+class ContinuoOMIEDownloader(OMIEDownloader):
  
     "Downloader for OMIE Continuo data curvas agregadas de oferta y demanda mensuales."
  
@@ -465,9 +466,9 @@ class ContinuoOMIE(OMIEDescarga):
  
  
 if __name__ == "__main__":
-    diario = DiarioOMIE()
-    diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-31")
- 
-    intradiario = IntradiarioOMIE()
+    diario = DiarioOMIEDownloader()
+    diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01") 
+
+    intradiario = IntraOMIEDownloader()
     intradiario.descarga_datos_omie_latest_day()
     intradiario.descarga_datos_omie_mensuales()
