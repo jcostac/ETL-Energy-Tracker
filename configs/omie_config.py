@@ -104,7 +104,7 @@ class IntraContinuoConfig(OMIEConfig):
     def __init__(self):
         super().__init__()
         self.base_url = f"https://www.omie.es/es/file-download?parents=trades&filename="
-        self.mercado = "intra_continuo"
+        self.mercado = "continuo"
         self.filename_pattern = "trades_{year_month}.zip"
  
  

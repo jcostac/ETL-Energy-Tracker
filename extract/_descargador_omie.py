@@ -128,7 +128,8 @@ class OMIEDownloader:
  
                     # get the latest file by date created in the zip
                     latest_file = max(file_list, key=lambda x: zip_ref.getinfo(x).date_time)
- 
+
+
                     #get latest file date
                     latest_file_date = self._extract_date_from_filename(latest_file)
  
@@ -136,25 +137,41 @@ class OMIEDownloader:
                     error_dates = self.config.get_error_data()['fecha']
  
                     #do not process files that have an error
-                    if latest_file_date in error_dates:
-                        print(f"Latest file on {latest_file_date} has an error. Skipping...")
-                        return pd.DataFrame()
+                     # Get all files for the latest date
+                    if self.mercado == "intra": #get all latest files for all intras
+                        latest_date_files = []
+                        for file in file_list:
+                            try:
+                                file_date = self._extract_date_from_filename(file)
+                                if file_date == latest_file_date and file_date not in error_dates:
+                                    latest_date_files.append(file)
+                            except ValueError:
+                                print(f"An error ocurred processing latest file: {file}")
+                                continue
+                    else:
+                        if latest_file_date not in error_dates:
+                            latest_date_files = [latest_file]
+                        else:
+                            print(f"Latest file on {latest_file_date} has an error. Skipping...")
+                            return pd.DataFrame()
  
- 
-                    # Process each file in the zip
-                    with zip_ref.open(latest_file) as f:
+                    # Process each file for the latest date
+                    for file in latest_date_files:
+                        with zip_ref.open(file) as f:
  
                             # Read the CSV data
                             df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
  
                             # Process the dataframe
-                            df = self._process_df(df, latest_file)
+                            df = self._process_df(df, file)
+
+                            all_dfs.append(df)
  
-                            
  
                     # Concatenate all dataframes into a single monthly dataframe
                     if all_dfs:
                         latest_day_df = pd.concat(all_dfs, ignore_index=True)
+                        breakpoint()
                         return latest_day_df
                     else:
                         print(f"No data files found in {filename}")
@@ -266,7 +283,7 @@ class OMIEDownloader:
                                     df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
                                    
                                     # Process the dataframe
-                                    processed_df = self._process_df(df, file, intras)
+                                    processed_df = self._process_df(df, file)
                                    
                                     # Store the processed dataframe in the year_month key
                                     monthly_data_dct[year_month].append(processed_df)
@@ -295,14 +312,13 @@ class OMIEDownloader:
        
         return monthly_data_dct
    
-    def _process_df(self, df: pd.DataFrame, file_name: str = None, intras: list = None) -> pd.DataFrame:
+    def _process_df(self, df: pd.DataFrame, file_name: str = None) -> pd.DataFrame:
         """
         Process the OMIE dataframe to standardize column names and data types.
        
         Args:
             df (pd.DataFrame): Raw dataframe from OMIE CSV file
             file_name (str): Optional filename to extract session info for intraday market
-            intras (list): List of intras to filter df by, default None is all available intras
         Returns:
             pd.DataFrame: Processed dataframe with standardized columns
         """
@@ -318,6 +334,7 @@ class OMIEDownloader:
  
         # Add session column for Intradiario if filename provided
         if self.mercado == "intra":
+            print(f"Processing {file_name}")
             # Extract session from filename (last two digits before .csv)
             session_str = file_name[-6:-4]
             if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
@@ -325,7 +342,7 @@ class OMIEDownloader:
                 df["sesion"] = df["sesion"].astype("Int64")
 
  
-        if self.mercado == "intra_continuo":
+        if self.mercado == "continuo":
             
             pass
  
@@ -428,11 +445,14 @@ class OMIEDownloader:
        
         try:
             if self.mercado == "intra":
-                # For intra market, filename has format YYYYMMDDXX where XX is market session
+                # For intra market, handle both formats: YYYYMMDDXX and YYYYMMDDXX.1
+                if '.' in date_str:
+                    date_str = date_str.split('.')[0]  # Remove the .1 part first
+                
                 if len(date_str) == 10:  # YYYYMMDDXX format
                     date_str = date_str[:8]  # Take only YYYYMMDD
                 else:
-                    raise ValueError(f"Invalid intra market filename format: {filename}")
+                    raise ValueError(f"Error extracting date from filename: {filename}")
             else:
                 # For other markets, handle format with .1
                 if '.' in date_str:
@@ -443,8 +463,8 @@ class OMIEDownloader:
             return datetime.strptime(date_str, "%Y%m%d")
            
         except ValueError as e:
-            raise ValueError(f"Failed to extract date from filename {filename}: {str(e)}")
- 
+            raise e
+        
 class DiarioOMIEDownloader(OMIEDownloader):
     """
     Downloader for OMIE Diario data curvas agregadas de oferta y demanda mensuales.
@@ -482,8 +502,8 @@ class ContinuoOMIEDownloader(OMIEDownloader):
  
  
 if __name__ == "__main__":
-    diario = DiarioOMIEDownloader()
-    diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01") 
+   #diario = DiarioOMIEDownloader()
+   # diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01") 
 
     intradiario = IntraOMIEDownloader()
     intradiario.descarga_datos_omie_latest_day()

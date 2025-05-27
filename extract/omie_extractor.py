@@ -145,10 +145,7 @@ class OMIEExtractor:
         Note:
             After 2024-06-13, only Intra 1-3 are available due to regulatory changes
         """
-        # Set default intra_lst if None
-        if intra_lst is None:
-            intra_lst = list(range(1, 8))  # Default to all markets 1-7
-
+      
         # Validate input dates
         fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
 
@@ -169,7 +166,7 @@ class OMIEExtractor:
                 df = self.intra_downloader.descarga_omie_datos(
                     fecha_inicio_carga=day_str,
                     fecha_fin_carga=day_str,
-                    intra_lst=intra_lst
+                    intras =intra_lst
                 )
 
                 if df is not None and not df.empty:
