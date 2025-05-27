@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
+from sqlalchemy import text
 
 class ESIOSConfig:
 
@@ -35,7 +36,7 @@ class ESIOSConfig:
         #test if the engine is working
         try:
             with self._bbdd_engine.connect() as connection:
-                connection.execute("SELECT 1")
+                connection.execute(text("SELECT 1"))
         except Exception as e:
             print(f"Error in engine setting: {e}")
             raise e
@@ -50,7 +51,7 @@ class ESIOSConfig:
                         i.e {600: 1, 612: 2, 613: 3, 614: 4} (id de ESIOS como key, id de mercado como value)
         """
         self.bbdd_engine = DatabaseUtils.create_engine('energy_tracker')
-        
+
         #get all market ids with indicator_esios_precios != 0
         df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'mercados_mapping', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
                                             where_clause='indicador_esios_precios != 0')

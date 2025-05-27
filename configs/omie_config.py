@@ -3,6 +3,7 @@ import pandas as pd
 import pretty_errors
 import sys
 from pathlib import Path
+from sqlalchemy import text
  
 # Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -53,13 +54,20 @@ class OMIEConfig:
  
     @property
     def engine(self):
+        if not self._engine:
+            raise ValueError("Engine not set")
         return self._engine
  
     @engine.setter
     def engine(self, engine: str):
-        if engine is None:
-            raise ValueError("Error setting engine: engine cannot be None")
         self._engine = engine
+        #test if the engine is working
+        try:
+            with self._engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+        except Exception as e:
+            print(f"Error in engine setting: {e}")
+            raise e
        
  
     def get_error_data(self) -> pd.DataFrame:
