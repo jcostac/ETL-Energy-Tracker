@@ -9,6 +9,8 @@ class DataValidationUtils:
         #processed data structure requirements
         self.processed_price_required_cols = ['datetime_utc', 'precio', 'id_mercado']
         self.processed_volumenesi90_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "up"]
+        self.processed_volumenes_omie_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "uof"]
+        self.processed_volumenes_mic_required_cols = ['delivery_period', 'volumenes', 'id_mercado', "uof", "fecha_fichero"]
         self.processed_volumenesi3_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "tecnologia"]
 
         #raw data structure requirements
@@ -87,7 +89,7 @@ class DataValidationUtils:
                     df['precio'] = df['precio'].astype('float32')
                 
                 #for volumenes related datasets
-                elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
+                elif validation_schema_type in ["volumenes_i90", "volumenes_i3", "volumenes_omie", "volumenes_mic"]:
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
                     df['volumenes'] = df['volumenes'].astype('float32')
 
@@ -95,6 +97,8 @@ class DataValidationUtils:
                         df['up'] = df['up'].astype('str')
                     if 'tecnologia' in df.columns:
                         df['tecnologia'] = df['tecnologia'].astype('str')
+                    if 'uof' in df.columns:
+                        df['uof'] = df['uof'].astype('str')
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
             
@@ -117,6 +121,7 @@ class DataValidationUtils:
                     df['volumenes'] = df['volumenes'].astype('float32')
                     df['hora'] = df['hora'].astype('str')
                   
+
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
     
@@ -146,6 +151,10 @@ class DataValidationUtils:
                 required_cols = self.processed_volumenesi90_required_cols
             elif validation_schema_type == "volumenes_i3":
                 required_cols = self.processed_volumenesi3_required_cols
+            elif validation_schema_type == "volumenes_omie":
+                required_cols = self.processed_volumenes_omie_required_cols
+            elif validation_schema_type == "volumenes_mic":
+                required_cols = self.processed_volumenes_mic_required_cols
 
         elif type == "raw":
             if validation_schema_type == "precios":
@@ -154,6 +163,7 @@ class DataValidationUtils:
                 required_cols = self.raw_precios_i90_required_cols
             elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
                 required_cols = self.raw_volumenes_required_cols
+            #TODO: add raw volumenes_omie and raw volumenes_mic required columns
             
         if not all(col in df.columns for col in required_cols):
             raise ValueError(f"Missing required columns. Expected: {required_cols}")
