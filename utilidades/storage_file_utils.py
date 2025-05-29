@@ -186,7 +186,12 @@ class RawFileUtils(StorageFileUtils):
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
                     
                     # Drop duplicates using raw string values -this allows for redownloads of the same day
-                    combined_df = self.drop_raw_duplicates(combined_df)
+                    #only if mercado is not continuo, because we want to keep all the data for continuo (there can be exact dups)
+                    if mercado != "continuo":
+                        print("Dropping raw duplicates")
+                        combined_df = self.drop_raw_duplicates(combined_df)
+                    else:
+                        print("Not dropping raw duplicates for continuo market")
                     
                     # Save back to CSV without any type conversions
                     combined_df.to_csv(full_file_path, index=False)

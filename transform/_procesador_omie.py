@@ -73,22 +73,32 @@ class OMIEProcessor:
         print("-"*30)
         
         if 'Energía Compra/Venta' in df.columns:
-            # Clean numeric formatting (remove thousands separator and fix decimal)
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace('.', '')
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.')
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].astype(float)
-            
-            # Rename to standard column name
-            df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
-            print(f"   Renamed to 'volumenes'")
+            # Check if the column is already numeric
+            if pd.api.types.is_numeric_dtype(df['Energía Compra/Venta']):
+                # Already numeric, just rename
+                df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
+                print(f"   Column already numeric, renamed to 'volumenes'")
+            else:
+                # Clean numeric formatting (remove thousands separator and fix decimal)
+                df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace('.', '')
+                df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.')
+                df['Energía Compra/Venta'] = df['Energía Compra/Venta'].astype(float)
+                
+                # Rename to standard column name
+                df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
+                print(f"   Cleaned string format and renamed to 'volumenes'")
         
         elif 'Cantidad' in df.columns:
             # For continuo market data
-            df['Cantidad'] = df['Cantidad'].str.replace('.', '')
-            df['Cantidad'] = df['Cantidad'].str.replace(',', '.')
-            df['Cantidad'] = df['Cantidad'].astype(float)
-            df = df.rename(columns={'Cantidad': 'volumenes'})
-            print(f"   Processed 'Cantidad' column for continuo market")
+            if pd.api.types.is_numeric_dtype(df['Cantidad']):
+                df = df.rename(columns={'Cantidad': 'volumenes'})
+                print(f"   'Cantidad' already numeric, renamed to 'volumenes'")
+            else:
+                df['Cantidad'] = df['Cantidad'].str.replace('.', '')
+                df['Cantidad'] = df['Cantidad'].str.replace(',', '.')
+                df['Cantidad'] = df['Cantidad'].astype(float)
+                df = df.rename(columns={'Cantidad': 'volumenes'})
+                print(f"   Processed 'Cantidad' column for continuo market")
         
         print("-"*30)
         return df
@@ -162,7 +172,7 @@ class OMIEProcessor:
         print("-"*30)
         return df
 
-    def _process_datetime_intra_diario(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _process_datetime_diario_intra(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process datetime for intra and diario markets.
         Combines 'Fecha' and 'Hora' columns to create datetime_utc.
@@ -177,14 +187,15 @@ class OMIEProcessor:
         print("-"*30)
         
         if 'Fecha' in df.columns and 'Hora' in df.columns:
+
             # Convert Fecha to datetime
-            df['Fecha'] = pd.to_datetime(df['Fecha'], format="%d/%m/%Y")
+            df['fecha'] = pd.to_datetime(df['Fecha'], format="mixed")
             
             # Convert Hora to integer
-            df['Hora'] = df['Hora'].astype(int)
+            df['hora'] = df['Hora'].astype(int)
             
             # Create naive datetime by combining date and hour
-            df['datetime_naive'] = df['Fecha'] + pd.to_timedelta(df['Hora'] - 1, unit='h')
+            df['datetime_naive'] = df['fecha'] + pd.to_timedelta(df['hora'] - 1, unit='h')
             
             # Convert to UTC using DateUtilsETL
             utc_df = self.date_utils.convert_naive_to_utc(df['datetime_naive'])
@@ -308,7 +319,7 @@ class OMIEProcessor:
         
         if mercado in ['diario', 'intra']:
             # Group by uof, date, hour, and id_mercado
-            group_cols = ['uof', 'Fecha', 'Hora', 'id_mercado']
+            group_cols = ['uof', 'datetime_utc', 'id_mercado']
             df = df.groupby(group_cols).agg({'volumenes': 'sum'}).reset_index()
         
         elif mercado == 'continuo':
@@ -381,6 +392,40 @@ class OMIEProcessor:
         print("-"*30)
         return df
 
+    def _clean_empty_rows(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Remove rows that are completely empty or have only NaN values in critical columns.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            
+        Returns:
+            pd.DataFrame: Cleaned DataFrame
+        """
+        print("\n🧹 CLEANING EMPTY ROWS")
+        print("-"*30)
+        
+        initial_rows = len(df)
+        
+        # Remove completely empty rows
+        df = df.dropna(how='all')
+        
+        # Remove rows where all important columns are NaN
+        important_cols = ['Fecha', 'Hora', 'Unidad']
+        existing_important_cols = [col for col in important_cols if col in df.columns]
+        if existing_important_cols:
+            df = df.dropna(subset=existing_important_cols, how='all')
+        
+        removed_rows = initial_rows - len(df)
+        if removed_rows > 0:
+            print(f"   Removed {removed_rows} empty/invalid rows")
+        else:
+            print(f"   No empty rows found")
+        
+        print(f"   Rows: {initial_rows} → {len(df)}")
+        print("-"*30)
+        return df
+
     def transform_omie_diario(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Transform OMIE diario market data.
@@ -402,9 +447,10 @@ class OMIEProcessor:
 
         # Define processing pipeline
         pipeline = [
+            (self._clean_empty_rows, {}),
             (self._standardize_energy_column, {}),
             (self._process_unit_columns, {"mercado": "diario"}),
-            (self._process_datetime_intra_diario, {}),
+            (self._process_datetime_diario_intra, {}),
             (self._aggregate_data, {"mercado": "diario"}),
             (self._select_and_finalize_columns, {"dataset_type": "volumenes_omie"}),
             (self._validate_data, {"validation_type": "processed", "dataset_type": "volumenes_omie"})
@@ -433,9 +479,10 @@ class OMIEProcessor:
 
         # Define processing pipeline
         pipeline = [
+            (self._clean_empty_rows, {}),
             (self._standardize_energy_column, {}),
             (self._process_unit_columns, {"mercado": "intra"}),
-            (self._process_datetime_intra_diario, {}),
+            (self._process_datetime_diario_intra, {}),
             (self._aggregate_data, {"mercado": "intra"}),
             (self._select_and_finalize_columns, {"dataset_type": "volumenes_omie"}),
             (self._validate_data, {"validation_type": "processed", "dataset_type": "volumenes_omie"})
@@ -464,6 +511,7 @@ class OMIEProcessor:
 
         # Define processing pipeline
         pipeline = [
+            (self._clean_empty_rows, {}),
             (self._standardize_energy_column, {}),
             (self._standardize_price_column, {}),
             (self._process_unit_columns, {"mercado": "continuo"}),
@@ -476,7 +524,7 @@ class OMIEProcessor:
 
     def _execute_pipeline(self, df: pd.DataFrame, pipeline: List, market_name: str) -> pd.DataFrame:
         """
-        Execute a processing pipeline with error handling and progress tracking.
+        Execute a processing pipeline with error handling and progress tracking printouts.
         
         Args:
             df (pd.DataFrame): Input DataFrame
@@ -516,3 +564,11 @@ class OMIEProcessor:
             print(f"Error in {market_name} processing: {str(e)}")
             print("="*80 + "\n")
             raise
+
+
+if __name__ == "__main__":
+    processor = OMIEProcessor()
+    df = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/diario/2025/01/volumenes_omie.csv")
+    df = processor.transform_omie_diario(df)
+    print(df)
+

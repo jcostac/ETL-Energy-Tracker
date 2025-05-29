@@ -3,6 +3,7 @@ import pandas as pd
 import pytz
 from datetime import datetime, timedelta, date
 from typing import Optional, List, Dict
+import numpy as np
 import sys
 import os
 
@@ -190,8 +191,20 @@ class OMIEExtractor:
                     if isinstance(month_data, list):
                         for df in month_data:
                             if df is not None and not df.empty:
-                                # Add ID column for raw storage
-                                df['id_mercado'] = df['sesion'] + 1 #in mercaods mapping sesion 1 is id mercado 2 an so on...
+
+                                # Add ID column for raw storage - conditional assignment
+                                # Default: session + 1 for all rows
+                                df['id_mercado'] = df['sesion'] + 1
+                                
+                                # Override for session 2 id mercado (rewrite based on intra sesion logic): check if delivery date matches
+                                session_2_mask = df['sesion'] == 2
+
+                               # For rows where sesion == 2: id_mercado = 3 if the date matches the current day, otherwise id_mercado = 8
+                                df.loc[session_2_mask, 'id_mercado'] = np.where(
+                                    df.loc[session_2_mask, 'Fecha'] == day, 3, 8
+                                )
+
+
                                 self.raw_file_utils.write_raw_csv(
                                         year=year, month=month, df=df,
                                         dataset_type='volumenes_omie',
@@ -332,7 +345,14 @@ class OMIEExtractor:
             })
             return False
 
-if __name__ == "__main__":
+def example_usage():
     omie_extractor = OMIEExtractor()
-    omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-01", fecha_fin_carga="2025-01-03")
+    #omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-04", fecha_fin_carga="2025-01-04")
+    omie_extractor.extract_omie_intra(fecha_inicio_carga="2024-06-10", fecha_fin_carga="2024-06-11")
+    #omie_extractor.extract_omie_continuo(fecha_inicio_carga="2025-01-05", fecha_fin_carga="2025-01-05")
+
+
+if __name__ == "__main__":
+    example_usage()
+
 
