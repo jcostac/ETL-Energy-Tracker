@@ -9,9 +9,8 @@ class VinculacionConfig:
         self.DEFAULT_DOWNLOAD_WINDOW = 93  # days
         self.HISTORICAL_CHECK_WINDOW = 94  # days for ambiguous matches
         
-        # Data paths
+        # Data paths (only for temporary extraction)
         self.TEMP_DATA_BASE_PATH = Path("data/temp_vinculacion")
-        self.PROCESSED_DATA_BASE_PATH = Path("data/processed")
         
         # Markets for linking
         self.OMIE_MARKETS = ['diario']
@@ -21,6 +20,7 @@ class VinculacionConfig:
         # Database tables
         self.UP_LISTADO_TABLE = "up_listado"
         self.UP_CHANGE_LOG_TABLE = "up_change_log"
+        self.UP_UOF_VINCULACION_TABLE = "up_uof_vinculacion"  # Target table
         
         # Linking parameters
         self.VOLUME_TOLERANCE = 0.001  # Tolerance for volume matching (MWh)

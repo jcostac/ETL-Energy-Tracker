@@ -37,7 +37,7 @@ class UPChangeMonitor:
         
         try:
             query = f"""
-            SELECT DISTINCT up
+            SELECT DISTINCT UP
             FROM {self.config.UP_CHANGE_LOG_TABLE}
             WHERE field_changed = 'habilitada'
             AND CAST(date_updated AS DATE) = CAST(? AS DATE)
@@ -72,11 +72,11 @@ class UPChangeMonitor:
             engine: Database engine
             
         Returns:
-            pd.DataFrame: New links created
+            pd.DataFrame: New links created (formatted for database)
         """
         if not new_ups:
             print("ℹ️  No new UPs to link")
-            return pd.DataFrame(columns=['up', 'uof'])
+            return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             
         print(f"\n🔄 TRIGGERING LINKING FOR {len(new_ups)} NEW UPs")
         print("-"*50)
@@ -85,15 +85,30 @@ class UPChangeMonitor:
             # Perform full linking process (this will include new UPs)
             all_links = self.linking_algorithm.link_uofs_to_ups(target_date, engine)
             
-            # Filter to only new UPs
-            new_links = all_links[all_links['up'].isin(new_ups)]
-            
-            print(f"✅ Created {len(new_links)} new links for enabled UPs")
-            return new_links
+            if not all_links.empty:
+                # Filter to only new UPs and format for database
+                new_links = all_links[all_links['up'].isin(new_ups)].copy()
+                
+                if not new_links.empty:
+                    # Format for database
+                    db_new_links = pd.DataFrame({
+                        'UP': new_links['up'].str.upper(),
+                        'UOF': new_links['uof'].str.upper(),
+                        'date_updated': pd.to_datetime(target_date).date()
+                    })
+                    
+                    print(f"✅ Created {len(db_new_links)} new links for enabled UPs")
+                    return db_new_links
+                else:
+                    print("⚠️  No links found for new UPs")
+                    return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
+            else:
+                print("⚠️  No links created in linking process")
+                return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             
         except Exception as e:
             print(f"❌ Error triggering linking for new UPs: {e}")
-            return pd.DataFrame(columns=['up', 'uof'])
+            return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             
     def run_daily_check(self, engine, check_date: Optional[str] = None) -> Dict:
         """
@@ -115,7 +130,7 @@ class UPChangeMonitor:
         results = {
             'check_date': check_date,
             'new_ups_found': [],
-            'new_links_created': pd.DataFrame(columns=['up', 'uof']),
+            'new_links_created': pd.DataFrame(columns=['UP', 'UOF', 'date_updated']),
             'success': False,
             'message': ''
         }
