@@ -27,40 +27,35 @@ class StorageFileUtils:
     """
     Utility class for processing and saving parquet files.
     """
-    def __init__(self, use_s3: bool = False) -> None:
+    def __init__(self, dev: bool = True) -> None:
         """
         Initializes the ParquetUtils class and sets the base path.
 
         Sets 
 
         Args:
-            use_s3 (bool): Flag to determine if S3 path should be used.
+            dev (bool): Flag to determine if dev or prod environment.
         """
 
         #check if dev or prod environment
         env_utils = EnvUtils()
         self.dev, self.prod = env_utils.check_dev_env() 
 
-        #set base path for s3 or local storage
-        if self.dev and not self.prod:
-            self.base_path = self.set_base_path(False) #use s3 set to false
-        else:
-            self.base_path = self.set_base_path(True) #use s3 set to true
+        self.base_path = self.set_base_path(dev)
 
-    def set_base_path(self, use_s3: bool = False) -> Path:
+    def set_base_path(self, dev: bool = True) -> Path:
         """
         Sets the base path for data storage.
 
         Args:
-            use_s3 (bool): Flag to determine if S3 path should be used.
+            dev (bool - flag): Flag to determine if dev or prod environment.
 
         Returns:
             Path: The base path for data storage.
         """
-        if use_s3:
-            # Add logic for S3 path if needed
-            base_path = Path(f"s3://{os.getenv('S3_BUCKET_NAME')}/{base_path}")
-            
+        if dev == False:
+            #get prod base path from env
+            base_path = os.getenv('DATA_LAKE_BASE_PATH_PROD')
         else:
             base_path = Path(DATA_LAKE_BASE_PATH)
 
@@ -120,8 +115,8 @@ class RawFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving raw csv files.
     """
-    def __init__(self, use_s3: bool = False) -> None:
-        super().__init__(use_s3)
+    def __init__(self, dev: bool = True) -> None:
+        super().__init__(dev)
         self.raw_path = self.base_path / 'raw'
 
     @staticmethod
@@ -469,8 +464,8 @@ class ProcessedFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving processed parquet files.
     """
-    def __init__(self, use_s3: bool = False, ) -> None:
-        super().__init__(use_s3)
+    def __init__(self, dev: bool = True) -> None:
+        super().__init__(dev)
         self.processed_path = self.base_path / 'processed'
         self.row_group_size = 122880 # Example: 128k rows per group
 
@@ -907,9 +902,3 @@ class ProcessedFileUtils(StorageFileUtils):
             print(f" Dictionary encoding not applied for this dataset. Only applied for i90 and i3 datasets.")
         print("--------------------------------")
         return dict_cols
-
-
-if __name__ == "__main__":
-    # Example usage
-    processed_file_utils = ProcessedFileUtils(use_s3=True)
-    processed_file_utils.process_parquet_files(remove=True)

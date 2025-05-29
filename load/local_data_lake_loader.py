@@ -199,19 +199,33 @@ class LocalDataLakeLoader():
             **kwargs
         )
     
+    def load_transformed_data_volumenes_omie(self, transformed_data_dict, **kwargs):
+        """
+        Process the dictionary output from transform phase and load each market's omie volume data
+        """
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='volumenes_omie',
+            value_col='volumenes',
+            **kwargs
+        )
     
-if __name__ == "__main__":
+
+def example_usage():
     loader = LocalDataLakeLoader()
     transformed_data_dict = {
         'data': {
-            'diario': "df",
-            'secundaria': "df"
+            'diario': pd.DataFrame(),
+            'secundaria': pd.DataFrame()
         },
         'status': {
-            'diario': "xyz",
-            'secundaria': "abc"
+            'diario': "Success",
+            'secundaria': "Success"
         }
     }
     loader.load_transformed_data_esios(transformed_data_dict)
+
+if __name__ == "__main__":
+    example_usage()
 
 
