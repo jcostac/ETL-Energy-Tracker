@@ -1,12 +1,12 @@
 from pathlib import Path
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 class VinculacionConfig:
     """Configuration for the vinculacion module"""
     
     def __init__(self):
         # Time windows
-        self.DEFAULT_DOWNLOAD_WINDOW = 93  # days
+        self.DATA_DOWNLOAD_WINDOW = 93  # days back for data availability
         self.HISTORICAL_CHECK_WINDOW = 94  # days for ambiguous matches
         
         # Data paths (only for temporary extraction)
@@ -28,4 +28,16 @@ class VinculacionConfig:
         
         # Dataset types
         self.OMIE_DATASET_TYPE = "volumenes_omie"
-        self.I90_DATASET_TYPE = "volumenes_i90" 
+        self.I90_DATASET_TYPE = "volumenes_i90"
+        
+    def get_linking_target_date(self) -> str:
+        """
+        Calculate the target date for linking (always 93 days back)
+        
+        Returns:
+            str: Target date in YYYY-MM-DD format
+        """
+        target_date = datetime.now() - timedelta(days=self.DATA_DOWNLOAD_WINDOW)
+        return target_date.strftime('%Y-%m-%d')
+        
+ 

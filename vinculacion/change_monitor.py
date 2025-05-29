@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 import sys
 from pathlib import Path
+from sqlalchemy import text
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -12,27 +13,24 @@ from vinculacion.configs.vinculacion_config import VinculacionConfig
 from vinculacion.linking_algorithm import UOFUPLinkingAlgorithm
 
 class UPChangeMonitor:
-    """Monitors up_change_log table for new enabled UPs"""
+    """Monitors up_change_log table for UPs enabled at least 93 days ago"""
     
     def __init__(self):
         self.config = VinculacionConfig()
         self.linking_algorithm = UOFUPLinkingAlgorithm()
         
-    def check_for_new_enabled_ups(self, engine, check_date: Optional[str] = None) -> List[str]:
+    def check_for_ups_enabled_93_days_ago(self, engine, check_date: str) -> List[str]:
         """
-        Check for new UPs that were enabled on a specific date
+        Check for UPs that were enabled exactly 93 days ago
         
         Args:
             engine: Database engine
-            check_date: Date to check (YYYY-MM-DD), defaults to today
+            check_date: Date to check (93 days back from today)
             
         Returns:
-            List[str]: List of newly enabled UPs
+            List[str]: List of UPs enabled on that date
         """
-        if check_date is None:
-            check_date = datetime.now().strftime('%Y-%m-%d')
-            
-        print(f"\n🔍 CHECKING FOR NEW ENABLED UPs ON {check_date}")
+        print(f"\n🔍 CHECKING FOR UPs ENABLED ON {check_date}")
         print("-"*50)
         
         try:
@@ -45,49 +43,102 @@ class UPChangeMonitor:
             """
             
             with engine.connect() as conn:
-                result = conn.execute(query, (check_date,))
-                new_ups = [row[0] for row in result.fetchall()]
+                result = conn.execute(text(query), (check_date,))
+                enabled_ups = [row[0] for row in result.fetchall()]
                 
-            if new_ups:
-                print(f"✅ Found {len(new_ups)} newly enabled UPs:")
-                for up in new_ups:
+            if enabled_ups:
+                print(f"✅ Found {len(enabled_ups)} UPs enabled on {check_date}:")
+                for up in enabled_ups:
                     print(f"   - {up}")
             else:
-                print("ℹ️  No newly enabled UPs found")
+                print(f"ℹ️  No UPs were enabled on {check_date}")
                 
-            return new_ups
+            return enabled_ups
             
         except Exception as e:
-            print(f"❌ Error checking for new enabled UPs: {e}")
+            print(f"❌ Error checking for UPs enabled on {check_date}: {e}")
             return []
-            
-    def trigger_linking_for_new_ups(self, new_ups: List[str], 
-                                  target_date: str, engine) -> pd.DataFrame:
+    
+    def check_if_ups_already_linked(self, engine, ups_to_check: List[str], target_date: str) -> List[str]:
         """
-        Trigger linking process for newly enabled UPs
+        Check which UPs from the list are not already linked in the database
         
         Args:
-            new_ups: List of newly enabled UPs
+            engine: Database engine
+            ups_to_check: List of UPs to check
+            target_date: Target linking date
+            
+        Returns:
+            List[str]: UPs that are not yet linked
+        """
+        if not ups_to_check:
+            return []
+            
+        print(f"\n🔍 CHECKING EXISTING LINKS FOR {len(ups_to_check)} UPs")
+        print("-"*50)
+        
+        try:
+            # Create placeholders for the IN clause
+            placeholders = ', '.join(['?' for _ in ups_to_check])
+            
+            query = f"""
+            SELECT DISTINCT UP
+            FROM {self.config.UP_UOF_VINCULACION_TABLE}
+            WHERE UP IN ({placeholders})
+            AND date_updated = ?
+            """
+            
+            params = ups_to_check + [target_date]
+            
+            with engine.connect() as conn:
+                result = conn.execute(text(query), params)
+                already_linked_ups = [row[0] for row in result.fetchall()]
+                
+            # Find UPs that are not yet linked
+            unlinked_ups = [up for up in ups_to_check if up not in already_linked_ups]
+            
+            print(f"📊 Link status check:")
+            print(f"   - Already linked: {len(already_linked_ups)}")
+            print(f"   - Need linking: {len(unlinked_ups)}")
+            
+            if unlinked_ups:
+                print(f"📋 UPs needing linking:")
+                for up in unlinked_ups:
+                    print(f"   - {up}")
+                    
+            return unlinked_ups
+            
+        except Exception as e:
+            print(f"❌ Error checking existing links: {e}")
+            return ups_to_check  # Return all if check fails
+            
+    def trigger_linking_for_specific_ups(self, ups_to_link: List[str], 
+                                       target_date: str, engine) -> pd.DataFrame:
+        """
+        Trigger linking process for specific UPs
+        
+        Args:
+            ups_to_link: List of UPs to link
             target_date: Date to perform linking for
             engine: Database engine
             
         Returns:
             pd.DataFrame: New links created (formatted for database)
         """
-        if not new_ups:
-            print("ℹ️  No new UPs to link")
+        if not ups_to_link:
+            print("ℹ️  No UPs to link")
             return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             
-        print(f"\n🔄 TRIGGERING LINKING FOR {len(new_ups)} NEW UPs")
+        print(f"\n🔄 TRIGGERING LINKING FOR {len(ups_to_link)} SPECIFIC UPs")
         print("-"*50)
         
         try:
-            # Perform full linking process (this will include new UPs)
+            # Perform full linking process (this will include all UPs)
             all_links = self.linking_algorithm.link_uofs_to_ups(target_date, engine)
             
             if not all_links.empty:
-                # Filter to only new UPs and format for database
-                new_links = all_links[all_links['up'].isin(new_ups)].copy()
+                # Filter to only the specific UPs we want to link
+                new_links = all_links[all_links['up'].isin(ups_to_link)].copy()
                 
                 if not new_links.empty:
                     # Format for database
@@ -97,34 +148,32 @@ class UPChangeMonitor:
                         'date_updated': pd.to_datetime(target_date).date()
                     })
                     
-                    print(f"✅ Created {len(db_new_links)} new links for enabled UPs")
+                    print(f"✅ Created {len(db_new_links)} new links for specific UPs")
                     return db_new_links
                 else:
-                    print("⚠️  No links found for new UPs")
+                    print("⚠️  No links found for the specified UPs")
                     return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             else:
                 print("⚠️  No links created in linking process")
                 return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             
         except Exception as e:
-            print(f"❌ Error triggering linking for new UPs: {e}")
+            print(f"❌ Error triggering linking for specific UPs: {e}")
             return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             
-    def run_daily_check(self, engine, check_date: Optional[str] = None) -> Dict:
+    def run_incremental_check(self, engine, check_date: str) -> Dict:
         """
-        Run daily check for new enabled UPs and trigger linking if needed
+        Run incremental check for UPs that were enabled 93 days ago
         
         Args:
             engine: Database engine  
-            check_date: Date to check (defaults to today)
+            check_date: Date to check (93 days back)
             
         Returns:
-            Dict: Results of the daily check
+            Dict: Results of the incremental check
         """
-        if check_date is None:
-            check_date = datetime.now().strftime('%Y-%m-%d')
-            
-        print(f"\n🗓️  RUNNING DAILY UP CHANGE CHECK FOR {check_date}")
+        print(f"\n🗓️  RUNNING INCREMENTAL LINKING CHECK")
+        print(f"Checking UPs enabled on: {check_date} (93 days back)")
         print("="*60)
         
         results = {
@@ -136,25 +185,33 @@ class UPChangeMonitor:
         }
         
         try:
-            # Check for new enabled UPs
-            new_ups = self.check_for_new_enabled_ups(engine, check_date)
-            results['new_ups_found'] = new_ups
+            # Step 1: Find UPs that were enabled 93 days ago
+            enabled_ups = self.check_for_ups_enabled_93_days_ago(engine, check_date)
+            results['new_ups_found'] = enabled_ups
             
-            if new_ups:
-                # Trigger linking for new UPs
-                new_links = self.trigger_linking_for_new_ups(new_ups, check_date, engine)
-                results['new_links_created'] = new_links
-                results['success'] = True
-                results['message'] = f"Successfully processed {len(new_ups)} new UPs, created {len(new_links)} links"
+            if enabled_ups:
+                # Step 2: Check which of these UPs are not already linked
+                target_date = self.config.get_linking_target_date()
+                unlinked_ups = self.check_if_ups_already_linked(engine, enabled_ups, target_date)
+                
+                if unlinked_ups:
+                    # Step 3: Trigger linking for unlinked UPs
+                    new_links = self.trigger_linking_for_specific_ups(unlinked_ups, target_date, engine)
+                    results['new_links_created'] = new_links
+                    results['success'] = True
+                    results['message'] = f"Successfully processed {len(enabled_ups)} UPs enabled 93 days ago. Created {len(new_links)} new links for {len(unlinked_ups)} previously unlinked UPs."
+                else:
+                    results['success'] = True
+                    results['message'] = f"Found {len(enabled_ups)} UPs enabled 93 days ago, but all are already linked."
             else:
                 results['success'] = True
-                results['message'] = "No new enabled UPs found"
+                results['message'] = "No UPs were enabled 93 days ago."
                 
-            print(f"\n✅ DAILY CHECK COMPLETE: {results['message']}")
+            print(f"\n✅ INCREMENTAL CHECK COMPLETE: {results['message']}")
             
         except Exception as e:
-            results['message'] = f"Error during daily check: {e}"
-            print(f"\n❌ DAILY CHECK FAILED: {results['message']}")
+            results['message'] = f"Error during incremental check: {e}"
+            print(f"\n❌ INCREMENTAL CHECK FAILED: {results['message']}")
             
         print("="*60)
         return results 

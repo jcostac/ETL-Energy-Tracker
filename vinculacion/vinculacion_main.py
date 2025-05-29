@@ -26,21 +26,18 @@ class VinculacionOrchestrator:
         """Create database engine"""
         return DatabaseUtils.create_engine(self.database_name)
         
-    def perform_full_linking(self, target_date: Optional[str] = None) -> pd.DataFrame:
+    def perform_full_linking(self) -> pd.DataFrame:
         """
         Perform full UOF-UP linking for all active UPs
+        Target date is automatically set to 93 days back from today
         
-        Args:
-            target_date: Target date (YYYY-MM-DD), defaults to yesterday
-            
         Returns:
             pd.DataFrame: Complete linking results ready for database
         """
-        if target_date is None:
-            target_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-            
+        target_date = self.config.get_linking_target_date()
+        
         print(f"\n🚀 STARTING FULL UOF-UP LINKING")
-        print(f"Target Date: {target_date}")
+        print(f"Target Date: {target_date} (93 days back)")
         print("="*80)
         
         try:
@@ -73,33 +70,29 @@ class VinculacionOrchestrator:
             print(f"\n❌ ERROR IN FULL LINKING: {e}")
             return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             
-    def perform_incremental_linking(self, check_date: Optional[str] = None) -> Dict:
+    def perform_incremental_linking(self) -> Dict:
         """
-        Perform incremental linking for newly enabled UPs
+        Perform incremental linking for UPs that were enabled at least 93 days ago
         
-        Args:
-            check_date: Date to check for new UPs (defaults to today)
-            
         Returns:
             Dict: Results of incremental linking
         """
-        if check_date is None:
-            check_date = datetime.now().strftime('%Y-%m-%d')
-            
+        check_date = self.config.get_linking_target_date()
+        
         print(f"\n🔄 STARTING INCREMENTAL UOF-UP LINKING")
-        print(f"Check Date: {check_date}")
+        print(f"Checking for UPs enabled on: {check_date} (93 days back)")
         print("="*80)
         
         try:
             engine = self.create_engine()
             
-            # Run daily check
-            results = self.change_monitor.run_daily_check(engine, check_date)
+            # Run daily check for UPs enabled 93 days ago
+            results = self.change_monitor.run_incremental_check(engine, check_date)
             
             if results['success']:
                 print(f"\n📊 INCREMENTAL LINKING RESULTS")
                 print("-"*45)
-                print(f"New UPs found: {len(results['new_ups_found'])}")
+                print(f"UPs enabled 93 days ago: {len(results['new_ups_found'])}")
                 print(f"New links created: {len(results['new_links_created'])}")
                 
                 if not results['new_links_created'].empty:
@@ -195,13 +188,13 @@ class VinculacionOrchestrator:
         Get existing links from database for a specific date
         
         Args:
-            target_date: Date to query (defaults to yesterday)
+            target_date: Date to query (defaults to 93 days back)
             
         Returns:
             pd.DataFrame: Existing links
         """
         if target_date is None:
-            target_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            target_date = self.config.get_linking_target_date()
             
         try:
             engine = self.create_engine()
@@ -230,16 +223,17 @@ def main():
     
     print("="*100)
     print("🎯 VINCULACION MODULE - UOF TO UP LINKING")
+    print("🗓️  Target Date: Automatically set to 93 days back")
     print("="*100)
     
-    # Full linking
+    # Full linking (all active UPs)
     full_links = orchestrator.perform_full_linking()
     
     # Save results to database
     if not full_links.empty:
         orchestrator.save_links_to_database(full_links, replace_existing=True)
     
-    # Incremental check
+    # Incremental check (UPs enabled 93 days ago)
     incremental_results = orchestrator.perform_incremental_linking()
     
     # Save incremental results if any
