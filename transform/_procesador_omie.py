@@ -251,7 +251,7 @@ class OMIEProcessor:
             
             # Convert naive datetime to UTC using DateUtilsETL
             utc_df = self.date_utils.convert_naive_to_utc(df['delivery_period_naive'])
-            df['delivery_period_utc'] = utc_df['datetime_utc']
+            df['datetime_utc'] = utc_df['datetime_utc']
             
             # Clean up intermediate columns
             df = df.drop(columns=['delivery_date_str', 'delivery_date', 'delivery_hour', 'delivery_period_naive'], errors='ignore')

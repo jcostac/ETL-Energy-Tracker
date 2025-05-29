@@ -10,7 +10,7 @@ class DataValidationUtils:
         self.processed_price_required_cols = ['datetime_utc', "id_mercado", "precio"]
         self.processed_volumenesi90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
         self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
-        self.processed_volumenes_mic_required_cols = ['delivery_period_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
+        self.processed_volumenes_mic_required_cols = ['datetime_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
         self.processed_volumenesi3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
 
         #raw data structure requirements
