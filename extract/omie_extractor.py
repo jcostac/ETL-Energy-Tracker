@@ -199,7 +199,7 @@ class OMIEExtractor:
                                 # Override for session 2 id mercado (rewrite based on intra sesion logic): check if delivery date matches
                                 session_2_mask = df['sesion'] == 2
 
-                               # For rows where sesion == 2: id_mercado = 3 if the date matches the current day, otherwise id_mercado = 8
+                               # For rows where sesion == 2: id_mercado = 3 if the date matches the current day, otherwise (d-1) id_mercado = 8
                                 df.loc[session_2_mask, 'id_mercado'] = np.where(
                                     df.loc[session_2_mask, 'Fecha'] == day, 3, 8
                                 )

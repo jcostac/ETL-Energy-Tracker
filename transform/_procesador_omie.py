@@ -225,8 +225,8 @@ class OMIEProcessor:
         
         if 'Fecha' in df.columns:
             # Process file date (fecha_fichero)
-            df['Fecha'] = pd.to_datetime(df['Fecha'], format="%d/%m/%Y")
-            df['fecha_fichero'] = df['Fecha'].dt.strftime('%Y-%m-%d')
+            df['fecha'] = pd.to_datetime(df['Fecha'], format="mixed") #some dates have hours ie 00:00:00
+            df['fecha_fichero'] = df['fecha'].dt.strftime('%Y-%m-%d')
         
         if 'Contrato' in df.columns:
             # Extract delivery date from contract string (first 8 characters: YYYYMMDD)
@@ -251,7 +251,7 @@ class OMIEProcessor:
             
             # Convert naive datetime to UTC using DateUtilsETL
             utc_df = self.date_utils.convert_naive_to_utc(df['delivery_period_naive'])
-            df['delivery_period'] = utc_df['datetime_utc']
+            df['delivery_period_utc'] = utc_df['datetime_utc']
             
             # Clean up intermediate columns
             df = df.drop(columns=['delivery_date_str', 'delivery_date', 'delivery_hour', 'delivery_period_naive'], errors='ignore')
@@ -566,9 +566,19 @@ class OMIEProcessor:
             raise
 
 
-if __name__ == "__main__":
+def example_usage():    
     processor = OMIEProcessor()
-    df = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/diario/2025/01/volumenes_omie.csv")
-    df = processor.transform_omie_diario(df)
-    print(df)
+    df_intra = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/intra/2025/01/volumenes_omie.csv")
+    df_diario = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/diario/2025/01/volumenes_omie.csv")
+    df_continuo = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/continuo/2025/01/volumenes_omie.csv")
+    
+    #df_intra = processor.transform_omie_intra(df_intra)
+    #df_diario = processor.transform_omie_diario(df_diario)
+    df_continuo = processor.transform_omie_continuo(df_continuo)
+    #print(df_intra)
+    #print(df_diario)
+    print(df_continuo)
 
+
+if __name__ == "__main__":
+    example_usage()

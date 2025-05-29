@@ -7,11 +7,11 @@ class DataValidationUtils:
     def __init__(self):
 
         #processed data structure requirements
-        self.processed_price_required_cols = ['datetime_utc', 'precio', 'id_mercado']
-        self.processed_volumenesi90_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "up"]
-        self.processed_volumenes_omie_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "uof"]
-        self.processed_volumenes_mic_required_cols = ['delivery_period', 'volumenes', 'id_mercado', "uof", "fecha_fichero"]
-        self.processed_volumenesi3_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "tecnologia"]
+        self.processed_price_required_cols = ['datetime_utc', "id_mercado", "precio"]
+        self.processed_volumenesi90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
+        self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
+        self.processed_volumenes_mic_required_cols = ['delivery_period_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
+        self.processed_volumenesi3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
 
         #raw data structure requirements
         self.raw_price_required_cols = ['datetime_utc', 'value', 'indicador_id']
@@ -78,8 +78,10 @@ class DataValidationUtils:
             
             if 'datetime_utc' in df.columns:
                 df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
-            else:
+            elif 'fecha' in df.columns:
                 df['fecha'] = pd.to_datetime(df['fecha'])
+            elif 'delivery_period_utc' in df.columns: #for mic market
+                df['delivery_period_utc'] = pd.to_datetime(df['delivery_period_utc'], utc=True)
            
             #for processed data
             if type == "processed":
@@ -99,6 +101,8 @@ class DataValidationUtils:
                         df['tecnologia'] = df['tecnologia'].astype('str')
                     if 'uof' in df.columns:
                         df['uof'] = df['uof'].astype('str')
+                    if 'precio' in df.columns:
+                        df['precio'] = df['precio'].astype('float32')
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
             
