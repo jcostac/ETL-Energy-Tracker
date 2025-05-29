@@ -91,7 +91,7 @@ class DataValidationUtils:
                     df['precio'] = df['precio'].astype('float32')
                 
                 #for volumenes related datasets
-                elif validation_schema_type in ["volumenes_i90", "volumenes_i3", "volumenes_omie", "volumenes_mic"]:
+                elif validation_schema_type in ["volumenes_i90", "volumenes_i3", "volumenes_omie"]:
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
                     df['volumenes'] = df['volumenes'].astype('float32')
 
