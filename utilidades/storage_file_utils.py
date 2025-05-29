@@ -27,40 +27,35 @@ class StorageFileUtils:
     """
     Utility class for processing and saving parquet files.
     """
-    def __init__(self, use_s3: bool = False) -> None:
+    def __init__(self, dev: bool = True) -> None:
         """
         Initializes the ParquetUtils class and sets the base path.
 
         Sets 
 
         Args:
-            use_s3 (bool): Flag to determine if S3 path should be used.
+            dev (bool): Flag to determine if dev or prod environment.
         """
 
         #check if dev or prod environment
         env_utils = EnvUtils()
         self.dev, self.prod = env_utils.check_dev_env() 
 
-        #set base path for s3 or local storage
-        if self.dev and not self.prod:
-            self.base_path = self.set_base_path(False) #use s3 set to false
-        else:
-            self.base_path = self.set_base_path(True) #use s3 set to true
+        self.base_path = self.set_base_path(dev)
 
-    def set_base_path(self, use_s3: bool = False) -> Path:
+    def set_base_path(self, dev: bool = True) -> Path:
         """
         Sets the base path for data storage.
 
         Args:
-            use_s3 (bool): Flag to determine if S3 path should be used.
+            dev (bool - flag): Flag to determine if dev or prod environment.
 
         Returns:
             Path: The base path for data storage.
         """
-        if use_s3:
-            # Add logic for S3 path if needed
-            base_path = Path(f"s3://{os.getenv('S3_BUCKET_NAME')}/{base_path}")
-            
+        if dev == False:
+            #get prod base path from env
+            base_path = os.getenv('DATA_LAKE_BASE_PATH_PROD')
         else:
             base_path = Path(DATA_LAKE_BASE_PATH)
 
@@ -120,8 +115,8 @@ class RawFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving raw csv files.
     """
-    def __init__(self, use_s3: bool = False) -> None:
-        super().__init__(use_s3)
+    def __init__(self, dev: bool = True) -> None:
+        super().__init__(dev)
         self.raw_path = self.base_path / 'raw'
 
     @staticmethod
@@ -186,7 +181,12 @@ class RawFileUtils(StorageFileUtils):
                     combined_df = pd.concat([existing_df, df], ignore_index=True)
                     
                     # Drop duplicates using raw string values -this allows for redownloads of the same day
-                    combined_df = self.drop_raw_duplicates(combined_df)
+                    #only if mercado is not continuo, because we want to keep all the data for continuo (there can be exact dups)
+                    if mercado != "continuo":
+                        print("Dropping raw duplicates")
+                        combined_df = self.drop_raw_duplicates(combined_df)
+                    else:
+                        print("Not dropping raw duplicates for continuo market")
                     
                     # Save back to CSV without any type conversions
                     combined_df.to_csv(full_file_path, index=False)
@@ -314,6 +314,7 @@ class RawFileUtils(StorageFileUtils):
             print("="*80 + "\n")
             raise
     
+    #WIP
     def delete_raw_files_older_than(self, months: int, mercado: Optional[str] = None) -> None:
         """
         Deletes raw CSV files that are older than the specified number of months.
@@ -463,8 +464,8 @@ class ProcessedFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving processed parquet files.
     """
-    def __init__(self, use_s3: bool = False, ) -> None:
-        super().__init__(use_s3)
+    def __init__(self, dev: bool = True) -> None:
+        super().__init__(dev)
         self.processed_path = self.base_path / 'processed'
         self.row_group_size = 122880 # Example: 128k rows per group
 
@@ -489,6 +490,11 @@ class ProcessedFileUtils(StorageFileUtils):
                 df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
             elif dataset_type == 'precios_i90':
                 df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "up"], keep='last')
+            elif dataset_type == 'volumenes_omie':
+                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "uof"], keep='last')
+            elif dataset_type == 'volumenes_mic':
+                #we allow duplicates for mic market data, so we don't drop any duplicates
+                return df
             else:
                 df = df.drop_duplicates(subset=['datetime_utc', 'id_mercado', 'precio'], keep='last')
         except KeyError as e:
@@ -509,7 +515,7 @@ class ProcessedFileUtils(StorageFileUtils):
 
         return df
         
-    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_col: str, dataset_type: str) -> None:
+    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str) -> None:
         """
         Processes a DataFrame and saves/appends it as partitioned parquet files using Hive partitioning.
         """
@@ -542,10 +548,9 @@ class ProcessedFileUtils(StorageFileUtils):
                     self._combine_and_write_partition(
                         new_data_df=new_data_partition_df,
                         existing_data_df=existing_data_df,
-                        partition=partition,
                         partition_cols=partition_cols,
                         output_file_path=output_file_path,
-                        value_col=value_col,
+                        value_cols=value_cols,
                         dataset_type=dataset_type
                     )
                 except Exception as e:
@@ -588,7 +593,7 @@ class ProcessedFileUtils(StorageFileUtils):
             return False
         return True
 
-    def _process_single_partition(self, df: pd.DataFrame, partition, partition_cols: list, value_col: str, dataset_type: str) -> None:
+    def _process_single_partition(self, df: pd.DataFrame, partition, partition_cols: list, value_cols: list[str], dataset_type: str) -> None:
         """
         Processes a single partition: filters data, handles existing file if present, and writes result.
 
@@ -596,7 +601,7 @@ class ProcessedFileUtils(StorageFileUtils):
             df (pd.DataFrame): The full input DataFrame.
             partition: Partition values (from unique_partitions_df row).
             partition_cols (list): List of partition column names.
-            value_col (str): The value column name.
+            value_cols (list[str]): List of value column names.
             dataset_type (str): The type of dataset.
         """
         # Filter new data for this partition
@@ -618,7 +623,7 @@ class ProcessedFileUtils(StorageFileUtils):
             partition=partition,
             partition_cols=partition_cols,
             output_file_path=output_file_path,
-            value_col=value_col,
+            value_cols=value_cols,
             dataset_type=dataset_type
         )
 
@@ -665,8 +670,8 @@ class ProcessedFileUtils(StorageFileUtils):
             raise Exception(f"Failed to read existing partition file {file_path}: {str(e)}")
 
     def _combine_and_write_partition(self, new_data_df: pd.DataFrame, existing_data_df: pd.DataFrame,
-                                    partition, partition_cols: list, output_file_path: str,
-                                    value_col: str, dataset_type: str) -> None:
+                                    partition_cols: list, output_file_path: str,
+                                    value_cols: list[str], dataset_type: str) -> None:
         """Combines new and existing data, deduplicates, and writes the result."""
         try:
             if new_data_df.empty and existing_data_df.empty:
@@ -695,7 +700,7 @@ class ProcessedFileUtils(StorageFileUtils):
             if row_group_size == 0:
                 raise ValueError("No rows to write")
 
-            self._write_final_parquet(final_df_sorted, output_file_path, value_col, row_group_size)
+            self._write_final_parquet(final_df_sorted, output_file_path, value_cols, row_group_size)
 
         except Exception as e:
             raise Exception(f"Failed to combine and write partition: {str(e)}")
@@ -720,7 +725,7 @@ class ProcessedFileUtils(StorageFileUtils):
             print(f"[ERROR] Failed to prepare DataFrame for writing: {e}")
             raise
 
-    def _write_final_parquet(self, df: pd.DataFrame, output_file: str, value_col: str, row_group_size: int) -> None:
+    def _write_final_parquet(self, df: pd.DataFrame, output_file: str, value_cols: list[str], row_group_size: int) -> None:
         """Writes the final Parquet file."""
         try:
             print("\n📊 WRITE OPERATION")
@@ -738,7 +743,7 @@ class ProcessedFileUtils(StorageFileUtils):
             # Configure write options
             print("\n⚙️ Configuring write options...")
             schema = table.schema
-            stats_cols = self._set_stats_cols(value_col, schema)
+            stats_cols = self._set_stats_cols(value_cols, schema)
             dict_cols = self._set_dict_cols(schema)
 
             # Write file
@@ -818,7 +823,6 @@ class ProcessedFileUtils(StorageFileUtils):
             print(f"[ERROR] Error filtering partition: {e}")
             raise
 
-
     def _drop_partition_cols(self, table: pa.Table, partition_cols: list) -> pa.Table:
         """
         Drops partition columns from the PyArrow Table (they are encoded in the Hive path).
@@ -876,13 +880,18 @@ class ProcessedFileUtils(StorageFileUtils):
         
         return os.path.join(partition_path_str, f"{dataset_type}.parquet")
 
-    def _set_stats_cols(self, value_col: str, schema: pa.Schema) -> list[str]:
+    def _set_stats_cols(self, value_cols: list[str], schema: pa.Schema) -> list[str]:
         """
         Sets the columns to include in statistics.
         """
         stats_cols = ['datetime_utc']
-        if value_col in schema.names:
-            stats_cols.append(value_col)
+        
+        # Add all valid value columns to statistics
+        for value_col in value_cols:
+            if value_col in schema.names:
+                stats_cols.append(value_col)
+            else:
+                print(f"Warning: Value column '{value_col}' not found in schema")
         
         return stats_cols
     
@@ -893,17 +902,13 @@ class ProcessedFileUtils(StorageFileUtils):
         print("--------------------------------")
         print(f" Applying dictionary encoding...")
         dict_cols = []
-        if "up" in schema.names:
+        if "up" in schema.names: #for i90 market data
             dict_cols.append("up")
-        elif "tecnologia" in schema.names:
+        elif "tecnologia" in schema.names: #for i3 market data
             dict_cols.append("tecnologia")
+        elif "uof" in schema.names: #for omie market data
+            dict_cols.append("uof")
         else:
             print(f" Dictionary encoding not applied for this dataset. Only applied for i90 and i3 datasets.")
         print("--------------------------------")
         return dict_cols
-
-
-if __name__ == "__main__":
-    # Example usage
-    processed_file_utils = ProcessedFileUtils(use_s3=True)
-    processed_file_utils.process_parquet_files(remove=True)

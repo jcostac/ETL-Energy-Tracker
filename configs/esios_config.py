@@ -13,6 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
+from sqlalchemy import text
 
 class ESIOSConfig:
 
@@ -26,8 +27,19 @@ class ESIOSConfig:
     @property
     def bbdd_engine(self):
         if not self._bbdd_engine:
-            self._bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+            raise ValueError("BBDD engine not set")
         return self._bbdd_engine
+    
+    @bbdd_engine.setter
+    def bbdd_engine(self, engine):
+        self._bbdd_engine = engine
+        #test if the engine is working
+        try:
+            with self._bbdd_engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+        except Exception as e:
+            print(f"Error in engine setting: {e}")
+            raise e
 
     def get_market_id_mapping(self) -> tuple[dict[str, str], dict[str, str]]:
         """
@@ -38,9 +50,10 @@ class ESIOSConfig:
                     2. market_id_map: Un diccionario con los IDs de los mercados de ESIOS y sus IDs de mercado en la BBDD.
                         i.e {600: 1, 612: 2, 613: 3, 614: 4} (id de ESIOS como key, id de mercado como value)
         """
+        self.bbdd_engine = DatabaseUtils.create_engine('energy_tracker')
 
         #get all market ids with indicator_esios_precios != 0
-        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
+        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'mercados_mapping', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
                                             where_clause='indicador_esios_precios != 0')
         
         

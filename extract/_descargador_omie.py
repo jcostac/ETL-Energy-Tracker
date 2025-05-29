@@ -28,7 +28,7 @@ class OMIEDownloader:
         """
         Downloads the 'curva agregada de oferta y demanda' for the latest available full month (current month - 4).
         The file is saved with a prefix indicating the type (e.g., 'diario_' or 'intradiario_').
-        Returns processed data as a CSV.
+        Returns processed data as a dataframe.
         """
  
         #get the date for which we have a complete month of data (check if it is at least todays month -4)
@@ -91,7 +91,6 @@ class OMIEDownloader:
         else:
             raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
   
- 
     def descarga_datos_omie_latest_day(self, month: int = None, year: int = None, months_ago: int = 3) -> pd.DataFrame:
         """
         Downloads the 'curva agregada de oferta y demanda' for the latest available day of the last available day of the month (current month - 3).
@@ -203,7 +202,7 @@ class OMIEDownloader:
             fecha_fin (str): End date in format YYYY-MM-DD
             intras (list): List of intras to download, default None is all available intras
         Returns:
-            dict: Dictionary with monthly data containing files for the specified days
+            dict: Dictionary with monthly data containing files for the specified days with format {year_month: [dataframes]}
         """
         # Validate dates
         start_date, end_date = self._date_validation(fecha_inicio=fecha_inicio_carga, fecha_fin=fecha_fin_carga)

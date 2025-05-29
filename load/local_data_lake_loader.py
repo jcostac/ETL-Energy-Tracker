@@ -41,13 +41,12 @@ class LocalDataLakeLoader():
         """
         super().__init__()
         # ProcessedFileUtils constructor handles setting the correct base path (raw/processed)
-        self.file_utils = ProcessedFileUtils(use_s3=False)
-        # We might store the processed base path if needed elsewhere, but ProcessedFileUtils manages it internally
-        # self.processed_base_path = self.file_utils.processed_path
+        self.file_utils = ProcessedFileUtils()
+
         print(f"LocalDataLakeLoader initialized. Processed data path: {self.file_utils.processed_path}")
 
 
-    def _save_processed_data(self, processed_df: pd.DataFrame, mercado: str, value_col: str, dataset_type: str) -> None:
+    def _save_processed_data(self, processed_df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str) -> None:
         """
         Saves the processed DataFrame to the local data lake as a partitioned Parquet file.
 
@@ -56,7 +55,7 @@ class LocalDataLakeLoader():
         Args:
             df (pd.DataFrame): The processed DataFrame to save.
             mercado (str): Market identifier (used for partitioning).
-            value_col (str): The name of the main value column.
+            value_cols (list[str]): The name of the main value column.
             dataset_type (str): The type of dataset (e.g., 'precios').
         """
         print(f"\n--- Initiating save operation for {dataset_type} ({mercado}) ---")
@@ -77,7 +76,7 @@ class LocalDataLakeLoader():
             self.file_utils.write_processed_parquet(
                 processed_df, 
                 mercado, 
-                value_col=value_col, 
+                value_cols=value_cols, 
                 dataset_type=dataset_type
             )
 
@@ -92,7 +91,7 @@ class LocalDataLakeLoader():
             print("="*80 + "\n")
             raise
 
-    def load_transformed_data(self, transformed_data_dict: dict, dataset_type: str, value_col: str, **kwargs) -> dict:
+    def load_transformed_data(self, transformed_data_dict: dict, dataset_type: str, value_cols: list[str], **kwargs) -> dict:
         """
         Generic method to process and load transformed data for any dataset type.
         
@@ -124,7 +123,7 @@ class LocalDataLakeLoader():
                         self._save_processed_data(
                             processed_df=df,
                             mercado=mercado,
-                            value_col=value_col,
+                            value_cols=value_cols,
                             dataset_type=dataset_type
                         )
                         results.append(f"✅ Successfully loaded {len(df)} records for {dataset_type} market {mercado}")
@@ -163,7 +162,7 @@ class LocalDataLakeLoader():
         return self.load_transformed_data(
             transformed_data_dict,
             dataset_type='precios',
-            value_col='precio',
+            value_cols= ['precio'],
             **kwargs
         )
     
@@ -179,7 +178,7 @@ class LocalDataLakeLoader():
         return self.load_transformed_data(
             transformed_data_dict,
             dataset_type='precios_i90',
-            value_col='precio',
+            value_cols= ['precio'],
             **kwargs
         )
 
@@ -195,23 +194,47 @@ class LocalDataLakeLoader():
         return self.load_transformed_data(
             transformed_data_dict,
             dataset_type='volumenes_i90',
-            value_col='volumenes',
+            value_cols= ['volumenes'],
             **kwargs
         )
     
+    def load_transformed_data_volumenes_omie(self, transformed_data_dict, **kwargs):
+        """
+        Process the dictionary output from transform phase and load each market's omie volume data
+        """
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='volumenes_omie',
+            value_cols= ['volumenes'],
+            **kwargs
+        )
     
-if __name__ == "__main__":
+    def load_transformed_data_volumenes_mic(self, transformed_data_dict, **kwargs):
+        """
+        Process the dictionary output from transform phase and load each market's mic volume data
+        """
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='volumenes_mic',
+            value_cols= ['volumenes', 'precio'],
+            **kwargs
+        )
+
+def example_usage():
     loader = LocalDataLakeLoader()
     transformed_data_dict = {
         'data': {
-            'diario': "df",
-            'secundaria': "df"
+            'diario': pd.DataFrame(),
+            'secundaria': pd.DataFrame()
         },
         'status': {
-            'diario': "xyz",
-            'secundaria': "abc"
+            'diario': "Success",
+            'secundaria': "Success"
         }
     }
     loader.load_transformed_data_esios(transformed_data_dict)
+
+if __name__ == "__main__":
+    example_usage()
 
 

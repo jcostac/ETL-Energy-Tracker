@@ -3,6 +3,7 @@ from typing import Optional, List, Tuple, Dict
 import pandas as pd
 import sys
 import os
+from sqlalchemy import text
 
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
@@ -34,7 +35,7 @@ class I90Config:
         # Test if the engine is working by simply connecting and checking
         try:
             with self._bbdd_engine.connect() as connection:
-                connection.execute("SELECT 1")
+                connection.execute(text("SELECT 1"))
         except Exception as e:
             print(f"Error in engine setting: {e}")
             raise e
