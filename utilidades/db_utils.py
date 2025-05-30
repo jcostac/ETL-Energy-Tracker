@@ -146,11 +146,6 @@ class DuckDBUtils:
         try:
             # Connect, allowing unsigned extensions like httpfs if needed for remote data
             con = duckdb.connect(database=self.db_path if self.db_path else ':memory:', read_only=False)
-            # Example: Install and load httpfs if querying remote files (e.g., S3)
-            # con.execute("INSTALL httpfs;")
-            # con.execute("LOAD httpfs;")
-            # Configure settings like memory limit if needed
-            # con.execute("SET memory_limit='1GB';")
             return con
         except Exception as e:
             print(f"Error connecting to DuckDB: {e}")

@@ -514,6 +514,7 @@ class UOFUPLinkingAlgorithm:
                 
             # Step 2: Extract data
             self.data_extractor.extract_data_for_matching(target_date)
+            breakpoint()
             transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
             
             if 'omie_diario' not in transformed_diario_data or 'i90_diario' not in transformed_diario_data:
