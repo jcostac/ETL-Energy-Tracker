@@ -66,7 +66,7 @@ class DatabaseUtils:
             # Execute the query and convert to DataFrame
             with engine.connect() as conn:
                 result = conn.execute(query)
-                df = pd.DataFrame(result.fetchall())
+                df = pd.DataFrame(result.fetchall(), columns=result.keys())
                 return df
             
         except Exception as e:
