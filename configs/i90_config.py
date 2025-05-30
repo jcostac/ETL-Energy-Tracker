@@ -283,6 +283,44 @@ class I90Config:
 
         return volumenes_sheets, precios_sheets, sheets_of_interest
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Class method to check if this config class has volumenes sheets.
+        Default implementation tries to instantiate the class.
+        Subclasses that require parameters should override this method.
+        """
+        try:
+            # Default behavior: try to instantiate and check
+            instance = cls()
+            return hasattr(instance, 'volumenes_sheets') and instance.volumenes_sheets and any(instance.volumenes_sheets)
+        except TypeError:
+            # If instantiation fails due to missing parameters, return False
+            # Subclasses should override this method to provide the correct answer
+            return False
+        except Exception:
+            # Any other error during instantiation
+            return False
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Class method to check if this config class has precios sheets.
+        Default implementation tries to instantiate the class.
+        Subclasses that require parameters should override this method.
+        """
+        try:
+            # Default behavior: try to instantiate and check
+            instance = cls()
+            return hasattr(instance, 'precios_sheets') and instance.precios_sheets and any(instance.precios_sheets)
+        except TypeError:
+            # If instantiation fails due to missing parameters, return False
+            # Subclasses should override this method to provide the correct answer
+            return False
+        except Exception:
+            # Any other error during instantiation
+            return False
+
 class DiarioConfig(I90Config):
     def __init__(self):
         super().__init__()
@@ -297,6 +335,14 @@ class DiarioConfig(I90Config):
         self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # No price extraction implemented
 
 class IntradiarioConfig(I90Config):
     def __init__(self, fecha):
@@ -346,6 +392,14 @@ class IntradiarioConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # No price extraction implemented
+
 class SecundariaConfig(I90Config):
     """
     Config for secundaria market data
@@ -369,6 +423,14 @@ class SecundariaConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # Commented out in extractor - prices from API
+
 class TerciariaConfig(I90Config):
     """
     Config for terciaria market data
@@ -387,6 +449,14 @@ class TerciariaConfig(I90Config):
         self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # Commented out in extractor - prices from API
 
 class RRConfig(I90Config):
     def __init__(self):
@@ -408,6 +478,14 @@ class RRConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for RR sheets ('06') in the provided snippet
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # Commented out in extractor - prices from API
 
 class CurtailmentConfig(I90Config):
     def __init__(self):
@@ -449,6 +527,14 @@ class CurtailmentConfig(I90Config):
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # No price extraction implemented
+
 class P48Config(I90Config):
     def __init__(self):
         """
@@ -468,6 +554,14 @@ class P48Config(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for P48 sheets ('12') in the provided snippet
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # No price extraction implemented
 
 class IndisponibilidadesConfig(I90Config):
     def __init__(self):
@@ -489,6 +583,14 @@ class IndisponibilidadesConfig(I90Config):
 
         # Define Redespacho filter for volumenes sheet ('08')
         self.redespacho_filter_volumenes: List[str] = ["Indisponibilidad"]
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # Commented out in extractor - prices from API
 
 class RestriccionesConfig(I90Config):
     def __init__(self):
@@ -548,6 +650,14 @@ class RestriccionesConfig(I90Config):
             return self.redespacho_filter_rt_vol
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return True  # ONLY market with active price extraction
 
 def print_config_info():
     # --- Base I90Config Info ---
