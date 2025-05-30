@@ -18,7 +18,7 @@ from utilidades.storage_file_utils import RawFileUtils, ProcessedFileUtils
 from transform._procesador_i90 import I90Processor # Import the new processor
 from configs.i90_config import (
         I90Config, # Base class
-        DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig,
+        DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, IntradiarioConfig,
         CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
     )
 import traceback
@@ -36,11 +36,12 @@ class TransformadorI90:
 
         # Define dataset types and transformation modes
         self.dataset_types = ['volumenes_i90', 'precios_i90']
-        self.transform_types = ['latest', 'batch', 'single', 'multiple']
+        self.transform_types = ['latest',  'single', 'multiple']
 
         # Map market names (strings) to their actual config classes (Type[I90Config])
         self.market_config_map: Dict[str, Type[I90Config]] = {
             'diario': DiarioConfig,
+            'intra': IntradiarioConfig,
             'secundaria': SecundariaConfig,
             'terciaria': TerciariaConfig,
             'rr': RRConfig,
@@ -56,29 +57,27 @@ class TransformadorI90:
 
     def _compute_volumenes_markets(self):
         """
-        Computes the markets that have volumenes_sheets.
+        Computes the markets that have volumenes_sheets using class methods.
         """
         markets = []
         for config_cls in I90Config.__subclasses__():
-            config = config_cls()
-            market_name = config_cls.__name__.replace('Config', '').lower()
-            if hasattr(config, 'volumenes_sheets') and config.volumenes_sheets and any(config.volumenes_sheets):
-                markets.append(market_name)
+            if config_cls.has_volumenes_sheets(): # Check if the market has volumenes_sheets ie True
+                market_name = config_cls.__name__.replace('Config', '').lower() # parse the market name
+                markets.append(market_name) # Add the market name to the list
         return markets
 
     def _compute_precios_markets(self):
         """
-        Computes the markets that have precios_sheets.
+        Computes the markets that have precios_sheets using class methods.
         """
         markets = []
         for config_cls in I90Config.__subclasses__():
-            config = config_cls()
-            market_name = config_cls.__name__.replace('Config', '').lower()
-            if hasattr(config, 'precios_sheets') and config.precios_sheets and any(config.precios_sheets):
-                markets.append(market_name)
+            if config_cls.has_precios_sheets(): # Check if the market has precios_sheets ie True
+                market_name = config_cls.__name__.replace('Config', '').lower() # parse the market name
+                markets.append(market_name) # Add the market name to the list
         return markets
 
-    def get_config_for_market(self, mercado: str) -> I90Config:
+    def get_config_for_market(self, mercado: str, fecha: Optional[datetime] = None) -> I90Config:
         """Retrieves and instantiates the config object for a given market name."""
         config_class = self.market_config_map.get(mercado)
         if not config_class:
@@ -91,7 +90,12 @@ class TransformadorI90:
 
         # Instantiate the config class
         try:
-            return config_class()
+            if mercado == 'intra' and fecha is not None:
+                return config_class(fecha)
+            elif mercado == 'intra' and fecha is None:
+                raise ValueError("fecha parameter is required for IntradiarioConfig")
+            else:
+                return config_class()
         except Exception as e:
              # Catch errors during config instantiation (e.g., DB connection issues in __init__)
              print(f"Error instantiating config class {config_class.__name__} for market {mercado}: {e}")
@@ -146,7 +150,7 @@ class TransformadorI90:
 
             # Determine relevant markets for this dataset type
             if mercados_lst is None:
-                relevant_markets = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets if dataset_type == 'precios_i90' else []
+                relevant_markets = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets
             else:
                 known_markets_for_type = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets
                 invalid_markets = [m for m in mercados_lst if m not in known_markets_for_type]
@@ -161,9 +165,7 @@ class TransformadorI90:
             for mercado in relevant_markets:
                 print(f"\n-- Market: {mercado} --")
                 try:
-                    if transform_type == 'batch':
-                        market_result = self._process_batch_mode(mercado, dataset_type)
-                    elif transform_type == 'single':
+                    if transform_type == 'single':
                         market_result = self._process_single_day(mercado, dataset_type, start_date)
                     elif transform_type == 'latest':
                         market_result = self._process_latest_day(mercado, dataset_type)
@@ -235,14 +237,14 @@ class TransformadorI90:
             }
         }
 
-    def _transform_data(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str) -> pd.DataFrame:
+    def _transform_data(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str, fecha: Optional[datetime] = None) -> pd.DataFrame:
         """Transforms data using the processor and returns the processed DataFrame."""
         if raw_df.empty:
             print(f"Skipping transformation for {mercado} - {dataset_type}: Input DataFrame is empty.")
             return pd.DataFrame()
 
         try:
-            market_config = self.get_config_for_market(mercado)
+            market_config = self.get_config_for_market(mercado, fecha)
             print(f"Raw data loaded ({len(raw_df)} rows). Starting transformation for {mercado} - {dataset_type}...")
             processed_df = self.processor.transform_volumenes_or_precios_i90(raw_df, market_config, dataset_type)
             if processed_df is None or processed_df.empty:
@@ -273,8 +275,7 @@ class TransformadorI90:
         # or lack the column, leading to errors here or empty results.
         if "fecha" not in raw_df.columns:
             print("Error: 'fecha' column missing in DataFrame passed to _process_df_based_on_transform_type. Cannot apply date filters.")
-            # Depending on mode, either return empty or the original df if batch
-            return pd.DataFrame() 
+            raise ValueError("'fecha' column missing in DataFrame passed to _process_df_based_on_transform_type. Cannot apply date filters.")
         else:
             # Ensure fecha column is datetime type for filtering
             if not pd.api.types.is_datetime64_any_dtype(raw_df['fecha']):
@@ -298,11 +299,6 @@ class TransformadorI90:
                #return filtered df on last day
                 return raw_df[raw_df['fecha'].dt.date == last_day].copy()
 
-            elif transform_type == 'batch':
-                unique_days = raw_df['fecha'].dropna().dt.date.nunique()
-                print(f"Processing in batch mode with {unique_days} unique days")
-                return raw_df # Process the entire dataframe
-
             elif transform_type == 'single':
                 target_date = pd.to_datetime(start_date).date()
                 print(f"Filtering for single mode: {target_date}")
@@ -322,45 +318,6 @@ class TransformadorI90:
         except Exception as e:
              print(f"Error during date filtering ({transform_type} mode): {e}")
              return pd.DataFrame() # Return empty on filtering error
-
-    def _process_batch_mode(self, mercado: str, dataset_type: str):
-        """Process all available raw data for a market/dataset_type."""
-        processed_dfs = []
-        print(f"Starting BATCH transformation for {mercado} - {dataset_type}")
-        try:
-            # Use RawFileUtils to find all year/month combinations
-            # Pass dataset_type if your raw storage differentiates files by it
-            years = self.raw_file_utils.get_raw_folder_list(mercado, dataset_type=dataset_type)
-            if not years: print(f"No years found for {mercado}/{dataset_type}. Skipping batch."); return processed_dfs
-
-            for year in years:
-                months = self.raw_file_utils.get_raw_folder_list(mercado, year, dataset_type=dataset_type)
-                if not months: print(f"No months found for {mercado}/{dataset_type}/{year}. Skipping year."); continue
-
-                for month in months:
-                    print(f"Processing {mercado}/{dataset_type} for {year}-{month:02d}")
-                    try:
-                        #get filenames for the year and month
-                        filenames = self.raw_file_utils.get_raw_file_list(year, month, mercado)
-                        for filename in filenames:
-                            #extract dataset_type from filename
-                            dataset_type = self._extract_dataset_type_from_filename(filename)
-                            #read the file
-                            raw_df = self.raw_file_utils.read_raw_file(year, month, dataset_type, mercado)
-                            #transform the data
-                            processed_df = self._transform_data(raw_df, mercado, dataset_type)
-                            #append the processed dataframe to the list
-                            if processed_df is not None and not processed_df.empty:
-                                processed_dfs.append(processed_df)
-                                
-                    except FileNotFoundError:
-                        print(f"Raw file not found for {year}-{month:02d}. Skipping.")
-                    except Exception as e:
-                        print(f"Error processing file {year}-{month:02d} for {mercado}/{dataset_type}: {e}")
-                        continue # Continue with next month/year
-        except Exception as e:
-            print(f"Error during batch processing setup for {mercado}/{dataset_type}: {e}")
-        return processed_dfs
 
     def _process_single_day(self, mercado: str, dataset_type: str, date: str):
         """Process a single day's data."""
@@ -386,7 +343,7 @@ class TransformadorI90:
                 print(f"No data found for {mercado}/{dataset_type} on {date} within file {target_year}-{target_month:02d}.")
                 return pd.DataFrame()
 
-            processed_df = self._transform_data(filtered_df, mercado, dataset_type)
+            processed_df = self._transform_data(filtered_df, mercado, dataset_type, fecha=target_date)
             return processed_df
 
         except FileNotFoundError:
@@ -425,7 +382,18 @@ class TransformadorI90:
                         if filtered_df.empty:
                             print(f"No data found for the latest day within file {year}-{month:02d}.")
                             return pd.DataFrame()
-                        processed_df = self._transform_data(filtered_df, mercado, dataset_type)
+                        # Extract the actual date from the filtered data
+                        if not filtered_df.empty and 'fecha' in filtered_df.columns:
+                            # Get the actual date being processed
+                            processing_date = filtered_df['fecha'].iloc[0]
+                            if pd.notna(processing_date):
+                                fecha_for_config = pd.to_datetime(processing_date)
+                            else:
+                                fecha_for_config = None
+                        else:
+                            fecha_for_config = None
+                        
+                        processed_df = self._transform_data(filtered_df, mercado, dataset_type, fecha=fecha_for_config)
                         found = True
                         return processed_df
                 if found:
@@ -490,7 +458,9 @@ class TransformadorI90:
                 return pd.DataFrame()
 
             print(f"Filtered data has {len(filtered_df)} rows. Proceeding with transformation...")
-            processed_df = self._transform_data(filtered_df, mercado, dataset_type)
+            # For date range, use the start_date as the reference for config
+            start_dt = pd.to_datetime(start_date)
+            processed_df = self._transform_data(filtered_df, mercado, dataset_type, fecha=start_dt)
             return processed_df
 
         except ValueError as ve:

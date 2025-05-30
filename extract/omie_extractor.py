@@ -291,27 +291,29 @@ class OMIEExtractor:
             "date_range": date_range_str
         }
         
+        market_successes = []
         try:
             # Track success for each market
             if 'diario' in mercados_lst:
                 print("\n--------- Diario ---------")
                 success_diario = self._extract_with_status("diario", self.extract_omie_diario, 
                                                         fecha_inicio_carga, fecha_fin_carga, status_details)
-
+                market_successes.append(success_diario)
             if 'intra' in mercados_lst:
                 print("\n--------- Intra ---------")
                 success_intra = self._extract_with_status("intra", self.extract_omie_intra, 
                                                         fecha_inicio_carga, fecha_fin_carga, status_details)
-            
+                market_successes.append(success_intra)
             if 'continuo' in mercados_lst:
                 print("\n--------- Continuo ---------")
                 success_continuo = self._extract_with_status("continuo", self.extract_omie_continuo, 
                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
-            
+                market_successes.append(success_continuo)
             print("\n--------------------------------")
             
+            
             # Overall success only if all markets succeeded
-            overall_success = (success_diario and success_intra and success_continuo)
+            overall_success = all(market_successes)
             
         except Exception as e:
             overall_success = False

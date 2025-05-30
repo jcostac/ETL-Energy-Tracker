@@ -39,7 +39,8 @@ class DatabaseUtils:
             return engine
         except Exception as e:
             raise ConnectionError(f"Failed to connect to database {database_name}: {str(e)}")
-
+    
+    @staticmethod
     def read_table(engine: object, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None) -> pd.DataFrame:
         """Read data from a table into a DataFrame
         
@@ -65,7 +66,7 @@ class DatabaseUtils:
             # Execute the query and convert to DataFrame
             with engine.connect() as conn:
                 result = conn.execute(query)
-                df = pd.DataFrame(result.fetchall())
+                df = pd.DataFrame(result.fetchall(), columns=result.keys())
                 return df
             
         except Exception as e:
@@ -145,11 +146,6 @@ class DuckDBUtils:
         try:
             # Connect, allowing unsigned extensions like httpfs if needed for remote data
             con = duckdb.connect(database=self.db_path if self.db_path else ':memory:', read_only=False)
-            # Example: Install and load httpfs if querying remote files (e.g., S3)
-            # con.execute("INSTALL httpfs;")
-            # con.execute("LOAD httpfs;")
-            # Configure settings like memory limit if needed
-            # con.execute("SET memory_limit='1GB';")
             return con
         except Exception as e:
             print(f"Error connecting to DuckDB: {e}")
