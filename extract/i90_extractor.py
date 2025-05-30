@@ -186,7 +186,7 @@ class I90Extractor:
         # All checks passed
         return True
     
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> dict:
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, mercados_lst: Optional[list[str]] = None) -> dict:
         """
         Generic workflow to extract all data for each day in the specified date range.
 
@@ -198,6 +198,7 @@ class I90Extractor:
         Args:
             fecha_inicio_carga (Optional[str]): The start date for the data extraction in 'YYYY-MM-DD' format.
             fecha_fin_carga (Optional[str]): The end date for the data extraction in 'YYYY-MM-DD' format.
+            mercados_lst (Optional[list[str]]): A list of markets to extract data for.
 
         Raises:
             ValueError: If the date range is invalid or incomplete.
@@ -210,7 +211,7 @@ class I90Extractor:
             date_range_str = f"{fecha_inicio_carga} to {fecha_fin_carga}"
 
         status_details = {
-            "markets_downloaded": [],  # Changed to dict to track by day and market
+            "markets_downloaded": [],  
             "markets_failed": [],
             "date_range": date_range_str
         }
@@ -232,7 +233,7 @@ class I90Extractor:
                     if not self.validate_i90_correct_download():
                         print(f"Skipping day {day_str}: I90 file attributes invalid.")
                         status_details["markets_failed"].append({
-                            "market": "all",
+                            "market": mercados_lst if mercados_lst else "all",
                             "error": "Invalid I90 file attributes",
                             "day": day_str
                         })
@@ -240,20 +241,20 @@ class I90Extractor:
                         return {"success": overall_success, "details": status_details}
                     
                     # Extract data for the given day in range, returns overall success and status details
-                    overall_success, status_details = self._extract_data_per_day_all_markets(day, status_details)
+                    overall_success, status_details = self._extract_data_per_day_all_markets(day, status_details, mercados_lst)
 
-                    #data transformation completed 
-                    print(f"ℹ️ Data transformation piepline finished for {day_str}")
+                    #data extraction completed 
+                    print(f"ℹ️ Data extraction pipeline finished for {day_str}")
 
                     if overall_success:
-                        print(f"✅ Data transformation fully successful for {day_str}")
+                        print(f"✅ Data extraction fully successful for {day_str}")
                     else:
-                        print(f"❌ There were failures in the data transformation pipeline for {day_str}")
+                        print(f"❌ There were failures in the data extraction pipeline for {day_str}")
                     
 
                 except Exception as e:
                     status_details["markets_failed"].append({
-                        "market": "all",
+                        "market": mercados_lst if mercados_lst else "all",
                         "error": str(e),
                         "day": day_str
                     })
@@ -274,7 +275,7 @@ class I90Extractor:
         except Exception as e:
             overall_success = False
             status_details["markets_failed"].append({
-                "market": "all",
+                "market": mercados_lst if mercados_lst else "all",
                 "error": str(e),
                 "day": day_str
             })
@@ -386,17 +387,15 @@ class I90VolumenesExtractor(I90Extractor):
     def extract_volumenes_restricciones(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'restricciones', self.restricciones_downloader)
 
-    def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict):
-        """
-        Extracts all volumenes data from I90 files for a given day.
+    def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict, mercados_lst: list[str] = None):
+        """Extracts all volumenes data from I90 files for a given day.
         Returns market-specific status information.
         """
         # Track success for each market
         print("\n--------- I90 Volumenes Extraction ---------")
         
-        
         # Define markets and their extraction functions
-        markets = [
+        mercados = [
             ("diario", self.extract_volumenes_diario),
             ("intra", self.extract_volumenes_intradiario),
             ("terciaria", self.extract_volumenes_terciaria),
@@ -409,17 +408,20 @@ class I90VolumenesExtractor(I90Extractor):
         ]
         
         # Process each market and track individual success
-        
-        for market_name, extract_func in markets:
-            print(f"\n--------- {market_name.capitalize()} ---------")
-            status_details = self._extract_with_status(market_name, extract_func, day, status_details)
+        for mercado, extract_func in mercados:
+            print(f"\n--------- {mercado.capitalize()} ---------")
+            # If mercados_lst is None, extract all markets; otherwise only extract if mercado is in the list
+            if mercados_lst is None or mercado in mercados_lst:
+                status_details = self._extract_with_status(mercado, extract_func, day, status_details)
+            else:
+                print(f"Skipping {mercado} - not in requested markets list")
             print("\n--------------------------------")
 
         #overall success is true if failed markets is empty, else false
         overall_success = len(status_details["markets_failed"]) == 0
 
         return overall_success, status_details
-    
+
 class I90PreciosExtractor(I90Extractor):
     def __init__(self):
         super().__init__()

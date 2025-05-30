@@ -98,7 +98,7 @@ class TransformadorI90:
              raise # Reraise the exception
 
     def transform_data_for_all_markets(self, start_date: Optional[str] = None, end_date: Optional[str] = None,
-                                         mercados: Optional[List[str]] = None,
+                                         mercados_lst: Optional[List[str]] = None,
                                          dataset_type: str = None,
                                          transform_type: str = 'latest',) -> dict:
         """
@@ -145,14 +145,14 @@ class TransformadorI90:
             print("="*60)
 
             # Determine relevant markets for this dataset type
-            if mercados is None:
+            if mercados_lst is None:
                 relevant_markets = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets if dataset_type == 'precios_i90' else []
             else:
                 known_markets_for_type = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets
-                invalid_markets = [m for m in mercados if m not in known_markets_for_type]
+                invalid_markets = [m for m in mercados_lst if m not in known_markets_for_type]
                 if invalid_markets:
                     print(f"Warning: Market(s) {invalid_markets} are not associated with dataset type {dataset_type} or are unknown. Skipping them for this type.")
-                relevant_markets = [m for m in mercados if m in known_markets_for_type]
+                relevant_markets = [m for m in mercados_lst if m in known_markets_for_type]
 
             if not relevant_markets:
                 print(f"No relevant markets specified or configured for dataset type: {dataset_type}")

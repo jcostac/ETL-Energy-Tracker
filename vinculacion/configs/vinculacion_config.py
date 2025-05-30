@@ -10,12 +10,11 @@ class VinculacionConfig:
         self.HISTORICAL_CHECK_WINDOW = 94  # days for ambiguous matches
         
         # Data paths (only for temporary extraction)
-        self.TEMP_DATA_BASE_PATH = Path("data/temp_vinculacion")
+        self.TEMP_DATA_BASE_PATH = Path("data/temporary")
         
         # Markets for linking
-        self.OMIE_MARKETS = ['diario']
+        self.OMIE_MARKETS = ['diario', 'intra']
         self.I90_MARKETS = ['diario']
-        self.INTRA_MARKETS = ['intra']  # For I90 intra 1, 2, 3
         
         # Database tables
         self.UP_LISTADO_TABLE = "up_listado"
@@ -24,7 +23,7 @@ class VinculacionConfig:
         
         # Linking parameters
         self.VOLUME_TOLERANCE = 0.001  # Tolerance for volume matching (MWh)
-        self.MIN_MATCHING_HOURS = 20   # Minimum hours that must match for a valid link
+        self.MIN_MATCHING_HOURS = 23   # Minimum hours that must match for a valid link
         
         # Dataset types
         self.OMIE_DATASET_TYPE = "volumenes_omie"

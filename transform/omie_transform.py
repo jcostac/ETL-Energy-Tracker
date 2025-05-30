@@ -647,14 +647,14 @@ class TransformadorOMIE:
         return processed_df_final
 
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None,
-                                      mercados: List[str] = None, mode: str = 'latest') -> Dict:
+                                      mercados_lst: List[str] = None, mode: str = 'latest') -> Dict:
         """
         A function that transforms data for specified markets and returns status along with results.
 
         Args:
             fecha_inicio (str): Start date in YYYY-MM-DD format
             fecha_fin (str): End date in YYYY-MM-DD format
-            mercados (List[str]): List of market names to process
+            mercados_lst (List[str]): List of market names to process
             mode (str): Mode to process data ('single', 'multiple', 'batch', 'latest')
 
         Returns:
@@ -691,26 +691,26 @@ class TransformadorOMIE:
                 raise ValueError("Both fecha_inicio and fecha_fin must be provided for multiple mode")
             
             # Get list of all markets to process
-            if mercados is None:
-                mercados = self.omie_markets
-            elif isinstance(mercados, str):  # Allow single market string
-                mercados = [mercados]
+            if mercados_lst is None:
+                mercados_lst = self.omie_markets
+            elif isinstance(mercados_lst, str):  # Allow single market string
+                mercados_lst = [mercados_lst]
                 
             # Validate markets
-            invalid_markets = [m for m in mercados if m not in self.omie_markets]
+            invalid_markets = [m for m in mercados_lst if m not in self.omie_markets]
             if invalid_markets:
                 raise ValueError(f"Invalid markets: {invalid_markets}. Must be one of: {self.omie_markets}")
                 
             print("\n" + "="*80)
             print(f"🚀 STARTING OMIE TRANSFORMATION PIPELINE")
             print(f"Mode: {mode.upper()}")
-            print(f"Markets: {', '.join(mercados)}")
+            print(f"Markets: {', '.join(mercados_lst)}")
             if fecha_inicio:
                 print(f"Date Range: {fecha_inicio}" + (f" to {fecha_fin}" if fecha_fin else ""))
             print("="*80)
                 
             # Process each market and track status
-            for mercado in mercados:
+            for mercado in mercados_lst:
                 market_result = None
                 try:
                     print(f"\n🏭 PROCESSING MARKET: {mercado.upper()}")

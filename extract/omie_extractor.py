@@ -271,7 +271,7 @@ class OMIEExtractor:
             except Exception as e:
                 print(f"  ❌ Error downloading continuo data for {day_str}: {e}")
 
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> Dict:
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None , mercados_lst: Optional[List[str]] = None) -> Dict:
         """
         Extract data for all relevant markets from OMIE for a given date range.
         Uses the environment setting (DEV/PROD) for file saving format.
@@ -293,16 +293,19 @@ class OMIEExtractor:
         
         try:
             # Track success for each market
-            print("\n--------- Diario ---------")
-            success_diario = self._extract_with_status("diario", self.extract_omie_diario, 
-                                                     fecha_inicio_carga, fecha_fin_carga, status_details)
-        
-            print("\n--------- Intra ---------")
-            success_intra = self._extract_with_status("intra", self.extract_omie_intra, 
-                                                    fecha_inicio_carga, fecha_fin_carga, status_details)
+            if 'diario' in mercados_lst:
+                print("\n--------- Diario ---------")
+                success_diario = self._extract_with_status("diario", self.extract_omie_diario, 
+                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
+
+            if 'intra' in mercados_lst:
+                print("\n--------- Intra ---------")
+                success_intra = self._extract_with_status("intra", self.extract_omie_intra, 
+                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
             
-            print("\n--------- Continuo ---------")
-            success_continuo = self._extract_with_status("continuo", self.extract_omie_continuo, 
+            if 'continuo' in mercados_lst:
+                print("\n--------- Continuo ---------")
+                success_continuo = self._extract_with_status("continuo", self.extract_omie_continuo, 
                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
             
             print("\n--------------------------------")

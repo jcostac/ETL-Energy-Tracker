@@ -11,7 +11,7 @@ sys.path.append(str(PROJECT_ROOT))
 from vinculacion.configs.vinculacion_config import VinculacionConfig
 from utilidades.storage_file_utils import ProcessedFileUtils
 
-class TempDataManager:
+class TemporaryDataManager:
     """Manages temporary data storage for vinculacion operations"""
     
     def __init__(self):

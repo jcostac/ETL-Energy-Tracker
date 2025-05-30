@@ -12,14 +12,14 @@ from transform.i90_transform import TransformadorI90
 from extract.omie_extractor import OMIEExtractor
 from extract.i90_extractor import I90VolumenesExtractor
 from vinculacion.configs.vinculacion_config import VinculacionConfig
-from vinculacion.temp_data_manager import TempDataManager
+from vinculacion.temp_data_manager import TemporaryDataManager
 
 class VinculacionDataExtractor:
     """Extracts and transforms data needed for vinculacion process"""
     
     def __init__(self):
         self.config = VinculacionConfig()
-        self.temp_manager = TempDataManager()
+        self.temp_manager = TemporaryDataManager()
         
         # Extractors (for downloading)
         self.omie_extractor = OMIEExtractor()
@@ -47,9 +47,8 @@ class VinculacionDataExtractor:
         
         # Calculate date range (93 days back from target date)
         target_dt = pd.to_datetime(target_date)
-        start_date = (target_dt - timedelta(days=self.config.DATA_DOWNLOAD_WINDOW)).strftime('%Y-%m-%d')
-        end_date = target_date
-        
+        target_date = (target_dt - timedelta(days=self.config.DATA_DOWNLOAD_WINDOW)).strftime('%Y-%m-%d')
+
         extracted_data = {}
         
         try:
@@ -59,14 +58,11 @@ class VinculacionDataExtractor:
             
             # Step 1: Download OMIE raw data
             print(f"\n📥 DOWNLOADING OMIE RAW DATA")
-            print(f"Date range: {start_date} to {end_date}")
+            print(f"Date range: {target_date}")
             print("-"*40)
             
             try:
-                omie_download_result = self.omie_extractor.extract_data_for_all_markets(
-                    fecha_inicio_carga=start_date,
-                    fecha_fin_carga=end_date
-                )
+                omie_download_result = self.omie_extractor.extract_data_for_all_markets(fecha_inicio_carga=target_date, fecha_fin_carga=target_date, mercados_lst=self.config.OMIE_MARKETS) 
                 
                 if omie_download_result['success']:
                     print(f"✅ OMIE raw data download successful")
@@ -75,18 +71,15 @@ class VinculacionDataExtractor:
                     
             except Exception as e:
                 print(f"❌ OMIE raw data download failed: {e}")
-                # Continue with transformation attempt anyway
+                raise e 
             
             # Step 2: Download I90 raw data (volumenes only)
             print(f"\n📥 DOWNLOADING I90 RAW DATA")
-            print(f"Date range: {start_date} to {end_date}")
+            print(f"Date range: {target_date}")
             print("-"*40)
             
             try:
-                i90_download_result = self.i90_extractor.extract_data_for_all_markets(
-                    fecha_inicio_carga=start_date,
-                    fecha_fin_carga=end_date
-                )
+                i90_download_result = self.i90_extractor.extract_data_for_all_markets(fecha_inicio_carga=target_date, fecha_fin_carga=target_date, mercados_lst=self.config.I90_MARKETS)
                 
                 if i90_download_result['success']:
                     print(f"✅ I90 raw data download successful")
@@ -99,13 +92,11 @@ class VinculacionDataExtractor:
             
             # Step 3: Transform OMIE data (diario)
             print(f"\n🔄 TRANSFORMING OMIE DATA")
-            print(f"Date range: {start_date} to {end_date}")
+            print(f"Date range: {target_date}")
             print("-"*40)
             omie_result = self.omie_transformer.transform_data_for_all_markets(
-                fecha_inicio=start_date,
-                fecha_fin=end_date,
-                mercados=['diario'],
-                mode='multiple'
+                mercados_lst=self.config.OMIE_MARKETS,
+                mode='latest'
             )
             
             if omie_result['status']['success'] and 'diario' in omie_result['data']:
@@ -120,14 +111,11 @@ class VinculacionDataExtractor:
                 
             # Step 4: Transform I90 data (diario)
             print(f"\n🔄 TRANSFORMING I90 DATA")
-            print(f"Date range: {start_date} to {end_date}")
+            print(f"Date range: {target_date}")
             print("-"*40)
             i90_result = self.i90_transformer.transform_data_for_all_markets(
-                start_date=start_date,
-                end_date=end_date,
-                mercados=['diario'],
-                dataset_type='volumenes_i90',
-                transform_type='multiple'
+                mercados_lst=self.config.I90_MARKETS,
+                mode='latest'
             )
             
             if i90_result['status']['success'] and 'diario' in i90_result['data']:
