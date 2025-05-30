@@ -61,7 +61,7 @@ class TransformadorI90:
         """
         markets = []
         for config_cls in I90Config.__subclasses__():
-            if config_cls.has_volumenes_sheets(): # Check if the market has volumenes_sheets
+            if config_cls.has_volumenes_sheets(): # Check if the market has volumenes_sheets ie True
                 market_name = config_cls.__name__.replace('Config', '').lower() # parse the market name
                 markets.append(market_name) # Add the market name to the list
         return markets
@@ -72,7 +72,7 @@ class TransformadorI90:
         """
         markets = []
         for config_cls in I90Config.__subclasses__():
-            if config_cls.has_precios_sheets(): # Check if the market has precios_sheets
+            if config_cls.has_precios_sheets(): # Check if the market has precios_sheets ie True
                 market_name = config_cls.__name__.replace('Config', '').lower() # parse the market name
                 markets.append(market_name) # Add the market name to the list
         return markets
