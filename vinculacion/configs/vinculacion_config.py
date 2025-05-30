@@ -9,9 +9,6 @@ class VinculacionConfig:
         self.DATA_DOWNLOAD_WINDOW = 93  # days back for data availability
         self.HISTORICAL_CHECK_WINDOW = 94  # days for ambiguous matches
         
-        # Data paths (only for temporary extraction)
-        self.TEMP_DATA_BASE_PATH = Path("data/temporary/vinculacion")
-        
         # Markets for linking
         self.OMIE_MARKETS = ['diario', 'intra']
         self.I90_MARKETS = ['diario', 'intra']

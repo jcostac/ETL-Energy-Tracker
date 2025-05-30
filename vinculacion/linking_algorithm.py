@@ -501,11 +501,10 @@ class UOFUPLinkingAlgorithm:
             pd.DataFrame: Final links with columns [up, uof]
         """
         print(f"\n🚀 STARTING UOF-UP LINKING PROCESS")
-        print(f"Target Date: {target_date}")
+        print(f"Target Date: {target_date} - ({self.config.DATA_DOWNLOAD_WINDOW} days window)")
         print("="*60)
         
         try:
-            # Step 1: Get active UPs
             # Step 1: Get active UPs
             active_ups = self._get_active_ups()
             if active_ups.empty:
@@ -557,10 +556,7 @@ class UOFUPLinkingAlgorithm:
             print(f"❌ Error in linking process: {e}")
             return pd.DataFrame(columns=['up', 'uof'])
         
-        finally:
-            # Cleanup all files downloaded by the data extractor
-            self.data_extractor.cleanup_extraction()
-            
+
     def save_links_to_database(self, links_df: pd.DataFrame, table_name: str, 
                               if_exists: str = 'append') -> bool:
         """
@@ -631,7 +627,7 @@ class UOFUPLinkingAlgorithm:
         except Exception as e:
             print(f"❌ Error updating links in database: {e}")
             return False 
-        
+    
 
 def main():
     # Initialize the algorithm

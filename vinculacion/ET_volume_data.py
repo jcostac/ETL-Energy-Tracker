@@ -12,14 +12,12 @@ from transform.i90_transform import TransformadorI90
 from extract.omie_extractor import OMIEExtractor
 from extract.i90_extractor import I90VolumenesExtractor
 from vinculacion.configs.vinculacion_config import VinculacionConfig
-from vinculacion.temp_data_manager import TemporaryDataManager
 
 class VinculacionDataExtractor:
     """Extracts and transforms data needed for vinculacion process"""
     
     def __init__(self):
         self.config = VinculacionConfig()
-        self.temp_manager = TemporaryDataManager()
         
         # Extractors (for downloading)
         self.omie_extractor = OMIEExtractor()
@@ -32,10 +30,9 @@ class VinculacionDataExtractor:
     def extract_data_for_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
         Downloads and transforms data for the matching process
-        Always uses the full 93-day window ending on target_date
         
         Args:
-            target_date: Target date for linking (YYYY-MM-DD)
+            target_date: Target date for linking (YYYY-MM-DD) - this should be the actual date to download data for
             
         Returns:
             Dict with extracted dataframes for each market/dataset combination
@@ -45,16 +42,7 @@ class VinculacionDataExtractor:
         print(f"Download Window: {self.config.DATA_DOWNLOAD_WINDOW} days")
         print("="*60)
 
-        # Calculate date range (93 days back from target date)
-        target_dt = pd.to_datetime(target_date)
-        target_date = (target_dt - timedelta(days=self.config.DATA_DOWNLOAD_WINDOW)).strftime('%Y-%m-%d')
-
-
-        
         try:
-            # Clean and setup temp directory
-            self.temp_manager.cleanup_temp_directory()
-            self.temp_manager.setup_temp_directory()
             
             # Step 1: Download OMIE raw data
             print(f"\n📥 DOWNLOADING OMIE RAW DATA")
@@ -95,7 +83,7 @@ class VinculacionDataExtractor:
             
         except Exception as e:
             print(f"❌ Error during data extraction: {e}")
-            return {}
+            raise e
         
     def transform_diario_data_for_initial_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
@@ -246,7 +234,3 @@ class VinculacionDataExtractor:
             print(f"❌ Error transforming intra data: {e}")
             return {}
             
-    def cleanup_extraction(self) -> None:
-        """Cleanup temporary data after extraction"""
-        self.temp_manager.cleanup_temp_directory()
-        print("🗑️  Extraction cleanup complete") 
