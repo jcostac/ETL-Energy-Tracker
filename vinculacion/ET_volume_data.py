@@ -86,7 +86,9 @@ class VinculacionDataExtractor:
                     print(f"✅ I90 raw data download successful")
                 else:
                     print(f"⚠️  I90 raw data download had issues: {i90_download_result.get('details', {})}")
-                    
+
+                return i90_download_result, omie_download_result
+            
             except Exception as e:
                 print(f"❌ I90 raw data download failed: {e}")
                 raise e
@@ -95,7 +97,7 @@ class VinculacionDataExtractor:
             print(f"❌ Error during data extraction: {e}")
             return {}
         
-    def transform_diario_data_for_initial_matching(self, i90_download_result: Dict[str, pd.DataFrame], omie_download_result: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+    def transform_diario_data_for_initial_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
         Transforms diario data for initial matching
         """
@@ -106,17 +108,18 @@ class VinculacionDataExtractor:
         print(f"\n🔄 TRANSFORMING OMIE DATA")
         print("-"*40)
 
-        transformed_data = {}
+        transformed_diario_data = {}
 
         omie_result = self.omie_transformer.transform_data_for_all_markets(
             mercados_lst= ['diario'], #only transfrom diario
-            mode='latest'
+            mode='single',
+            fecha_inicio=target_date,
         )
         
         if omie_result['status']['success'] and 'diario' in omie_result['data']:
             omie_data = omie_result['data']['diario']
             if omie_data is not None and not omie_data.empty:
-                transformed_data['omie_diario'] = omie_data
+                transformed_diario_data['omie_diario'] = omie_data
                 print(f"✅ OMIE diario: {len(omie_data)} records extracted")
             else:
                 print("⚠️  OMIE diario: No data extracted")
@@ -128,14 +131,15 @@ class VinculacionDataExtractor:
         print("-"*40)
         i90_result = self.i90_transformer.transform_data_for_all_markets(
             mercados_lst= ['diario'], #only transfrom diario
-            mode='latest'
+            mode='single',
+            fecha_inicio=target_date,
         )
         
         if i90_result['status']['success'] and 'diario' in i90_result['data']:
             i90_data = i90_result['data']['diario']
 
             if i90_data is not None and not i90_data.empty:
-                transformed_data['i90_diario'] = i90_data
+                transformed_diario_data['i90_diario'] = i90_data
                 print(f"✅ I90 diario: {len(i90_data)} records extracted")
             else:
                 print("⚠️  I90 diario: No data extracted")
@@ -143,57 +147,62 @@ class VinculacionDataExtractor:
             print("❌ I90 diario transformation failed")
             
         print(f"\n✅ DATA TRANSFORMATION COMPLETE")
-        print(f"Total datasets : {len(transformed_data)}")
+        print(f"Total datasets extracted: {len(transformed_diario_data)}")
         print("="*60)
         
-        return transformed_data
+        return transformed_diario_data
             
     def transform_intra_data_for_ambiguous_matches(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
-        Transforms I90 intra data (sessions 1, 2, 3) and OMIE intra data for resolving ambiguous matches
-        Note: Raw data should already be downloaded by extract_data_for_linking method
+        Transforms I90 intra data and OMIE intra data for resolving ambiguous matches
+        Note: Raw data should already be downloaded by extract_data_for_matching method
         
         Args:
             target_date: Target date (YYYY-MM-DD)
             
         Returns:
-            Dict with intra dataframes
+            Dict with intra dataframes split by sessions
         """
         print(f"\n🔍 TRANSFORMING INTRA DATA FOR AMBIGUOUS MATCHES")
         print(f"Target Date: {target_date}")
         print("-"*50)
         
-        intra_data = {}
+        transformed_intra_data = {}
         
         try:
-            # Transform I90 intra data (raw data should already be available)
+            # Transform I90 intra data
             print(f"🔄 Transforming I90 intra data for {target_date}")
             i90_result = self.i90_transformer.transform_data_for_all_markets(
-                start_date=target_date,
-                end_date=target_date,
                 mercados_lst=['intra'],
                 dataset_type='volumenes_i90',
-                transform_type='single'
+                transform_type='single',
+                start_date=target_date,
             )
             
             if i90_result['status']['success'] and 'intra' in i90_result['data']:
-                intra_raw = i90_result['data']['intra']
-                if intra_raw is not None and not intra_raw.empty:
-                    # Split by intra session (assuming there's a session identifier)
-                    # This might need adjustment based on your actual I90 intra data structure
-                    for session in [1, 2, 3]:
-                        session_data = intra_raw[intra_raw.get('session', 1) == session]
+                intra_transformed = i90_result['data']['intra']
+                if intra_transformed is not None and not intra_transformed.empty:
+                    # Split by intra session using id_mercado
+                    # Session mapping: session 1 = id_mercado 2, session 2 = id_mercado 3, session 3 = id_mercado 4
+                    session_mapping = {2: 1, 3: 2, 4: 3}  # id_mercado: session_number
+                    
+                    for id_mercado, session_num in session_mapping.items():
+                        #filter the data by the id_mercado
+                        session_data = intra_transformed[intra_transformed['id_mercado'] == id_mercado]
+
+                        #if the data is not empty, add the data to the transformed_intra_data dictionary with the key "i90_intra_{session_num}"
                         if not session_data.empty:
-                            intra_data[f'i90_intra_{session}'] = session_data
-                            print(f"✅ I90 Intra {session}: {len(session_data)} records")
+                            transformed_intra_data[f'i90_intra_{session_num}'] = session_data
+                            print(f"✅ I90 Intra Session {session_num} (id_mercado={id_mercado}): {len(session_data)} records")
                         else:
-                            print(f"⚠️  I90 Intra {session}: No data found")
+                            print(f"⚠️  I90 Intra Session {session_num} (id_mercado={id_mercado}): No data found")
+                        
                 else:
                     print("⚠️  No I90 intra data extracted")
             else:
                 print("❌ I90 intra data transformation failed")
             
-            # Transform OMIE intra data (raw data should already be available)
+            # Transform OMIE intra data
             print(f"🔄 Transforming OMIE intra data for {target_date}")
             omie_result = self.omie_transformer.transform_data_for_all_markets(
                 fecha_inicio=target_date,
@@ -201,21 +210,37 @@ class VinculacionDataExtractor:
                 mode='single'
             )
             
+            #if if omie result of transformation was a success and we have intra data in the result
             if omie_result['status']['success'] and 'intra' in omie_result['data']:
+                #get the intra data from the result
                 omie_intra_data = omie_result['data']['intra']
+
+                #if the data is not empty or None, split the data by sessions using id_mercado
                 if omie_intra_data is not None and not omie_intra_data.empty:
-                    intra_data['omie_intra'] = omie_intra_data
-                    print(f"✅ OMIE Intra: {len(omie_intra_data)} records")
+                    # Split OMIE intra data by sessions using id_mercado
+                    session_mapping = {2: 1, 3: 2, 4: 3}  # id_mercado: session_number
+                    
+                    for id_mercado, session_num in session_mapping.items():
+                        #filter the data by the id_mercado
+                        session_data = omie_intra_data[omie_intra_data['id_mercado'] == id_mercado]
+
+                        if not session_data.empty:
+                            #add the session data to the transformed_intra_data dictionary wiht the key "omie_intra_{session_num}"
+                            transformed_intra_data[f'omie_intra_{session_num}'] = session_data
+                            print(f"✅ OMIE Intra Session {session_num} (id_mercado={id_mercado}): {len(session_data)} records")
+                        else:
+                            print(f"⚠️  OMIE Intra Session {session_num} (id_mercado={id_mercado}): No data found")
+                        
                 else:
                     print("⚠️  No OMIE intra data extracted")
             else:
                 print("❌ OMIE intra data transformation failed")
             
             print(f"\n✅ INTRA DATA TRANSFORMATION COMPLETE")
-            print(f"Total intra datasets: {len(intra_data)}")
+            print(f"Total intra datasets by session: {len(transformed_intra_data)}")
             print("-"*50)
             
-            return intra_data
+            return transformed_intra_data
             
         except Exception as e:
             print(f"❌ Error transforming intra data: {e}")
