@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 import sys
 from pathlib import Path
+import pretty_errors
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -37,7 +38,7 @@ class UOFUPLinkingAlgorithm:
         except Exception as e:
             raise ValueError(f"❌ Error setting engine: {e}")
         
-    def get_active_ups(self) -> pd.DataFrame:
+    def _get_active_ups(self) -> pd.DataFrame:
         """
         Get all non-obsolete UPs from up_listado table
         
@@ -506,7 +507,7 @@ class UOFUPLinkingAlgorithm:
         try:
             # Step 1: Get active UPs
             # Step 1: Get active UPs
-            active_ups = self.get_active_ups()
+            active_ups = self._get_active_ups()
             if active_ups.empty:
                 print("❌ No active UPs found")
                 return pd.DataFrame(columns=['up', 'uof'])
