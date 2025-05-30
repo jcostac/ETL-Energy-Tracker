@@ -29,9 +29,9 @@ class VinculacionDataExtractor:
         self.omie_transformer = TransformadorOMIE()
         self.i90_transformer = TransformadorI90()
         
-    def extract_data_for_linking(self, target_date: str) -> Dict[str, pd.DataFrame]:
+    def extract_data_for_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
-        Downloads and transforms data for the linking process
+        Downloads and transforms data for the matching process
         Always uses the full 93-day window ending on target_date
         
         Args:
@@ -44,12 +44,12 @@ class VinculacionDataExtractor:
         print(f"Target Date: {target_date}")
         print(f"Download Window: {self.config.DATA_DOWNLOAD_WINDOW} days")
         print("="*60)
-        
+
         # Calculate date range (93 days back from target date)
         target_dt = pd.to_datetime(target_date)
         target_date = (target_dt - timedelta(days=self.config.DATA_DOWNLOAD_WINDOW)).strftime('%Y-%m-%d')
 
-        extracted_data = {}
+
         
         try:
             # Clean and setup temp directory
@@ -79,7 +79,8 @@ class VinculacionDataExtractor:
             print("-"*40)
             
             try:
-                i90_download_result = self.i90_extractor.extract_data_for_all_markets(fecha_inicio_carga=target_date, fecha_fin_carga=target_date, mercados_lst=self.config.I90_MARKETS)
+                i90_download_result = self.i90_extractor.extract_data_for_all_markets(fecha_inicio_carga=target_date, fecha_fin_carga=target_date,
+                                                                                       mercados_lst=self.config.I90_MARKETS)
                 
                 if i90_download_result['success']:
                     print(f"✅ I90 raw data download successful")
@@ -88,59 +89,69 @@ class VinculacionDataExtractor:
                     
             except Exception as e:
                 print(f"❌ I90 raw data download failed: {e}")
-                # Continue with transformation attempt anyway
-            
-            # Step 3: Transform OMIE data (diario)
-            print(f"\n🔄 TRANSFORMING OMIE DATA")
-            print(f"Date range: {target_date}")
-            print("-"*40)
-            omie_result = self.omie_transformer.transform_data_for_all_markets(
-                mercados_lst=self.config.OMIE_MARKETS,
-                mode='latest'
-            )
-            
-            if omie_result['status']['success'] and 'diario' in omie_result['data']:
-                omie_data = omie_result['data']['diario']
-                if omie_data is not None and not omie_data.empty:
-                    extracted_data['omie_diario'] = omie_data
-                    print(f"✅ OMIE diario: {len(omie_data)} records extracted")
-                else:
-                    print("⚠️  OMIE diario: No data extracted")
-            else:
-                print("❌ OMIE diario transformation failed")
-                
-            # Step 4: Transform I90 data (diario)
-            print(f"\n🔄 TRANSFORMING I90 DATA")
-            print(f"Date range: {target_date}")
-            print("-"*40)
-            i90_result = self.i90_transformer.transform_data_for_all_markets(
-                mercados_lst=self.config.I90_MARKETS,
-                mode='latest'
-            )
-            
-            if i90_result['status']['success'] and 'diario' in i90_result['data']:
-                i90_data = i90_result['data']['diario']
-                if i90_data is not None and not i90_data.empty:
-                    extracted_data['i90_diario'] = i90_data
-                    print(f"✅ I90 diario: {len(i90_data)} records extracted")
-                else:
-                    print("⚠️  I90 diario: No data extracted")
-            else:
-                print("❌ I90 diario transformation failed")
-                
-            print(f"\n✅ DATA EXTRACTION COMPLETE")
-            print(f"Total datasets extracted: {len(extracted_data)}")
-            print("="*60)
-            
-            return extracted_data
+                raise e
             
         except Exception as e:
             print(f"❌ Error during data extraction: {e}")
             return {}
-            
-    def extract_intra_data_for_ambiguous_matches(self, target_date: str) -> Dict[str, pd.DataFrame]:
+        
+    def transform_diario_data_for_initial_matching(self, i90_download_result: Dict[str, pd.DataFrame], omie_download_result: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
         """
-        Downloads and transforms I90 intra data (sessions 1, 2, 3) for resolving ambiguous matches
+        Transforms diario data for initial matching
+        """
+        print(f"\n🔍 TRANSFORMING DIARIO DATA FOR INITIAL MATCHING")
+        print("-"*50)
+
+        # Step 3: Transform OMIE data (diario)
+        print(f"\n🔄 TRANSFORMING OMIE DATA")
+        print("-"*40)
+
+        transformed_data = {}
+
+        omie_result = self.omie_transformer.transform_data_for_all_markets(
+            mercados_lst= ['diario'], #only transfrom diario
+            mode='latest'
+        )
+        
+        if omie_result['status']['success'] and 'diario' in omie_result['data']:
+            omie_data = omie_result['data']['diario']
+            if omie_data is not None and not omie_data.empty:
+                transformed_data['omie_diario'] = omie_data
+                print(f"✅ OMIE diario: {len(omie_data)} records extracted")
+            else:
+                print("⚠️  OMIE diario: No data extracted")
+        else:
+            print("❌ OMIE diario transformation failed")
+            
+        # Step 4: Transform I90 data (diario)
+        print(f"\n🔄 TRANSFORMING I90 DATA")
+        print("-"*40)
+        i90_result = self.i90_transformer.transform_data_for_all_markets(
+            mercados_lst= ['diario'], #only transfrom diario
+            mode='latest'
+        )
+        
+        if i90_result['status']['success'] and 'diario' in i90_result['data']:
+            i90_data = i90_result['data']['diario']
+
+            if i90_data is not None and not i90_data.empty:
+                transformed_data['i90_diario'] = i90_data
+                print(f"✅ I90 diario: {len(i90_data)} records extracted")
+            else:
+                print("⚠️  I90 diario: No data extracted")
+        else:
+            print("❌ I90 diario transformation failed")
+            
+        print(f"\n✅ DATA TRANSFORMATION COMPLETE")
+        print(f"Total datasets : {len(transformed_data)}")
+        print("="*60)
+        
+        return transformed_data
+            
+    def transform_intra_data_for_ambiguous_matches(self, target_date: str) -> Dict[str, pd.DataFrame]:
+        """
+        Transforms I90 intra data (sessions 1, 2, 3) and OMIE intra data for resolving ambiguous matches
+        Note: Raw data should already be downloaded by extract_data_for_linking method
         
         Args:
             target_date: Target date (YYYY-MM-DD)
@@ -148,37 +159,19 @@ class VinculacionDataExtractor:
         Returns:
             Dict with intra dataframes
         """
-        print(f"\n🔍 EXTRACTING INTRA DATA FOR AMBIGUOUS MATCHES")
+        print(f"\n🔍 TRANSFORMING INTRA DATA FOR AMBIGUOUS MATCHES")
         print(f"Target Date: {target_date}")
         print("-"*50)
         
         intra_data = {}
         
         try:
-            # Step 1: Download I90 intra raw data for target date
-            print(f"📥 Downloading I90 intra raw data for {target_date}")
-            
-            try:
-                i90_download_result = self.i90_extractor.extract_data_for_all_markets(
-                    fecha_inicio_carga=target_date,
-                    fecha_fin_carga=target_date
-                )
-                
-                if i90_download_result['success']:
-                    print(f"✅ I90 intra raw data download successful")
-                else:
-                    print(f"⚠️  I90 intra raw data download had issues")
-                    
-            except Exception as e:
-                print(f"❌ I90 intra raw data download failed: {e}")
-                # Continue with transformation attempt anyway
-            
-            # Step 2: Transform I90 intra data
+            # Transform I90 intra data (raw data should already be available)
             print(f"🔄 Transforming I90 intra data for {target_date}")
             i90_result = self.i90_transformer.transform_data_for_all_markets(
                 start_date=target_date,
                 end_date=target_date,
-                mercados=['intra'],
+                mercados_lst=['intra'],
                 dataset_type='volumenes_i90',
                 transform_type='single'
             )
@@ -191,19 +184,41 @@ class VinculacionDataExtractor:
                     for session in [1, 2, 3]:
                         session_data = intra_raw[intra_raw.get('session', 1) == session]
                         if not session_data.empty:
-                            intra_data[f'intra_{session}'] = session_data
-                            print(f"✅ Intra {session}: {len(session_data)} records")
+                            intra_data[f'i90_intra_{session}'] = session_data
+                            print(f"✅ I90 Intra {session}: {len(session_data)} records")
                         else:
-                            print(f"⚠️  Intra {session}: No data found")
+                            print(f"⚠️  I90 Intra {session}: No data found")
                 else:
-                    print("⚠️  No intra data extracted")
+                    print("⚠️  No I90 intra data extracted")
             else:
-                print("❌ Intra data transformation failed")
-                
+                print("❌ I90 intra data transformation failed")
+            
+            # Transform OMIE intra data (raw data should already be available)
+            print(f"🔄 Transforming OMIE intra data for {target_date}")
+            omie_result = self.omie_transformer.transform_data_for_all_markets(
+                fecha_inicio=target_date,
+                mercados_lst=['intra'],
+                mode='single'
+            )
+            
+            if omie_result['status']['success'] and 'intra' in omie_result['data']:
+                omie_intra_data = omie_result['data']['intra']
+                if omie_intra_data is not None and not omie_intra_data.empty:
+                    intra_data['omie_intra'] = omie_intra_data
+                    print(f"✅ OMIE Intra: {len(omie_intra_data)} records")
+                else:
+                    print("⚠️  No OMIE intra data extracted")
+            else:
+                print("❌ OMIE intra data transformation failed")
+            
+            print(f"\n✅ INTRA DATA TRANSFORMATION COMPLETE")
+            print(f"Total intra datasets: {len(intra_data)}")
+            print("-"*50)
+            
             return intra_data
             
         except Exception as e:
-            print(f"❌ Error extracting intra data: {e}")
+            print(f"❌ Error transforming intra data: {e}")
             return {}
             
     def cleanup_extraction(self) -> None:

@@ -10,11 +10,11 @@ class VinculacionConfig:
         self.HISTORICAL_CHECK_WINDOW = 94  # days for ambiguous matches
         
         # Data paths (only for temporary extraction)
-        self.TEMP_DATA_BASE_PATH = Path("data/temporary")
+        self.TEMP_DATA_BASE_PATH = Path("data/temporary/vinculacion")
         
         # Markets for linking
         self.OMIE_MARKETS = ['diario', 'intra']
-        self.I90_MARKETS = ['diario']
+        self.I90_MARKETS = ['diario', 'intra']
         
         # Database tables
         self.UP_LISTADO_TABLE = "up_listado"
