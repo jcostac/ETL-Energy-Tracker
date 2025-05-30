@@ -17,6 +17,7 @@ class VinculacionConfig:
         self.I90_MARKETS = ['diario', 'intra']
         
         # Database tables
+        self.DATABASE_NAME = "energy_tracker"
         self.UP_LISTADO_TABLE = "up_listado"
         self.UP_CHANGE_LOG_TABLE = "up_change_log"
         self.UP_UOF_VINCULACION_TABLE = "up_uof_vinculacion"  # Target table
