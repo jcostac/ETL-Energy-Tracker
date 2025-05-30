@@ -118,7 +118,7 @@ class I90Processor:
         return final_df
 
     # === DATETIME HANDLING ===
-    def _standardize_datetime(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _standardize_datetime(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
         Ensures a standard UTC datetime column with 15-minute granularity.
         Handles different input formats ('hora' column can be numeric index or HH-HH+1 format)
@@ -158,12 +158,12 @@ class I90Processor:
         df_hourly_processed_dst = pd.DataFrame()
         if not df_hourly_dst.empty:
             print(f"Processing {len(df_hourly_dst)} rows of hourly DST data with regular method...")
-            df_hourly_processed_dst = self._process_hourly_data(df_hourly_dst)
+            df_hourly_processed_dst = self._process_hourly_data(df_hourly_dst, dataset_type)
         
         df_hourly_processed_normal = pd.DataFrame()
         if not df_hourly_normal.empty:
             print(f"Processing {len(df_hourly_normal)} rows of hourly non-DST data with vectorized method...")
-            df_hourly_processed_normal = self._process_hourly_data_vectorized(df_hourly_normal)
+            df_hourly_processed_normal = self._process_hourly_data_vectorized(df_hourly_normal, dataset_type)
         
         # Process 15-minute data
         df_15min_processed_dst = pd.DataFrame()
@@ -200,7 +200,7 @@ class I90Processor:
         return final_df
 
     @with_progress(message="Processing hourly data...", interval=2)
-    def _process_hourly_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _process_hourly_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
         Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix for fall-back DST).
         Creates timezone-aware datetime_local series and converts to UTC.
@@ -222,7 +222,7 @@ class I90Processor:
             result_df['datetime_utc'] = utc_df['datetime_utc']
             
             # Convert to 15-minute frequency
-            result_df = self.date_utils.convert_hourly_to_15min(result_df)
+            result_df = self.date_utils.convert_hourly_to_15min(result_df, dataset_type)
             
             return result_df
         
@@ -323,7 +323,7 @@ class I90Processor:
      # New vectorized version for hourly data
     
     @with_progress(message="Processing hourly data (vectorized)...", interval=2)
-    def _process_hourly_data_vectorized(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _process_hourly_data_vectorized(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
         Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix) using vectorized operations.
         Creates timezone-aware UTC datetime series and converts to 15-min intervals.
@@ -392,7 +392,7 @@ class I90Processor:
 
             # 6. Convert to 15-minute frequency using the utility function
             # Ensure the utility function can handle the input DataFrame structure
-            result_df = self.date_utils.convert_hourly_to_15min(result_df) # Pass the df with datetime_utc
+            result_df = self.date_utils.convert_hourly_to_15min(result_df, dataset_type)
 
             # Clean up intermediate columns
             result_df = result_df.drop(columns=['hora_str'], errors='ignore')
@@ -712,7 +712,7 @@ class I90Processor:
         pipeline = [
             (self._validate_raw_data, {"dataset_type": dataset_type}),
             (self._apply_market_filters_and_id, {"market_config": market_config}),
-            (self._standardize_datetime, {}),
+            (self._standardize_datetime, {"dataset_type": dataset_type}),
             (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
             (self._validate_final_data, {"dataset_type": dataset_type}),
         ]
