@@ -485,7 +485,7 @@ class I90Processor:
 
     def _parse_15min_datetime_local(self, fecha, hora_index_str) -> pd.Timestamp:
         """
-        Parse 15-minute format data (index "1" to "96/92/100") into a timezone-aware
+        Parse 15-minute format data ) into a timezone-aware
         datetime in Europe/Madrid timezone, handling DST transitions correctly.
         """
         # Ensure fecha is a date object
