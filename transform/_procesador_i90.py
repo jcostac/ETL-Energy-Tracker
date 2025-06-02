@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 import pytz
 import traceback
-from utilidades.progress_utils import with_progress
 from datetime import time
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -20,6 +19,7 @@ from configs.i90_config import (
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
 from utilidades.etl_date_utils import TimeUtils
+from utilidades.progress_utils import with_progress
 
 
 class I90Processor:

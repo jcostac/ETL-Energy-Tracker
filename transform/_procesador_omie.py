@@ -6,7 +6,6 @@ import os
 import numpy as np
 import pytz
 import time
-from utilidades.progress_utils import with_progress
 
 # Add necessary imports
 from pathlib import Path
@@ -17,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utilidades.etl_date_utils import DateUtilsETL, TimeUtils
 from utilidades.data_validation_utils import DataValidationUtils
+from utilidades.progress_utils import with_progress
 
 class OMIEProcessor:
     """
@@ -257,20 +257,20 @@ class OMIEProcessor:
                 df['delivery_date_str'] = df['Contrato'].str.strip().str[:8]
                 df['Fecha'] = pd.to_datetime(df['delivery_date_str'], format="%Y%m%d")
                 
-                # Extract delivery hour (convert from 1-based to 0-based)
+                # Extract delivery hour (keep 1-based for consistency)
                 df['delivery_hour'] = df['Contrato'].str.strip()[9:11].astype(int)
-                df['Hora'] = df['delivery_hour'] - 1
+                df['Hora'] = df['delivery_hour']
                 
-                print(f"   Extracted Fecha and Hora from Contrato for continuo market and converted to 0-based hour")
+                print(f"   Extracted Fecha and Hora from Contrato for continuo market (1-based hour)")
             
             # Store file date for continuo market
             df['fecha_fichero'] = df['Fecha'].dt.strftime('%Y-%m-%d')
         
         elif mercado in ['diario', 'intra']:
-            # For diario and intra markets, ensure Hora is 0-based integer
+            # For diario and intra markets, keep Hora as 1-based integer for DST parsing
             if 'Hora' in df.columns:
-                df['Hora'] = df['Hora'].astype(int) - 1  # Convert from 1-based to 0-based
-                print(f"   Converted Hora to 0-based for {mercado} market")
+                df['Hora'] = df['Hora'].astype(int)  # Keep 1-based
+                print(f"   Kept Hora as 1-based for {mercado} market DST parsing")
         
         print(f"   Standardized Fecha and Hora columns for {mercado} market")
         print("-"*30)
@@ -362,7 +362,7 @@ class OMIEProcessor:
         
         return final_df
 
-    @with_progress(desc="Processing OMIE hourly DST data")
+    @with_progress(message="Processing OMIE hourly DST data")
     def _process_omie_hourly_dst_data(self, df: pd.DataFrame, transition_dates: Dict) -> pd.DataFrame:
         """
         Process OMIE hourly data for DST transition days.
@@ -388,13 +388,16 @@ class OMIEProcessor:
             utc_df = self.date_utils.convert_local_to_utc(result_df['datetime_local'])
             result_df['datetime_utc'] = utc_df['datetime_utc']
             
+            # Convert to 15-minute frequency
+            result_df = self.date_utils.convert_hourly_to_15min(result_df, "volumenes_omie")
+            
             return result_df
         
         except Exception as e:
             print(f"Error processing OMIE hourly DST data: {e}")
             return pd.DataFrame()
 
-    @with_progress(desc="Processing OMIE hourly normal data (vectorized)")
+    @with_progress(message="Processing OMIE hourly normal data (vectorized)")
     def _process_omie_hourly_normal_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process OMIE hourly data for normal (non-DST transition) days using vectorized operations.
@@ -409,12 +412,15 @@ class OMIEProcessor:
             result_df = df.copy()
             tz = pytz.timezone('Europe/Madrid')
             
-            # Create naive datetime by combining date and hour (Hora is already 0-based)
-            result_df['datetime_naive'] = result_df['Fecha'] + pd.to_timedelta(result_df['Hora'], unit='h')
+            # Create naive datetime by combining date and hour (convert from 1-based to 0-based here)
+            result_df['datetime_naive'] = result_df['Fecha'] + pd.to_timedelta(result_df['Hora'] - 1, unit='h')
             
             # Vectorized localization for normal days (no DST ambiguity)
             local_dt = result_df['datetime_naive'].dt.tz_localize(tz, ambiguous='infer', nonexistent='shift_forward')
             result_df['datetime_utc'] = local_dt.dt.tz_convert('UTC')
+            
+            # Convert to 15-minute frequency
+            result_df = self.date_utils.convert_hourly_to_15min(result_df, "volumenes_omie")
             
             return result_df
         
@@ -422,7 +428,7 @@ class OMIEProcessor:
             print(f"Error processing OMIE hourly normal data: {e}")
             return pd.DataFrame()
 
-    @with_progress(desc="Processing OMIE 15-minute DST data")
+    @with_progress(message="Processing OMIE 15-minute DST data")
     def _process_omie_15min_dst_data(self, df: pd.DataFrame, transition_dates: Dict) -> pd.DataFrame:
         """
         Process OMIE 15-minute data for DST transition days.
@@ -454,7 +460,7 @@ class OMIEProcessor:
             print(f"Error processing OMIE 15-minute DST data: {e}")
             return pd.DataFrame()
 
-    @with_progress(desc="Processing OMIE 15-minute normal data (vectorized)")
+    @with_progress(message="Processing OMIE 15-minute normal data (vectorized)")
     def _process_omie_15min_normal_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Process OMIE 15-minute data for normal (non-DST transition) days using vectorized operations.
@@ -469,8 +475,8 @@ class OMIEProcessor:
             result_df = df.copy()
             tz = pytz.timezone('Europe/Madrid')
             
-            # Create naive datetime by combining date and hour (Hora is already 0-based)
-            # For 15-minute data, Hora represents the 15-minute interval (1-96)
+            # Create naive datetime by combining date and hour (convert from 1-based to 0-based here)
+            # For 15-minute data, Hora represents the 15-minute interval (1-96), convert to 0-95
             result_df['datetime_naive'] = result_df['Fecha'] + pd.to_timedelta((result_df['Hora'] - 1) * 15, unit='m')
             
             # Vectorized localization for normal days (no DST ambiguity)
@@ -507,6 +513,9 @@ class OMIEProcessor:
         # Get timezone object
         tz = pytz.timezone('Europe/Madrid')
         
+        # Convert 1-based hora_int to 0-based hour (1=00:00, 2=01:00, etc.)
+        hour_24 = hora_int - 1
+        
         # Check if this is a DST transition date
         is_transition_date = fecha in transition_dates
         # Determine the type of DST transition for this date:
@@ -515,24 +524,23 @@ class OMIEProcessor:
         # - 2: Spring forward transition (23-hour day, hour skipped)
         transition_type = transition_dates.get(fecha, 0) if is_transition_date else 0
         
+        # Initialize is_dst for DST handling
+        is_dst = None
+        
         # Handle DST transitions
         if is_transition_date:
             if transition_type == 2:  # Spring forward: 23-hour day (skip hour 2:00)
                 if hour_24 == 2:
-                    # Hour 2:00 doesn't exist on spring forward day {fecha}, shifting to hour 3
+                    # Hour 2:00 doesn't exist on spring forward day, shifting to hour 3
                     print(f"Warning: Hour 2 found on spring forward day {fecha}, shifting to hour 3")
                     hour_24 = 3
+                    is_dst = True
                 elif hour_24 >= 3:
                     # Hours after 2:00 are already correct (DST is in effect)
-                    pass
+                    is_dst = True
             
             elif transition_type == 1:  # Fall back: 25-hour day (repeat hour 2:00)
-                if hour_24 == 2:
-                    # For OMIE data, we need to determine if this is the first or second occurrence
-                    # Since OMIE provides 25 hours (1-25), we assume:
-                    # - Hours 1-2: First occurrence of 1:00-2:00 (still DST)
-                    # - Hours 3-25: After the transition (standard time)
-                    # For hour 2 (1:00 AM), this is the first occurrence (DST still active)
+                if hour_24 == 1:  # This is 1:00 AM (still DST)
                     is_dst = True
                 elif hora_int >= 3 and hora_int <= 25:
                     # This represents the period after the fall back
@@ -720,9 +728,10 @@ class OMIEProcessor:
         print("-"*30)
         return df
 
-    def _validate_data(self, df: pd.DataFrame, validation_type: str, dataset_type: str) -> pd.DataFrame:
+    # === 6. DATA VALIDATION ===
+    def _validate_final_data(self, df: pd.DataFrame, dataset_type: str, validation_type: str = "processed") -> pd.DataFrame:
         """
-        Validate data structure and types.
+        Validate data structure and types. Deffault for omie is processed (we dont check for raw data validation)
         
         Args:
             df (pd.DataFrame): Input DataFrame
@@ -753,7 +762,7 @@ class OMIEProcessor:
         print("-"*30)
         return df
 
-
+    # === MAIN PIPELINE FUNCTIONS ===
     def transform_omie_diario(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Transform OMIE diario market data.
@@ -786,8 +795,7 @@ class OMIEProcessor:
             (self._standardize_datetime, {"mercado": mercado}),
             (self._aggregate_data, {"mercado": mercado}),
             (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
-            (self._validate_data, {"validation_type": "processed", "dataset_type": dataset_type}),
-            (self._add_granularity_column, {})
+            (self._validate_final_data, {"dataset_type": dataset_type}),
         ]
 
         return self._execute_pipeline(df, pipeline, "DIARIO")   
@@ -824,8 +832,7 @@ class OMIEProcessor:
             (self._standardize_datetime, {"mercado": mercado}),
             (self._aggregate_data, {"mercado": mercado}),
             (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
-            (self._validate_data, {"validation_type": "processed", "dataset_type": dataset_type}),
-            (self._add_granularity_column, {})
+            (self._validate_final_data, {"validation_type": "processed", "dataset_type": dataset_type}),
         ]
 
         return self._execute_pipeline(df, pipeline, "INTRA")
@@ -845,7 +852,7 @@ class OMIEProcessor:
         print("="*80)
 
         mercado = "continuo"
-        dataset_type = "volumenes_mic"
+        dataset_type = "volumenes_mic" #this is not a real dataset type (a filename), this identifier is just used to validate the data
 
         if df.empty:
             print("\n❌ EMPTY INPUT")
@@ -861,8 +868,7 @@ class OMIEProcessor:
             (self._standardize_datetime, {"mercado": mercado}),
             (self._aggregate_data, {"mercado": mercado}),
             (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
-            (self._validate_data, {"validation_type": "processed", "dataset_type": dataset_type}),
-            (self._add_granularity_column, {})
+            (self._validate_final_data, {"validation_type": "processed", "dataset_type": dataset_type}),
         ]
 
         return self._execute_pipeline(df, pipeline, "CONTINUO")
@@ -894,7 +900,7 @@ class OMIEProcessor:
                 print(f"   Rows: {df_processed.shape[0]}")
                 print(f"   Columns: {df_processed.shape[1]}")
 
-                if df_processed.empty and step_func.__name__ != '_validate_data':
+                if df_processed.empty and step_func.__name__ != '_validate_final_data':
                     print("\n❌ PIPELINE HALTED")
                     print(f"DataFrame became empty after step: {step_func.__name__}")
                     raise ValueError(f"DataFrame empty after: {step_func.__name__}")
@@ -913,17 +919,20 @@ class OMIEProcessor:
 
 def example_usage():    
     processor = OMIEProcessor()
-    df_intra = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/intra/2025/01/volumenes_omie.csv")
-    df_diario = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/diario/2025/01/volumenes_omie.csv")
-    df_continuo = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/continuo/2025/01/volumenes_omie.csv")
+    df_intra = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/intra/2024/03/volumenes_omie.csv")
+    df_diario = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/diario/2024/10/volumenes_omie.csv")
+    df_continuo = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/continuo/2025/02/volumenes_omie.csv")
     
-    #df_intra = processor.transform_omie_intra(df_intra)
-    #df_diario = processor.transform_omie_diario(df_diario)
-    df_continuo = processor.transform_omie_continuo(df_continuo)
-    #print(df_intra)
-    #print(df_diario)
-    print(df_continuo)
+    df_intra = processor.transform_omie_intra(df_intra)
+    print(df_intra)
+    breakpoint()
 
+    df_diario = processor.transform_omie_diario(df_diario)
+    print(df_diario)
+    breakpoint()
+
+    df_continuo = processor.transform_omie_continuo(df_continuo)
+    print(df_continuo)
 
 if __name__ == "__main__":
     example_usage()
