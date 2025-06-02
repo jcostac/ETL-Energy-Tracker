@@ -142,6 +142,7 @@ class OMIEProcessor:
                 
                 # Apply buy/sell multiplier logic
                 if 'Tipo Oferta' in df.columns:
+                    #if casada then set multiplier to -1, otherwise 1
                     df['Extra'] = np.where(df['Tipo Oferta'] == 'C', -1, 1)
                     df['Energía Compra/Venta'] = df['Energía Compra/Venta'] * df['Extra']
                     print(f"   Applied buy/sell multiplier")
