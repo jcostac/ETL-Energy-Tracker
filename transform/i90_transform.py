@@ -329,11 +329,18 @@ class TransformadorI90:
 
             # Get the list of files for the target year and month
             files = self.raw_file_utils.get_raw_file_list(mercado, target_year, target_month)
+            
             if not files:
                 print(f"No files found for {mercado}/{dataset_type} for {target_year}-{target_month:02d}. Skipping.")
                 return
 
-            #read the files in the list of raw files
+            matching_files = [f for f in files if dataset_type in str(f)]
+            
+            if not matching_files:
+                print(f"No files matching dataset_type '{dataset_type}' found for {mercado} for {target_year}-{target_month:02d}.")
+                return
+
+            # Read the files in the list of raw files
             raw_df = self.raw_file_utils.read_raw_file(target_year, target_month, dataset_type, mercado)
 
             # Filter for the specific day

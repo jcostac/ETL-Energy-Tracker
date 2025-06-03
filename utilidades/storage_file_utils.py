@@ -450,7 +450,7 @@ class RawFileUtils(StorageFileUtils):
         """
         Get a list of raw files for a given market, year, and month.
         """
-        file_path = self.raw_path / mercado / str(year) / str(month)
+        file_path = self.raw_path / mercado / str(year) / f"{month:02d}"
 
         if self.dev and not self.prod:
             file_extension = 'csv'

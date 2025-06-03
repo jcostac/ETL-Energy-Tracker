@@ -121,7 +121,9 @@ class VinculacionDataExtractor:
             mercados_lst= ['diario'], #only transfrom diario
             transform_type='single',
             fecha_inicio=target_date,
+            dataset_type='volumenes_i90'
         )
+
         
         if i90_result['status']['success'] and 'diario' in i90_result['data']:
             i90_data = i90_result['data']['diario']
@@ -133,6 +135,7 @@ class VinculacionDataExtractor:
                 print("⚠️  I90 diario: No data extracted")
         else:
             print("❌ I90 diario transformation failed")
+            raise Exception("I90 diario transformation failed")
             
         print(f"\n✅ DATA TRANSFORMATION COMPLETE")
         print(f"Total datasets extracted: {len(transformed_diario_data)}")
