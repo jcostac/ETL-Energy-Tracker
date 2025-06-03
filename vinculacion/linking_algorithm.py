@@ -505,6 +505,7 @@ class UOFUPLinkingAlgorithm:
         print("="*60)
         
         try:
+
             # Step 1: Get active UPs
             active_ups = self._get_active_ups()
             if active_ups.empty:
@@ -513,7 +514,6 @@ class UOFUPLinkingAlgorithm:
                 
             # Step 2: Extract data
             self.data_extractor.extract_data_for_matching(target_date)
-            breakpoint()
             transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
             
             if 'omie_diario' not in transformed_diario_data or 'i90_diario' not in transformed_diario_data:
@@ -554,8 +554,7 @@ class UOFUPLinkingAlgorithm:
             
         except Exception as e:
             print(f"❌ Error in linking process: {e}")
-            return pd.DataFrame(columns=['up', 'uof'])
-        
+            return pd.DataFrame(columns=['up', 'uof']) 
 
     def save_links_to_database(self, links_df: pd.DataFrame, table_name: str, 
                               if_exists: str = 'append') -> bool:
@@ -639,4 +638,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
