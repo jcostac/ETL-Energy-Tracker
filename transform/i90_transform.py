@@ -101,7 +101,7 @@ class TransformadorI90:
              print(f"Error instantiating config class {config_class.__name__} for market {mercado}: {e}")
              raise # Reraise the exception
 
-    def transform_data_for_all_markets(self, start_date: Optional[str] = None, end_date: Optional[str] = None,
+    def transform_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
                                          mercados_lst: Optional[List[str]] = None,
                                          dataset_type: str = None,
                                          transform_type: str = 'latest',) -> dict:
@@ -122,7 +122,7 @@ class TransformadorI90:
             "markets_processed": [],
             "markets_failed": [],
             "mode": transform_type,
-            "date_range": f"{start_date} to {end_date}" if end_date else start_date
+            "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
         }
         
         overall_success = True
@@ -131,10 +131,10 @@ class TransformadorI90:
         try:
             if transform_type not in self.transform_types:
                 raise ValueError(f"Invalid transform type: {transform_type}. Must be one of: {self.transform_types}")
-            if transform_type in ['single', 'multiple'] and not start_date:
-                raise ValueError(f"start_date is required for transform_type '{transform_type}'")
-            if transform_type == 'multiple' and not end_date:
-                raise ValueError(f"end_date is required for transform_type 'multiple'")
+            if transform_type in ['single', 'multiple'] and not fecha_inicio:
+                raise ValueError(f"fecha_inicio is required for transform_type '{transform_type}'")
+            if transform_type == 'multiple' and not fecha_fin:
+                raise ValueError(f"fecha_fin is required for transform_type 'multiple'")
 
             if dataset_type is None:
                 raise ValueError(f"dataset_type must be provided. Must be one of {self.dataset_types}")
@@ -144,8 +144,8 @@ class TransformadorI90:
 
             print(f"\n===== STARTING TRANSFORMATION RUN (Mode: {transform_type.upper()}) =====")
             print(f"Dataset type to process: {dataset_type}")
-            if start_date: print(f"Start Date: {start_date}")
-            if end_date: print(f"End Date: {end_date}")
+            if fecha_inicio: print(f"Start Date: {fecha_inicio}")
+            if fecha_fin: print(f"End Date: {fecha_fin}")
             print("="*60)
 
             # Determine relevant markets for this dataset type
@@ -166,11 +166,11 @@ class TransformadorI90:
                 print(f"\n-- Market: {mercado} --")
                 try:
                     if transform_type == 'single':
-                        market_result = self._process_single_day(mercado, dataset_type, start_date)
+                        market_result = self._process_single_day(mercado, dataset_type, fecha_inicio)
                     elif transform_type == 'latest':
                         market_result = self._process_latest_day(mercado, dataset_type)
                     elif transform_type == 'multiple':
-                        market_result = self._process_date_range(mercado, dataset_type, start_date, end_date)
+                        market_result = self._process_date_range(mercado, dataset_type, fecha_inicio, fecha_fin)
 
                     # Check if transformation was successful
                     if market_result is not None:
@@ -261,7 +261,7 @@ class TransformadorI90:
             print(raw_df.info())
             return pd.DataFrame()
 
-    def _process_df_based_on_transform_type(self, raw_df: pd.DataFrame, transform_type: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> pd.DataFrame:
+    def _process_df_based_on_transform_type(self, raw_df: pd.DataFrame, transform_type: str, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None) -> pd.DataFrame:
         """
         Filters the raw DataFrame based on the transform type and date range.
         Relies on 'datetime_utc' column being present and correctly parsed.
@@ -300,13 +300,13 @@ class TransformadorI90:
                 return raw_df[raw_df['fecha'].dt.date == last_day].copy()
 
             elif transform_type == 'single':
-                target_date = pd.to_datetime(start_date).date()
+                target_date = pd.to_datetime(fecha_inicio).date()
                 print(f"Filtering for single mode: {target_date}")
                 return raw_df[raw_df['fecha'].dt.date == target_date].copy()
 
             elif transform_type == 'multiple':
-                start_dt = pd.to_datetime(start_date).date()
-                end_dt = pd.to_datetime(end_date).date()
+                start_dt = pd.to_datetime(fecha_inicio).date()
+                end_dt = pd.to_datetime(fecha_fin).date()
                 if start_dt > end_dt: raise ValueError("Start date cannot be after end date.")
                 print(f"Filtering for multiple mode: {start_dt} to {end_dt}")
                 return raw_df[(raw_df['fecha'].dt.date >= start_dt) & (raw_df['fecha'].dt.date <= end_dt)].copy()
@@ -337,7 +337,7 @@ class TransformadorI90:
             raw_df = self.raw_file_utils.read_raw_file(target_year, target_month, dataset_type, mercado)
 
             # Filter for the specific day
-            filtered_df = self._process_df_based_on_transform_type(raw_df, 'single', start_date=date)
+            filtered_df = self._process_df_based_on_transform_type(raw_df, 'single', fecha_inicio=date)
 
             if filtered_df.empty:
                 print(f"No data found for {mercado}/{dataset_type} on {date} within file {target_year}-{target_month:02d}.")
@@ -403,12 +403,12 @@ class TransformadorI90:
         except Exception as e:
             print(f"Error during latest day processing for {mercado}/{dataset_type}: {e}")
 
-    def _process_date_range(self, mercado: str, dataset_type: str, start_date: str, end_date: str):
+    def _process_date_range(self, mercado: str, dataset_type: str, fecha_inicio: str, fecha_fin: str):
         """Process a range of days, reading multiple monthly files if needed."""
-        print(f"Starting MULTIPLE transformation for {mercado} - {dataset_type} from {start_date} to {end_date}")
+        print(f"Starting MULTIPLE transformation for {mercado} - {dataset_type} from {fecha_inicio} to {fecha_fin}")
         try:
-            start_dt = pd.to_datetime(start_date)
-            end_dt = pd.to_datetime(end_date)
+            start_dt = pd.to_datetime(fecha_inicio)
+            end_dt = pd.to_datetime(fecha_fin)
 
             if start_dt > end_dt: raise ValueError("Start date cannot be after end date.")
 
@@ -442,7 +442,7 @@ class TransformadorI90:
                     continue # Continue processing other months
 
             if not all_raw_dfs:
-                 print(f"No raw data found for the specified date range {start_date} to {end_date}.")
+                 print(f"No raw data found for the specified date range {fecha_inicio} to {fecha_fin}.")
                  return
 
             # Concatenate filtered monthly dataframes
@@ -450,16 +450,16 @@ class TransformadorI90:
 
             print(f"Combined raw data ({len(combined_raw_df)} rows). Applying date range filtering.")
             # The final filtering step ensures the exact date range is met after concatenation.
-            filtered_df = self._process_df_based_on_transform_type(combined_raw_df, 'multiple', start_date=start_date, end_date=end_date)
+            filtered_df = self._process_df_based_on_transform_type(combined_raw_df, 'multiple', fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
 
 
             if filtered_df.empty:
-                print(f"No data found for {mercado}/{dataset_type} between {start_date} and {end_date} after final filtering.")
+                print(f"No data found for {mercado}/{dataset_type} between {fecha_inicio} and {fecha_fin} after final filtering.")
                 return pd.DataFrame()
 
             print(f"Filtered data has {len(filtered_df)} rows. Proceeding with transformation...")
-            # For date range, use the start_date as the reference for config
-            start_dt = pd.to_datetime(start_date)
+            # For date range, use the fecha_inicio as the reference for config
+            start_dt = pd.to_datetime(fecha_inicio)
             processed_df = self._transform_data(filtered_df, mercado, dataset_type, fecha=start_dt)
             return processed_df
 

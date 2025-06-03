@@ -525,6 +525,7 @@ class UOFUPLinkingAlgorithm:
                 transformed_diario_data['omie_diario'],
                 transformed_diario_data['i90_diario']
             )
+            breakpoint()
             
             if omie_prepared.empty or i90_prepared.empty:
                 print("❌ Data preparation failed")
