@@ -167,7 +167,7 @@ class VinculacionDataExtractor:
                 mercados_lst=['intra'],
                 dataset_type='volumenes_i90',
                 transform_type='single',
-                start_date=target_date,
+                fecha_inicio=target_date,
             )
             
             if i90_result['status']['success'] and 'intra' in i90_result['data']:

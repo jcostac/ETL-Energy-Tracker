@@ -19,11 +19,6 @@ class VinculacionConfig:
         self.UP_CHANGE_LOG_TABLE = "up_change_log"
         self.UP_UOF_VINCULACION_TABLE = "up_uof_vinculacion"  # Target table
         
-        # Linking parameters
-        self.VOLUME_TOLERANCE = 0.1  # Tolerance for volume matching (MWh)
-        self.EXACT_MATCH_CONFIDENCE_THRESHOLD = 0.95  # For considering a match "exact"
-        self.EXACT_MATCH_CORRELATION_THRESHOLD = 0.95  # For considering correlation "exact"
-        
         # Dataset types
         self.OMIE_DATASET_TYPE = "volumenes_omie"
         self.I90_DATASET_TYPE = "volumenes_i90"

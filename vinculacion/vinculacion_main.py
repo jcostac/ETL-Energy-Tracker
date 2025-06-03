@@ -9,8 +9,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.db_utils import DatabaseUtils
-from vinculacion.linking_algorithm import UOFUPLinkingAlgorithm
-from vinculacion.change_monitor import UPChangeMonitor
+from vinculacion._linking_algorithm import UOFUPLinkingAlgorithm
+from vinculacion._linking_change_monitor import UPChangeMonitor
 from vinculacion.configs.vinculacion_config import VinculacionConfig
 
 class VinculacionOrchestrator:
@@ -21,6 +21,7 @@ class VinculacionOrchestrator:
         self.config = VinculacionConfig()
         self.linking_algorithm = UOFUPLinkingAlgorithm()
         self.change_monitor = UPChangeMonitor()
+        self.db_utils = DatabaseUtils()
         
     def create_engine(self):
         """Create database engine"""
@@ -47,37 +48,34 @@ class VinculacionOrchestrator:
             links = self.linking_algorithm.link_uofs_to_ups(target_date, engine)
             
             if not links.empty:
-                # Format for database insertion
-                db_links = self._format_links_for_database(links, target_date)
-                
                 print(f"\n📊 LINKING RESULTS SUMMARY")
                 print("-"*40)
-                print(f"Total links created: {len(db_links)}")
-                print(f"Unique UPs linked: {db_links['UP'].nunique()}")
-                print(f"Unique UOFs linked: {db_links['UOF'].nunique()}")
+                print(f"Total links created: {len(links)}")
+                print(f"Unique UPs linked: {links['UP'].nunique()}")
+                print(f"Unique UOFs linked: {links['UOF'].nunique()}")
                 
                 # Display sample results
                 print(f"\n📋 SAMPLE LINKS (First 10):")
-                print(db_links.head(10)[['UP', 'UOF', 'date_updated']].to_string(index=False))
+                print(links.head(10)[['UP', 'UOF', 'date_updated']].to_string(index=False))
                 
-                return db_links
-                
+                return links
+            
             else:
                 print("\n⚠️  No links were created")
-                return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
+                raise Exception("No links were created")
                 
         except Exception as e:
             print(f"\n❌ ERROR IN FULL LINKING: {e}")
             return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             
-    def perform_incremental_linking(self) -> Dict:
+    def perform_new_ups_linking(self) -> Dict:
         """
         Perform incremental linking for UPs that were enabled at least 93 days ago
         
         Returns:
             Dict: Results of incremental linking
         """
-        check_date = self.config.get_linking_target_date()
+        check_date = self.config.get_linking_target_date() #93 days back from today|    
         
         print(f"\n🔄 STARTING INCREMENTAL UOF-UP LINKING")
         print(f"Checking for UPs enabled on: {check_date} (93 days back)")
@@ -121,69 +119,28 @@ class VinculacionOrchestrator:
         Returns:
             pd.DataFrame: Formatted for up_uof_vinculacion table
         """
-        if links_df.empty:
-            return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
-            
-        # Create formatted DataFrame matching database schema
-        db_links = pd.DataFrame({
-            'UP': links_df['up'].str.upper(),  # Ensure uppercase
-            'UOF': links_df['uof'].str.upper(),  # Ensure uppercase  
-            'date_updated': pd.to_datetime(target_date).date()
-        })
-        
-        # Remove duplicates
-        db_links = db_links.drop_duplicates(subset=['UP', 'UOF'])
-        
-        return db_links
-        
-    def save_links_to_database(self, links_df: pd.DataFrame, 
-                             replace_existing: bool = False) -> bool:
-        """
-        Save linking results to up_uof_vinculacion table
-        
-        Args:
-            links_df: DataFrame with links (formatted for database)
-            replace_existing: Whether to replace existing links for the same date
-            
-        Returns:
-            bool: Success status
-        """
         try:
-            engine = self.create_engine()
-            
-            if links_df.empty:
-                print("⚠️  No links to save")
-                return False
-                
-            table_name = self.config.UP_UOF_VINCULACION_TABLE
-            
-            if replace_existing:
-                # Delete existing records for this date first
-                target_date = links_df['date_updated'].iloc[0]
-                delete_query = f"DELETE FROM {table_name} WHERE date_updated = ?"
-                
-                with engine.connect() as conn:
-                    conn.execute(text(delete_query), (target_date,))
-                    conn.commit()
-                    print(f"🗑️  Deleted existing links for {target_date}")
-            
-            # Save new links
-            DatabaseUtils.write_table(
-                engine, 
-                links_df, 
-                table_name, 
-                if_exists='append',
-                index=False
-            )
-            
-            print(f"✅ Saved {len(links_df)} links to {table_name}")
-            return True
+            # Create formatted DataFrame matching database schema
+            db_links = pd.DataFrame({
+                'UP': links_df['up'].str.upper(),  # Ensure uppercase
+                'UOF': links_df['uof'].str.upper(),  # Ensure uppercase  
+                'date_updated': pd.to_datetime(target_date).date()
+            })
+
+            # Remove duplicates
+            check_duplicates = db_links.duplicated(subset=['UP', 'UOF'])
+            if check_duplicates.any():
+                print(f"⚠️  Duplicates found in {target_date}")
+                print(db_links[check_duplicates])
+                raise Exception("Duplicates found in links")
             
         except Exception as e:
-            print(f"❌ Error saving links to database: {e}")
-            return False
+            print(f"❌ Error formatting links for database: {e}")
+            raise e
+        
+        return db_links
             
-    def get_existing_links(self, target_date: Optional[str] = None) -> pd.DataFrame:
+    def _get_existing_links(self, target_date: Optional[str] = None) -> pd.DataFrame:
         """
         Get existing links from database for a specific date
         
@@ -217,7 +174,77 @@ class VinculacionOrchestrator:
             print(f"❌ Error retrieving existing links: {e}")
             return pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
 
-def main():
+    def _save_links_to_database(self, links_df: pd.DataFrame, table_name: str, 
+                              if_exists: str = 'append') -> bool:
+        """
+        Save the generated links to database using DatabaseUtils
+        
+        Args:
+            links_df: DataFrame with UOF-UP links
+            table_name: Target table name
+            if_exists: How to behave if table exists ('fail', 'replace', 'append') (default: append)
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            engine = self.create_engine()
+
+            if links_df.empty:
+                print("⚠️  No links to save")
+                return False
+                
+            self.db_utils.write_table(
+                engine=engine,
+                df=links_df,
+                table_name=table_name,
+                if_exists=if_exists,
+                index=False
+            )
+            
+            print(f"✅ Successfully saved {len(links_df)} links to {table_name}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error saving links to database: {e}")
+            return False
+        
+    def update_links_in_database(self, links_df: pd.DataFrame, table_name: str,
+                               key_columns: List[str] = ['up']) -> bool:
+        """
+        Update existing links in database using DatabaseUtils
+        
+        Args:
+            links_df: DataFrame with updated UOF-UP links
+            table_name: Target table name
+            key_columns: Columns to match for updates
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            engine = self.create_engine()
+                
+            if links_df.empty:
+                print("⚠️  No links to update")
+                return False
+                
+            self.db_utils.update_table(
+                engine=engine,
+                df=links_df,
+                table_name=table_name,
+                key_columns=key_columns
+            )
+            
+            print(f"✅ Successfully updated {len(links_df)} links in {table_name}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error updating links in database: {e}")
+            return False 
+    
+
+def example_usage():
     """Main execution function"""
     orchestrator = VinculacionOrchestrator()
     
@@ -231,11 +258,11 @@ def main():
     
     # Save results to database
     if not full_links.empty:
-        orchestrator.save_links_to_database(full_links, replace_existing=True)
+        orchestrator._save_links_to_database(full_links, replace_existing=True)
     
     # Incremental check (UPs enabled 93 days ago)
-    incremental_results = orchestrator.perform_incremental_linking()
-    
+    incremental_results = orchestrator.perform_new_ups_linking()
+
     # Save incremental results if any
     if (incremental_results['success'] and 
         not incremental_results['new_links_created'].empty):
@@ -248,4 +275,4 @@ def main():
     print("="*100)
 
 if __name__ == "__main__":
-    main() 
+    example_usage() 

@@ -13,7 +13,7 @@ sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.db_utils import DatabaseUtils
 from vinculacion.configs.vinculacion_config import VinculacionConfig
-from vinculacion.ET_volume_data import VinculacionDataExtractor
+from vinculacion._extract_transform_linking_data import VinculacionDataExtractor
 from utilidades.progress_utils import with_progress  
 
 class UOFUPLinkingAlgorithm:
@@ -126,6 +126,10 @@ class UOFUPLinkingAlgorithm:
         omie_prepared['volumenes'] = omie_prepared['volumenes'].fillna(0)
         i90_prepared['volumenes'] = i90_prepared['volumenes'].fillna(0)
 
+         # Group by uof/up and hour, then sum volumenes (preserve the entity columns)
+        omie_prepared = omie_prepared.groupby(['uof', 'hour'])['volumenes'].sum().reset_index()
+        i90_prepared = i90_prepared.groupby(['up', 'hour'])['volumenes'].sum().reset_index()
+
         #round volumenes to 4 decimal places to handle float precision issues
         omie_prepared['volumenes'] = omie_prepared['volumenes'].round(4)
         i90_prepared['volumenes'] = i90_prepared['volumenes'].round(4)
@@ -152,13 +156,14 @@ class UOFUPLinkingAlgorithm:
             raise e
 
     @with_progress(message="Creating volume profiles...", interval=2)
-    def _create_volume_profiles(self, df: pd.DataFrame, entity_col: str) -> Tuple[Dict[str, List[float]], Dict[str, str]]:
+    def _create_volume_profiles(self, df: pd.DataFrame, up_or_uof: str) -> Tuple[Dict[str, List[float]], Dict[str, str]]:
         """
-        Creates volume profiles for UOFs and UPs
+        Creates volume profiles for UOFs and UPs. A volume profile is a list of hourly values for a given entity.
+        The hash is computed from the volume profile.
         
         Args:
             df: DataFrame containing volume data
-            entity_col: Column name for the entity ('uof' or 'up')
+            up_or_uof: Column name for the entity ('uof' or 'up')
             
         Returns:
             Tuple containing:
@@ -169,31 +174,26 @@ class UOFUPLinkingAlgorithm:
         hashes = {}
         
         try:
-            for entity in df[entity_col].unique():
+            for up_uof in df[up_or_uof].unique():
                 # Filter for entity (either uof or up) and sort by hour 
-                entity_data = df[df[entity_col] == entity].sort_values('hour')
+                up_uof_data = df[df[up_or_uof] == up_uof].sort_values('hour')
                 
-                # Check if we have complete 24-hour data
-                actual_hours = set(entity_data['hour'].values)
-                
-                if len(actual_hours) < 23:  # Minimum required hours is 23, this should never happen but just in case
-                    print(f"⚠️ {entity_col.upper()} {entity} has {len(actual_hours)} hours of data, skipping")
-                    continue
-                    
+              
                 # Create ordered volume profile
-                volume_profile = []  # This will be used to create the unique hash for the entity
+                volume_profile = []  # This list will hold the hourly volume data for the entity
                 for hour in range(24):
-                    # Filter entity data for hour
-                    hour_data = entity_data[entity_data['hour'] == hour]
+                    # Filter the data for the current hour
+                    hour_data = up_uof_data[up_uof_data['hour'] == hour]
                     if not hour_data.empty:
-                        # Append volumenes for hour
-                        volume_profile.append(hour_data['volumenes'].iloc[0]) 
-                    else:  # If no data for hour, the resulting df will be empty, so we append with 0
-                        volume_profile.append(0.0)  # Fill missing hours with 0
+                        # Check if the volume for this hour is non-zero before appending
+                        if hour_data['volumenes'].iloc[0] != 0:
+                            #we only appned the volumnes if there is hour data and the volume is not 0
+                            volume_profile.append(hour_data['volumenes'].iloc[0]) 
+                        
                 
                 # Store volume profile and hash for entity in the dict with its name as key
-                profiles[entity] = volume_profile 
-                hashes[entity] = self._compute_hourly_hash(volume_profile) 
+                profiles[up_uof] = volume_profile 
+                hashes[up_uof] = self._compute_hourly_hash(volume_profile) 
 
             return profiles, hashes
 
@@ -307,8 +307,9 @@ class UOFUPLinkingAlgorithm:
             # Show ambiguous matches summary
             ambiguous_ups = ambiguous_matches_df.groupby('up')['uof'].count()
             print(f"\n⚠️  AMBIGUOUS MATCHES DETECTED:")
+            breakpoint()
             for up, count in ambiguous_ups.items():
-                uofs = ambiguous_matches[ambiguous_matches['up'] == up]['uof'].tolist()
+                uofs = ambiguous_matches_df[ambiguous_matches_df['up'] == up]['uof'].tolist()
                 print(f"   UP {up} matches {count} UOFs: {', '.join(uofs)}")
         
         # Show top matches
@@ -318,7 +319,7 @@ class UOFUPLinkingAlgorithm:
             print(f"   {row['up']} ↔ {row['uof']} (confidence: {row['confidence']:.3f}, type: {row['match_type']})")
         
         return exact_matches_df, ambiguous_matches_df
-        
+
     def _resolve_ambiguous_matches(self, exact_matches_df: pd.DataFrame, ambiguous_matches_df: pd.DataFrame, target_date: str) -> pd.DataFrame:
         """
         Resolves ambiguous matches by checking historical data n-94 days and intra markets
@@ -344,18 +345,18 @@ class UOFUPLinkingAlgorithm:
 
         # Try historical data (94 days back)
         print(f"\n📅 Checking historical data (-{self.config.HISTORICAL_CHECK_WINDOW} days)")
-        historical_date = (pd.to_datetime(target_date) - 
-                         timedelta(days=self.config.HISTORICAL_CHECK_WINDOW)).strftime('%Y-%m-%d')
+        target_date_yesterday = (pd.to_datetime(target_date) - 
+                         timedelta(days=1)).strftime('%Y-%m-%d')
         
         try:
-            self.data_extractor.extract_data_for_matching(target_date=historical_date)
-            diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date=historical_date)
+            self.data_extractor.extract_data_for_matching(target_date=target_date_yesterday)
+            diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date=target_date_yesterday)
             
             if 'omie_diario' in diario_data and 'i90_diario' in diario_data:
                 omie_diario, i90_diario = self._prepare_volume_data(
                     diario_data['omie_diario'],
                     diario_data['i90_diario'],
-                    historical_date
+                    target_date_yesterday
                 )
 
                 # Filter the dfs by the uofs and ups in the ambiguous_matches_df
@@ -366,7 +367,7 @@ class UOFUPLinkingAlgorithm:
                 
                 # Find the volume matches again but only for the ambiguous uofs and ups
                 exact_matches_historical_df, still_ambiguous_matches_df = self._find_volume_matches(
-                    omie_diario_filtered, i90_diario_filtered, historical_date
+                    omie_diario_filtered, i90_diario_filtered, target_date_yesterday
                 )
 
                 if not exact_matches_historical_df.empty:
@@ -460,13 +461,56 @@ class UOFUPLinkingAlgorithm:
         
         return final_df
 
-    def link_uofs_to_ups(self, target_date: str) -> pd.DataFrame:
+    def _resolve_uof_conflicts(self, matches_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Resolves conflicts where the same UOF is matched to multiple UPs
+        
+        Args:
+            matches_df: DataFrame with potential UOF conflicts
+            
+        Returns:
+            pd.DataFrame: Matches with UOF conflicts resolved
+        """
+        if matches_df.empty:
+            return matches_df
+        
+        print(f"\n🔍 CHECKING FOR UOF CONFLICTS")
+        print("-"*40)
+        
+        # Find UOFs that are matched to multiple UPs
+        uof_counts = matches_df['uof'].value_counts()
+        conflicted_uofs = uof_counts[uof_counts > 1].index.tolist()
+        
+        if not conflicted_uofs:
+            print("✅ No UOF conflicts detected")
+            return matches_df
+        
+        print(f"⚠️  Found {len(conflicted_uofs)} UOFs with conflicts:")
+        for uof in conflicted_uofs:
+            ups = matches_df[matches_df['uof'] == uof]['up'].tolist()
+            print(f"   UOF {uof} matched to UPs: {', '.join(ups)}")
+        
+        # Remove all conflicted matches for now (conservative approach)
+        # Alternative: implement priority-based resolution
+        clean_matches_df = matches_df[~matches_df['uof'].isin(conflicted_uofs)].copy()
+        
+        print(f"🔧 Removed {len(matches_df) - len(clean_matches_df)} conflicted matches")
+        print(f"📊 Remaining matches: {len(clean_matches_df)}")
+
+        #get ups from conflicted uofs
+        conflicted_ups = matches_df[matches_df['uof'].isin(conflicted_uofs)]['up'].unique()
+        print(f"🔧 Conflicted UPs: {', '.join(conflicted_ups)}")
+        
+        return clean_matches_df, conflicted_ups
+
+    ### MAIN METHOD TO LINK UOFs TO UPs FOR A GIVEN DATE ###
+    def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None) -> pd.DataFrame:
         """
         Main method to link UOFs to UPs for a given date
         
         Args:
             target_date: Target date for linking (YYYY-MM-DD)
-            
+            ups_to_link: List of UPs to link (optional), if not provided, all active UPs will be linked
         Returns:
             pd.DataFrame: Final links with columns [up, uof]
         """
@@ -475,20 +519,26 @@ class UOFUPLinkingAlgorithm:
         print("="*60)
         
         try:
-            # Step 1: Get active UPs
+            # Step 1: Get all active UPs if ups_to_link is not provided
             active_ups = self._get_active_ups()
-            if active_ups.empty:
-                print("❌ No active UPs found")
-                return pd.DataFrame(columns=['up', 'uof'])
+
+            #if ups_to_link list is provided, filter the active ups to only the ones in the list
+            if ups_to_link:
+                active_ups = active_ups[active_ups['up'].isin(ups_to_link)]
+
+                if active_ups.empty:
+                    print("❌ UPs to link not found in the active UPs list")
+                    raise ValueError("UPs to link not found in the active UPs list")
                 
-            # Step 2: Extract data
+            # Step 2: Extract data and transform it for initial matching
             # self.data_extractor.extract_data_for_matching(target_date)
             transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
             
             if 'omie_diario' not in transformed_diario_data or 'i90_diario' not in transformed_diario_data:
                 print("❌ Required data not available")
                 raise ValueError("Required data not available")
-                
+            
+         
             # Step 3: Prepare data by adding hour and date columns for easier matching
             omie_prepared, i90_prepared = self._prepare_volume_data(
                 transformed_diario_data['omie_diario'],
@@ -516,7 +566,10 @@ class UOFUPLinkingAlgorithm:
             all_resolved_matches = self._resolve_ambiguous_matches(
                 exact_matches_df, ambiguous_matches_df, target_date
             )
-            
+
+            # Step 6: Resolve UOF conflicts
+            all_resolved_matches, conflicted_ups = self._resolve_uof_conflicts(all_resolved_matches)
+
             # Step 6: Create final links
             final_matches_df = self._create_final_matches_df(all_resolved_matches)
             
@@ -530,79 +583,8 @@ class UOFUPLinkingAlgorithm:
             print(f"❌ Error in linking process: {e}")
             return pd.DataFrame(columns=['up', 'uof'])
 
-    def save_links_to_database(self, links_df: pd.DataFrame, table_name: str, 
-                              if_exists: str = 'append') -> bool:
-        """
-        Save the generated links to database using DatabaseUtils
-        
-        Args:
-            links_df: DataFrame with UOF-UP links
-            table_name: Target table name
-            if_exists: How to behave if table exists ('fail', 'replace', 'append')
-            
-        Returns:
-            bool: Success status
-        """
-        try:
-            if not self.engine:
-                raise ValueError("Database engine not initialized")
-                
-            if links_df.empty:
-                print("⚠️  No links to save")
-                return False
-                
-            self.db_utils.write_table(
-                engine=self.engine,
-                df=links_df,
-                table_name=table_name,
-                if_exists=if_exists,
-                index=False
-            )
-            
-            print(f"✅ Successfully saved {len(links_df)} links to {table_name}")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error saving links to database: {e}")
-            return False
-            
-    def update_links_in_database(self, links_df: pd.DataFrame, table_name: str,
-                               key_columns: List[str] = ['up']) -> bool:
-        """
-        Update existing links in database using DatabaseUtils
-        
-        Args:
-            links_df: DataFrame with updated UOF-UP links
-            table_name: Target table name
-            key_columns: Columns to match for updates
-            
-        Returns:
-            bool: Success status
-        """
-        try:
-            if not self.engine:
-                raise ValueError("Database engine not initialized")
-                
-            if links_df.empty:
-                print("⚠️  No links to update")
-                return False
-                
-            self.db_utils.update_table(
-                engine=self.engine,
-                df=links_df,
-                table_name=table_name,
-                key_columns=key_columns
-            )
-            
-            print(f"✅ Successfully updated {len(links_df)} links in {table_name}")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error updating links in database: {e}")
-            return False 
-    
-
-def main():
+   
+def example_usage():
     # Initialize the algorithm
     algorithm = UOFUPLinkingAlgorithm()
     #get the target date
@@ -611,7 +593,7 @@ def main():
     print(links_df)
 
 if __name__ == "__main__":
-    main()
+    example_usage()
 
 
 
