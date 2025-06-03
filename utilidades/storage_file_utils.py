@@ -56,8 +56,10 @@ class StorageFileUtils:
         if dev == False:
             #get prod base path from env
             base_path = os.getenv('DATA_LAKE_BASE_PATH_PROD')
+            print(f"Prod data lake base path: {base_path}")
         else:
             base_path = Path(DATA_LAKE_BASE_PATH)
+            print(f"Dev data lake base path: {base_path}")
 
         # Check if the base path exists
         if not base_path.exists():

@@ -77,9 +77,22 @@ class TransformadorOMIE:
 
         # Ensure Fecha column is properly converted to datetime
         if not pd.api.types.is_datetime64_any_dtype(raw_df['Fecha']):
-            raw_df['Fecha'] = pd.to_datetime(raw_df['Fecha'], format="mixed")
+            # Store original values before conversion
+            original_dates = raw_df['Fecha'].copy()
 
-         
+            # Convert with coerce - problematic dates become NaT
+            raw_df['Fecha'] = pd.to_datetime(raw_df['Fecha'], errors='coerce')
+
+            # Find which dates failed to convert
+            failed_mask = raw_df['Fecha'].isna()
+            failed_dates = original_dates[failed_mask]
+
+            # Check for any NaT values that were created
+            nat_count = raw_df['Fecha'].isna().sum()
+            if nat_count > 0:
+                print(f"⚠️ Found {nat_count} invalid dates converted to NaT")
+                print(f"\n Failed dates: {failed_dates.head()}")
+
         # Remove rows with NaT (Not a Time) values in Fecha column that will casue errors in the filtering process by datetime
         initial_count = len(raw_df)
         raw_df = raw_df.dropna(subset=['Fecha'])
@@ -202,64 +215,6 @@ class TransformadorOMIE:
             print(traceback.format_exc())
             print("="*80 + "\n")
             return None
-
-    def _process_batch_mode(self, mercado: str) -> List[Optional[pd.DataFrame]]:
-        """
-        Processes all historical data for a given market and returns a list of processed dataframes.
-        
-        Args:
-            mercado (str): Market name
-            
-        Returns:
-            List[Optional[pd.DataFrame]]: List of processed DataFrames (or None for failed months)
-        """
-        print("\n" + "="*80)
-        print(f"🔄 STARTING BATCH TRANSFORM")
-        print(f"Market: {mercado.upper()}")
-        print("="*80 + "\n")
-
-        years = self.raw_file_utils.get_raw_folder_list(mercado)
-        processed_dfs = []
-
-        for year in years:
-            months = self.raw_file_utils.get_raw_folder_list(mercado, year)
-
-            print(f"\n📅 Processing Year: {year}")
-            print("-"*50)
-
-            for month in months:
-                processed_df_month = None
-                try:
-                    print(f"📌 Processing {year}-{month:02d}...")
-                    raw_df = self.raw_file_utils.read_raw_file(year, month, "volumenes_omie", mercado)
-
-                    if raw_df.empty:
-                        print(f"⚠️  Empty raw file for {year}-{month:02d}. Skipping.")
-                        continue
-
-                    print(f"   Raw records found: {len(raw_df)}")
-                    filtered_df = self._filter_data_by_mode(raw_df, 'batch')
-                    processed_df_month = self._transform_market_data(filtered_df, mercado)
-
-                    if processed_df_month is not None and not processed_df_month.empty:
-                        print(f"✅ Successfully transformed {year}-{month:02d}. Records: {len(processed_df_month)}")
-                    elif processed_df_month is None:
-                        print(f"❌ Transformation failed for {year}-{month:02d}.")
-                    else:
-                        print(f"⚠️  Transformation resulted in empty DataFrame for {year}-{month:02d}.")
-
-                except FileNotFoundError:
-                    print(f"❌ Raw file not found for {year}-{month:02d}. Skipping.")
-                except Exception as e:
-                    print(f"❌ Error processing {year}-{month:02d}: {e}")
-                finally:
-                    processed_dfs.append(processed_df_month)
-
-            print("-"*50)
-
-        print(f"\n✅ BATCH TRANSFORM COMPLETE for {mercado.upper()}")
-        print("="*80 + "\n")
-        return processed_dfs
 
     def _process_single_day(self, mercado: str, date: str) -> Optional[pd.DataFrame]:
         """

@@ -21,7 +21,6 @@ class VinculacionConfig:
         
         # Linking parameters
         self.VOLUME_TOLERANCE = 0.1  # Tolerance for volume matching (MWh)
-        self.MIN_MATCHING_HOURS = 23   # Minimum hours that must match for a valid link
         self.EXACT_MATCH_CONFIDENCE_THRESHOLD = 0.95  # For considering a match "exact"
         self.EXACT_MATCH_CORRELATION_THRESHOLD = 0.95  # For considering correlation "exact"
         

@@ -5,6 +5,8 @@ from typing import Dict, List, Tuple, Optional
 import sys
 from pathlib import Path
 import pretty_errors
+import pytz
+import hashlib
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -12,6 +14,7 @@ sys.path.append(str(PROJECT_ROOT))
 from utilidades.db_utils import DatabaseUtils
 from vinculacion.configs.vinculacion_config import VinculacionConfig
 from vinculacion.ET_volume_data import VinculacionDataExtractor
+from utilidades.progress_utils import with_progress  
 
 class UOFUPLinkingAlgorithm:
     """Core algorithm for linking UOFs to UPs based on volume matching"""
@@ -68,13 +71,14 @@ class UOFUPLinkingAlgorithm:
             raise e
             
     def _prepare_volume_data(self, omie_data: pd.DataFrame, 
-                          i90_data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+                          i90_data: pd.DataFrame, target_date: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Prepares volume data for comparison by standardizing structure ie adding hour and date columns
+        Prepares volume data for comparison by standardizing structure and filtering by target date
         
         Args:
             omie_data: OMIE processed data
             i90_data: I90 processed data
+            target_date: Target date for filtering (YYYY-MM-DD)
             
         Returns:
             Tuple of prepared dataframes (omie_prepared, i90_prepared)
@@ -87,33 +91,167 @@ class UOFUPLinkingAlgorithm:
         if 'uof' in omie_prepared.columns and 'volumenes' in omie_prepared.columns:
             omie_prepared = omie_prepared[['datetime_utc', 'uof', 'volumenes']].copy()
             omie_prepared['hour'] = omie_prepared['datetime_utc'].dt.hour
-            omie_prepared['date'] = omie_prepared['datetime_utc'].dt.date
+            
+            # Convert UTC datetime to local time, then extract date for filtering
+            madrid_tz = pytz.timezone('Europe/Madrid')
+            target_dt = pd.to_datetime(target_date).date()
+            
+            # Filter for target date using local time conversion
+            omie_local_dates = omie_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
+            omie_prepared = omie_prepared[omie_local_dates == target_dt].copy()
+            
             print(f"✅ OMIE data prepared: {len(omie_prepared)} records, {omie_prepared['uof'].nunique()} unique UOFs")
+            print(f"   Unique hours in OMIE: {sorted(omie_prepared['hour'].unique())}")
         else:
             print("❌ OMIE data missing required columns")
-            return pd.DataFrame(), pd.DataFrame()
+            raise Exception("OMIE data missing required columns")
             
         # Prepare I90 data (UPs)
         i90_prepared = i90_data.copy()
         if 'up' in i90_prepared.columns and 'volumenes' in i90_prepared.columns:
             i90_prepared = i90_prepared[['datetime_utc', 'up', 'volumenes']].copy()
             i90_prepared['hour'] = i90_prepared['datetime_utc'].dt.hour
-            i90_prepared['date'] = i90_prepared['datetime_utc'].dt.date
+            
+            # Filter for target date using local time conversion
+            i90_local_dates = i90_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
+            i90_prepared = i90_prepared[i90_local_dates == target_dt].copy()
+            
             print(f"✅ I90 data prepared: {len(i90_prepared)} records, {i90_prepared['up'].nunique()} unique UPs")
+            print(f"   Unique hours in I90: {sorted(i90_prepared['hour'].unique())}")
         else:
             print("❌ I90 data missing required columns")
-            return pd.DataFrame(), pd.DataFrame()
+            raise Exception("I90 data missing required columns")
+        
+         #fill volumenes with 0 for hours with no data
+        omie_prepared['volumenes'] = omie_prepared['volumenes'].fillna(0)
+        i90_prepared['volumenes'] = i90_prepared['volumenes'].fillna(0)
+
+        #round volumenes to 4 decimal places to handle float precision issues
+        omie_prepared['volumenes'] = omie_prepared['volumenes'].round(4)
+        i90_prepared['volumenes'] = i90_prepared['volumenes'].round(4)
             
         return omie_prepared, i90_prepared
+    
+    def _compute_hourly_hash(self, volume_list: List[float]) -> str:
+        """
+        Compute hash for a 24-hour volume profile
+        
+        Args:
+            volume_list: List of hourly volumes (should be 24 values)
+            
+        Returns:
+            str: MD5 hash of the volume profile
+        """
+        try:
+            # Round to 4 decimal places to handle float precision issues
+            rounded_volumes = [round(vol, 4) for vol in volume_list]
+            volume_str = ','.join(map(str, rounded_volumes))
+            return hashlib.md5(volume_str.encode()).hexdigest()
+        except Exception as e:
+            print(f"❌ Error computing hourly hash: {e}")
+            raise e
+
+    @with_progress(message="Creating volume profiles...", interval=2)
+    def _create_volume_profiles(self, df: pd.DataFrame, entity_col: str) -> Tuple[Dict[str, List[float]], Dict[str, str]]:
+        """
+        Creates volume profiles for UOFs and UPs
+        
+        Args:
+            df: DataFrame containing volume data
+            entity_col: Column name for the entity ('uof' or 'up')
+            
+        Returns:
+            Tuple containing:
+            - Dict mapping entity names to 24-hour volume profiles
+            - Dict mapping entity names to their hash values
+        """
+        profiles = {}
+        hashes = {}
+        
+        try:
+            for entity in df[entity_col].unique():
+                # Filter for entity (either uof or up) and sort by hour 
+                entity_data = df[df[entity_col] == entity].sort_values('hour')
+                
+                # Check if we have complete 24-hour data
+                actual_hours = set(entity_data['hour'].values)
+                
+                if len(actual_hours) < 23:  # Minimum required hours is 23, this should never happen but just in case
+                    print(f"⚠️ {entity_col.upper()} {entity} has {len(actual_hours)} hours of data, skipping")
+                    continue
+                    
+                # Create ordered volume profile
+                volume_profile = []  # This will be used to create the unique hash for the entity
+                for hour in range(24):
+                    # Filter entity data for hour
+                    hour_data = entity_data[entity_data['hour'] == hour]
+                    if not hour_data.empty:
+                        # Append volumenes for hour
+                        volume_profile.append(hour_data['volumenes'].iloc[0]) 
+                    else:  # If no data for hour, the resulting df will be empty, so we append with 0
+                        volume_profile.append(0.0)  # Fill missing hours with 0
+                
+                # Store volume profile and hash for entity in the dict with its name as key
+                profiles[entity] = volume_profile 
+                hashes[entity] = self._compute_hourly_hash(volume_profile) 
+
+            return profiles, hashes
+
+        except Exception as e:
+            print(f"❌ Error creating volume profiles: {e}")
+            raise e
+        
+    @with_progress(message="Finding hash matches...", interval=2)
+    def _find_hash_matches(self, up_hashes: Dict[str, str], hash_to_uofs: Dict[str, List[str]]) -> List[Dict[str, str]]:
+        """
+        Finds matches based on identical hashes for UOFs and UPs
+        
+        Args:
+            up_hashes: Dict mapping UP names to their hash values ex: {'UP1': 'hash1', 'UP2': 'hash2'}
+            hash_to_uofs: Dict mapping hash values to lists of UOF names ex: {'hash1': ['UOF1', 'UOF2'], 'hash2': ['UOF3', 'UOF4']}
+            
+        Returns:
+            List of match dictionaries, i.e. exact_matches and ambiguous_matches
+        """
+        exact_matches = list()
+        ambiguous_matches = list()
+        
+        for up, up_hash in up_hashes.items():
+            #if the hash is in the hash_to_uofs dict, we have a match
+            if up_hash in hash_to_uofs: 
+
+                # get the list of uofs that are stored in the hash key ex: {'hash1': ['UOF1', 'UOF2'], 'hash2': ['UOF3', 'UOF4']}
+                matching_uofs = hash_to_uofs[up_hash]
+                
+                #if there is only one uof, we have a perfect match
+                if len(matching_uofs) == 1:
+                    # Perfect 1:1 match
+                    exact_matches.append({
+                        'up': up,
+                        'uof': matching_uofs[0],
+                        'confidence': 1.0,
+                        "match_type": "exact_unique"
+                    })
+                else:
+                    # Ambiguous match - one UP hash matches multiple UOF hashes
+                    for uof in matching_uofs:
+                        ambiguous_matches.append({
+                            'up': up,
+                            'uof': uof,
+                            'confidence': 1.0,
+                            'match_type': 'exact_ambiguous'
+                        })
+
+        return exact_matches, ambiguous_matches
         
     def _find_volume_matches(self, omie_df: pd.DataFrame, i90_df: pd.DataFrame,
                           target_date: str) -> pd.DataFrame:
         """
-        Finds potential UOF-UP matches based on volume patterns
+        Finds potential UOF-UP matches based on volume patterns using hash-based comparison
         
         Args:
-            omie_df: Prepared OMIE data
-            i90_df: Prepared I90 data  
+            omie_df: Prepared OMIE data (already filtered by target date)
+            i90_df: Prepared I90 data (already filtered by target date)
             target_date: Target date for matching
             
         Returns:
@@ -122,380 +260,212 @@ class UOFUPLinkingAlgorithm:
         print(f"\n🔍 FINDING VOLUME MATCHES FOR {target_date}")
         print("-"*50)
         
-        target_dt = pd.to_datetime(target_date).date()
-        
-        # Filter data for target date
-        omie_day = omie_df[omie_df['date'] == target_dt].copy()
-        i90_day = i90_df[i90_df['date'] == target_dt].copy()
-        
-        if omie_day.empty or i90_day.empty:
+        if omie_df.empty or i90_df.empty:
             print("⚠️  No data available for target date")
             return pd.DataFrame()
             
         print(f"📊 Data for {target_date}:")
-        print(f"   - OMIE UOFs: {omie_day['uof'].nunique()}")
-        print(f"   - I90 UPs: {i90_day['up'].nunique()}")
+        print(f"   - OMIE UOFs: {omie_df['uof'].nunique()}")
+        print(f"   - I90 UPs: {i90_df['up'].nunique()}")
+    
+        # Step 1: Create 24-hour volume profiles for UOFs (OMIE)
+        print("\n🔧 Creating volume profiles for UOFs...")    
+        uof_profiles, uof_hashes = self._create_volume_profiles(omie_df, 'uof')
+        print(f"✅ Created {len(uof_profiles)} UOF volume profiles")
         
-        matches = []
-        exact_matches = []
+        # Step 2: Create 24-hour volume profiles for UPs (I90)
+        print("\n🔧 Creating volume profiles for UPs...")
+        up_profiles, up_hashes = self._create_volume_profiles(i90_df, 'up')
+        print(f"✅ Created {len(up_profiles)} UP volume profiles")
         
-        # Get unique UOFs and UPs
-        unique_uofs = omie_day['uof'].unique()
-        unique_ups = i90_day['up'].unique()
+        # Step 3: Create reverse mapping for efficient lookup
+        hash_to_uofs = {}
+        for uof, hash_val in uof_hashes.items(): 
+            if hash_val not in hash_to_uofs:
+                hash_to_uofs[hash_val] = []
+            hash_to_uofs[hash_val].append(uof)
         
-        for uof in unique_uofs:
-            uof_volumes = omie_day[omie_day['uof'] == uof].set_index('hour')['volumenes'].sort_index()
-            
-            for up in unique_ups:
-                up_volumes = i90_day[i90_day['up'] == up].set_index('hour')['volumenes'].sort_index()
-                
-                # Find common hours
-                common_hours = uof_volumes.index.intersection(up_volumes.index)
-                
-                if len(common_hours) < self.config.MIN_MATCHING_HOURS:
-                    continue
-                    
-                # Compare volumes for common hours
-                uof_common = uof_volumes.loc[common_hours]
-                up_common = up_volumes.loc[common_hours]
-                
-                # Calculate volume differences
-                volume_diffs = abs(uof_common - up_common)
-                matching_hours = (volume_diffs <= self.config.VOLUME_TOLERANCE).sum()
-                total_hours = len(common_hours)
-                
-                # Calculate confidence score
-                confidence = matching_hours / total_hours if total_hours > 0 else 0
-                
-                # Calculate correlation for additional validation
-                if len(uof_common) > 1 and uof_common.var() > 0 and up_common.var() > 0:
-                    correlation = uof_common.corr(up_common)
-                else:
-                    correlation = 0
-                    
-                # Store potential match
-                match_data = {
-                    'uof': uof,
-                    'up': up,
-                    'target_date': target_date,
-                    'matching_hours': matching_hours,
-                    'total_hours': total_hours,
-                    'confidence': confidence,
-                    'correlation': correlation,
-                    'avg_volume_diff': volume_diffs.mean(),
-                    'max_volume_diff': volume_diffs.max(),
-                    'is_exact_match': False
-                }
-                
-                # Check if this is an "exact" match
-                if (confidence >= self.config.EXACT_MATCH_CONFIDENCE_THRESHOLD and 
-                    correlation >= self.config.EXACT_MATCH_CORRELATION_THRESHOLD):
-                    match_data['is_exact_match'] = True
-                    exact_matches.append(match_data)
-                    print(f"🎯 EXACT MATCH: {up} ↔ {uof} (conf: {confidence:.3f}, corr: {correlation:.3f})")
-                
-                matches.append(match_data)
-                
-        matches_df = pd.DataFrame(matches)
+        # Step 4: Find exact matches based on identical hashes using the dedicated method
+        print("\n🔍 Finding hash-based matches...")
+        exact_matches, ambiguous_matches = self._find_hash_matches(up_hashes, hash_to_uofs)
         
-        if not matches_df.empty:
-            # Prioritize exact matches
-            exact_matches_df = matches_df[matches_df['is_exact_match'] == True]
-            
-            print(f"🎯 Found {len(exact_matches_df)} EXACT matches")
-            print(f"📊 Total potential matches: {len(matches_df)}")
-            
-            # If we have exact matches, filter to only include those and high-confidence ones
-            if not exact_matches_df.empty:
-                high_quality_matches = matches_df[
-                    (matches_df['is_exact_match'] == True) | 
-                    ((matches_df['confidence'] >= 0.9) & (matches_df['correlation'] >= 0.9))
-                ]
-                return high_quality_matches.sort_values(['is_exact_match', 'confidence'], ascending=[False, False])
-            else:
-                # Fallback to high-confidence matches
-                high_confidence_matches = matches_df[
-                    (matches_df['confidence'] >= 0.9) & 
-                    (matches_df['correlation'] >= 0.9)  # Lowered from 1.0 to 0.9
-                ]
-                return high_confidence_matches.sort_values('confidence', ascending=False)
-        else:
+        if not exact_matches and not ambiguous_matches:
             print("⚠️  No volume matches found")
-            return pd.DataFrame()
-            
-    def _resolve_ambiguous_matches(self, matches_df: pd.DataFrame, 
-                                target_date: str) -> pd.DataFrame:
+            return pd.DataFrame(columns=['up', 'uof', 'confidence', 'match_type'])
+        
+        # Convert to DataFrame
+        exact_matches_df = pd.DataFrame(exact_matches)
+        ambiguous_matches_df = pd.DataFrame(ambiguous_matches)
+
+        
+        print(f"\n📊 MATCHING RESULTS:")
+        print(f"   ✅ Unique exact matches: {len(exact_matches_df)}")
+        print(f"   ⚠️  Ambiguous exact matches: {len(ambiguous_matches_df)}")
+        print(f"   📈 Total matches: {len(exact_matches_df) + len(ambiguous_matches_df)}")
+        
+        if len(ambiguous_matches_df) > 0:
+            # Show ambiguous matches summary
+            ambiguous_ups = ambiguous_matches_df.groupby('up')['uof'].count()
+            print(f"\n⚠️  AMBIGUOUS MATCHES DETECTED:")
+            for up, count in ambiguous_ups.items():
+                uofs = ambiguous_matches[ambiguous_matches['up'] == up]['uof'].tolist()
+                print(f"   UP {up} matches {count} UOFs: {', '.join(uofs)}")
+        
+        # Show top matches
+        print(f"\n🏆 Top 5 matches:")
+        top_matches = exact_matches_df.head()
+        for idx, row in top_matches.iterrows():
+            print(f"   {row['up']} ↔ {row['uof']} (confidence: {row['confidence']:.3f}, type: {row['match_type']})")
+        
+        return exact_matches_df, ambiguous_matches_df
+        
+    def _resolve_ambiguous_matches(self, exact_matches_df: pd.DataFrame, ambiguous_matches_df: pd.DataFrame, target_date: str) -> pd.DataFrame:
         """
-        Resolves ambiguous matches by checking historical data and intra markets
+        Resolves ambiguous matches by checking historical data n-94 days and intra markets
         
         Args:
-            matches_df: Initial matches with potential ambiguities
+            exact_matches_df: Exact matches from initial matching
+            ambiguous_matches_df: Initial matches with potential ambiguities
             target_date: Target date
             
         Returns:
-            pd.DataFrame: Resolved matches
+            pd.DataFrame: All resolved matches (exact + resolved ambiguous)
         """
         print(f"\n🔍 RESOLVING AMBIGUOUS MATCHES")
         print("-"*40)
         
-        # Identify ambiguous matches (UPs matching multiple UOFs or vice versa)
-        up_counts = matches_df.groupby('up')['uof'].nunique()
-        uof_counts = matches_df.groupby('uof')['up'].nunique()
+        # Start with exact matches
+        all_matches_df = exact_matches_df.copy() if not exact_matches_df.empty else pd.DataFrame()
+        remaining_ambiguous_matches_df = ambiguous_matches_df.copy()
         
-        ambiguous_ups = up_counts[up_counts > 1].index.tolist()
-        ambiguous_uofs = uof_counts[uof_counts > 1].index.tolist()
-        
-        if not ambiguous_ups and not ambiguous_uofs:
-            print("✅ No ambiguous matches found")
-            return matches_df
-            
-        print(f"⚠️  Found ambiguities:")
-        print(f"   - UPs with multiple UOF matches: {len(ambiguous_ups)}")
-        print(f"   - UOFs with multiple UP matches: {len(ambiguous_uofs)}")
-        
+        if remaining_ambiguous_matches_df.empty:
+            print("✅ No ambiguous matches to resolve")
+            return all_matches_df
+
         # Try historical data (94 days back)
         print(f"\n📅 Checking historical data (-{self.config.HISTORICAL_CHECK_WINDOW} days)")
         historical_date = (pd.to_datetime(target_date) - 
                          timedelta(days=self.config.HISTORICAL_CHECK_WINDOW)).strftime('%Y-%m-%d')
         
         try:
-            self.data_extractor.extract_data_for_matching(
-                    target_date=historical_date
-                ) #extract data for 94 days ago
-            diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date = historical_date)
+            self.data_extractor.extract_data_for_matching(target_date=historical_date)
+            diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date=historical_date)
             
             if 'omie_diario' in diario_data and 'i90_diario' in diario_data:
-                omie_hist, i90_hist = self._prepare_volume_data(
+                omie_diario, i90_diario = self._prepare_volume_data(
                     diario_data['omie_diario'],
-                    diario_data['i90_diario']
+                    diario_data['i90_diario'],
+                    historical_date
                 )
+
+                # Filter the dfs by the uofs and ups in the ambiguous_matches_df
+                ambiguous_uofs = remaining_ambiguous_matches_df['uof'].unique()
+                ambiguous_ups = remaining_ambiguous_matches_df['up'].unique()
+                omie_diario_filtered = omie_diario[omie_diario['uof'].isin(ambiguous_uofs)]
+                i90_diario_filtered = i90_diario[i90_diario['up'].isin(ambiguous_ups)]
                 
-                historical_matches = self._find_volume_matches(
-                    omie_hist, i90_hist, historical_date
+                # Find the volume matches again but only for the ambiguous uofs and ups
+                exact_matches_historical_df, still_ambiguous_matches_df = self._find_volume_matches(
+                    omie_diario_filtered, i90_diario_filtered, historical_date
                 )
-                
-                if not historical_matches.empty:
-                    # Use historical matches to resolve ambiguities
-                    matches_df = self._apply_historical_resolution(
-                        matches_df, historical_matches, ambiguous_ups, ambiguous_uofs
-                    )
-                    
+
+                if not exact_matches_historical_df.empty:
+                    print(f"✅ Resolved {len(exact_matches_historical_df)} matches using historical data")
+                    all_matches_df = pd.concat([all_matches_df, exact_matches_historical_df], ignore_index=True)
+                    remaining_ambiguous_matches_df = still_ambiguous_matches_df
+                else:
+                    print("⚠️ No matches resolved using historical data")
+
         except Exception as e:
-            print(f"⚠️  Could not resolve using historical data: {e}")
-            
-        # If still ambiguous, try intra markets
-        remaining_ambiguous = self._check_remaining_ambiguities(matches_df)
+            print(f"⚠️ Could not resolve using historical data: {e}")
         
-        if remaining_ambiguous:
-            print(f"\n🔍 Checking intra markets for remaining ambiguities")
+        # Try intra markets if there are still ambiguous matches
+        if not remaining_ambiguous_matches_df.empty:
+            print(f"\n🔍 Checking intra markets for remaining {len(remaining_ambiguous_matches_df)} ambiguities on {target_date}")
+
             try:
-                intra_data = self.data_extractor.transform_intra_data_for_ambiguous_matches(target_date = historical_date)
+                intra_data = self.data_extractor.transform_intra_data_for_ambiguous_matches(target_date)
+
+                if 'omie_intra' in intra_data and 'i90_intra' in intra_data:
+                    omie_intra = intra_data['omie_intra']
+                    i90_intra = intra_data['i90_intra']
+                else:
+                    print("❌ No intra data available")
+                    return all_matches_df
                 
                 # Try each session (1, 2, 3)
-                for session_num in range(1, 4):
-                    i90_key = f'i90_intra_{session_num}'
-                    omie_key = f'omie_intra_{session_num}'
+                for id_mercado in range(1, 4):                        
+                    if remaining_ambiguous_matches_df.empty:
+                        break
+                        
+                    print(f"   📊 Checking Intra Session {id_mercado}")
                     
-                    if (i90_key in intra_data and omie_key in intra_data and remaining_ambiguous):
-                        print(f"   📊 Checking Intra Session {session_num}")
-                        matches_df = self._resolve_with_intra_data(
-                            matches_df, 
-                            intra_data[i90_key], 
-                            intra_data[omie_key],
-                            target_date, 
-                            session_num
-                        )
-                        remaining_ambiguous = self._check_remaining_ambiguities(matches_df)
+                    # Filter intra data for current session
+                    omie_intra_session = omie_intra[omie_intra['id_mercado'] == id_mercado]
+                    i90_intra_session = i90_intra[i90_intra['id_mercado'] == id_mercado]
+                    
+                    if omie_intra_session.empty or i90_intra_session.empty:
+                        print(f"   ⚠️ No data for session {id_mercado}, skipping")
+                        continue
+                    
+                    # Filter by remaining ambiguous UOFs and UPs
+                    ambiguous_uofs = remaining_ambiguous_matches_df['uof'].unique()
+                    ambiguous_ups = remaining_ambiguous_matches_df['up'].unique()
+                    omie_intra_filtered = omie_intra_session[omie_intra_session['uof'].isin(ambiguous_uofs)]
+                    i90_intra_filtered = i90_intra_session[i90_intra_session['up'].isin(ambiguous_ups)]
+                    
+                    # Prepare data for this session
+                    omie_prepared, i90_prepared = self._prepare_volume_data(
+                        omie_intra_filtered,
+                        i90_intra_filtered,
+                        target_date
+                    )
+                    
+                    # Find volume matches for this session
+                    exact_matches_intra_df, remaining_ambiguous_matches_df = self._find_volume_matches(
+                        omie_prepared, i90_prepared, target_date
+                    )
+                    
+                    if not exact_matches_intra_df.empty:
+                        print(f"   ✅ Found {len(exact_matches_intra_df)} exact matches in session {id_mercado}")
+                        all_matches_df = pd.concat([all_matches_df, exact_matches_intra_df], ignore_index=True)
+                    
+                    print(f"   📊 Remaining ambiguous matches: {len(remaining_ambiguous_matches_df)}")
                 
             except Exception as e:
-                print(f"⚠️  Could not resolve using intra data: {e}")
-                
-        return matches_df
-        
-    def _apply_historical_resolution(self, current_matches: pd.DataFrame,
-                                   historical_matches: pd.DataFrame,
-                                   ambiguous_ups: List[str],
-                                   ambiguous_uofs: List[str]) -> pd.DataFrame:
-        """Apply historical matching patterns to resolve current ambiguities"""
-        
-        resolved_matches = current_matches.copy()
-        
-        # Create historical mapping
-        hist_mapping = {}
-        hist_high_conf = historical_matches[historical_matches['confidence'] >= 0.9]
-        
-        for _, row in hist_high_conf.iterrows():
-            hist_mapping[row['up']] = row['uof']
-            
-        # Apply historical resolution
-        for up in ambiguous_ups:
-            if up in hist_mapping:
-                target_uof = hist_mapping[up]
-                # Keep only the historically validated match
-                mask = (resolved_matches['up'] == up) & (resolved_matches['uof'] == target_uof)
-                if mask.any():
-                    # Remove other matches for this UP
-                    resolved_matches = resolved_matches[
-                        (resolved_matches['up'] != up) | 
-                        (resolved_matches['uof'] == target_uof)
-                    ]
-                    print(f"   ✅ Resolved {up} -> {target_uof} using historical data")
-                    
-        return resolved_matches
-        
-    def _check_remaining_ambiguities(self, matches_df: pd.DataFrame) -> bool:
-        """Check if there are still ambiguous matches"""
-        up_counts = matches_df.groupby('up')['uof'].nunique()
-        uof_counts = matches_df.groupby('uof')['up'].nunique()
-        
-        return (up_counts > 1).any() or (uof_counts > 1).any()
-        
-    def _resolve_with_intra_data(self, matches_df: pd.DataFrame,
-                               i90_intra_data: pd.DataFrame, 
-                               omie_intra_data: pd.DataFrame,
-                               target_date: str, 
-                               session_num: int) -> pd.DataFrame:
-        """
-        Resolve ambiguities by comparing hourly volume patterns between I90 and OMIE intra data
-        
-        Args:
-            matches_df: Current matches with ambiguities
-            i90_intra_data: I90 intra data for specific session
-            omie_intra_data: OMIE intra data for specific session
-            target_date: Target date
-            session_num: Session number (1, 2, or 3)
-            
-        Returns:
-            pd.DataFrame: Matches with some ambiguities potentially resolved
-        """
-        if i90_intra_data.empty or omie_intra_data.empty:
-            print(f"      ⚠️  No intra data available for session {session_num}")
-            return matches_df
-        
-        target_dt = pd.to_datetime(target_date).date()
-        
-        # Prepare intra data
-        i90_prepared = i90_intra_data.copy()
-        i90_prepared['hour'] = i90_prepared['datetime_utc'].dt.hour
-        i90_prepared['date'] = i90_prepared['datetime_utc'].dt.date
-        i90_day = i90_prepared[i90_prepared['date'] == target_dt]
-        
-        omie_prepared = omie_intra_data.copy()
-        omie_prepared['hour'] = omie_prepared['datetime_utc'].dt.hour
-        omie_prepared['date'] = omie_prepared['datetime_utc'].dt.date
-        omie_day = omie_prepared[omie_prepared['date'] == target_dt]
-        
-        if i90_day.empty or omie_day.empty:
-            print(f"      ⚠️  No intra data for {target_date} in session {session_num}")
-            return matches_df
-        
-        # Identify ambiguous matches
-        up_counts = matches_df.groupby('up')['uof'].nunique()
-        ambiguous_ups = up_counts[up_counts > 1].index.tolist()
-        
-        resolved_matches = matches_df.copy()
-        resolution_count = 0
-        
-        # For each ambiguous UP, compare volume patterns with candidate UOFs
-        for up in ambiguous_ups:
-            up_candidates = matches_df[matches_df['up'] == up]['uof'].tolist()
-            
-            # Get UP's volume pattern from I90 intra
-            up_volumes = i90_day[i90_day['up'] == up]
-            if up_volumes.empty:
-                continue
-            
-            up_volume_pattern = up_volumes.set_index('hour')['volumenes'].sort_index()
-            
-            best_uof = None
-            best_confidence = -1
-            
-            # Compare with each candidate UOF's volume pattern from OMIE intra
-            for candidate_uof in up_candidates:
-                uof_volumes = omie_day[omie_day['uof'] == candidate_uof]
-                if uof_volumes.empty:
-                    continue
-                
-                uof_volume_pattern = uof_volumes.set_index('hour')['volumenes'].sort_index()
-                
-                # Find common hours and compare patterns
-                common_hours = up_volume_pattern.index.intersection(uof_volume_pattern.index)
-                
-                if len(common_hours) < self.config.MIN_MATCHING_HOURS:
-                    continue
-                
-                up_common = up_volume_pattern.loc[common_hours]
-                uof_common = uof_volume_pattern.loc[common_hours]
-                
-                # Calculate volume differences and confidence
-                volume_diffs = abs(up_common - uof_common)
-                matching_hours = (volume_diffs <= self.config.VOLUME_TOLERANCE).sum()
-                confidence = matching_hours / len(common_hours)
-                
-                # Calculate correlation
-                if len(up_common) > 1 and up_common.var() > 0 and uof_common.var() > 0:
-                    correlation = up_common.corr(uof_common)
-                else:
-                    correlation = 0
-                
-                # Combined score (you can adjust weights)
-                combined_score = (confidence * 0.7) + (max(0, correlation) * 0.3)
-                
-                if combined_score > best_confidence:
-                    best_confidence = combined_score
-                    best_uof = candidate_uof
-                
-            # If we found a good match, resolve the ambiguity
-            if best_uof and best_confidence >= 0.8:  # Threshold for intra resolution
-                resolved_matches = resolved_matches[
-                    (resolved_matches['up'] != up) | 
-                    (resolved_matches['uof'] == best_uof)
-                ]
-                resolution_count += 1
-                print(f"      ✅ Resolved {up} -> {best_uof} using session {session_num} data (confidence: {best_confidence:.3f})")
-            
-        print(f"      📊 Resolved {resolution_count} ambiguities using session {session_num} data")
-        return resolved_matches
-        
+                print(f"⚠️ Could not resolve using intra data: {e}")
+
+        return all_matches_df
+
     def _create_final_matches_df(self, matches_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Creates the final UOF-UP links DataFrame
+        Creates final matches DataFrame with only UP and UOF columns
         
         Args:
-            matches_df: Resolved matches
+            matches_df: DataFrame with all matches including metadata
             
         Returns:
-            pd.DataFrame: Final links with columns [up, uof]
+            pd.DataFrame: Final matches with columns [up, uof]
         """
-        print(f"\n📋 CREATING FINAL LINKS")
-        print("-"*25)
-        
         if matches_df.empty:
-            print("⚠️  No matches to create links from")
             return pd.DataFrame(columns=['up', 'uof'])
-            
-        # Take only the highest confidence match for each UP
-        final_links = (matches_df
-                      .sort_values('confidence', ascending=False)
-                      .groupby('up')
-                      .first()
-                      .reset_index()
-                      [['up', 'uof']])
         
-        print(f"✅ Created {len(final_links)} final UOF-UP links")
-        print(f"📊 Coverage:")
-        print(f"   - Unique UPs linked: {final_links['up'].nunique()}")
-        print(f"   - Unique UOFs linked: {final_links['uof'].nunique()}")
+        # Keep only the essential columns and remove duplicates
+        final_df = matches_df[['up', 'uof']].drop_duplicates().reset_index(drop=True)
         
-        return final_links
+        print(f"📊 Final matches summary:")
+        print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
+        print(f"   - Unique UPs matched: {final_df['up'].nunique()}")
+        print(f"   - Unique UOFs matched: {final_df['uof'].nunique()}")
         
+        return final_df
+
     def link_uofs_to_ups(self, target_date: str) -> pd.DataFrame:
         """
         Main method to link UOFs to UPs for a given date
         
         Args:
             target_date: Target date for linking (YYYY-MM-DD)
-          
             
         Returns:
             pd.DataFrame: Final links with columns [up, uof]
@@ -505,7 +475,6 @@ class UOFUPLinkingAlgorithm:
         print("="*60)
         
         try:
-
             # Step 1: Get active UPs
             active_ups = self._get_active_ups()
             if active_ups.empty:
@@ -513,19 +482,19 @@ class UOFUPLinkingAlgorithm:
                 return pd.DataFrame(columns=['up', 'uof'])
                 
             # Step 2: Extract data
-            self.data_extractor.extract_data_for_matching(target_date)
+            # self.data_extractor.extract_data_for_matching(target_date)
             transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
             
             if 'omie_diario' not in transformed_diario_data or 'i90_diario' not in transformed_diario_data:
                 print("❌ Required data not available")
                 raise ValueError("Required data not available")
                 
-            # Step 3: Prepare data by adding hour and date columns
+            # Step 3: Prepare data by adding hour and date columns for easier matching
             omie_prepared, i90_prepared = self._prepare_volume_data(
                 transformed_diario_data['omie_diario'],
-                transformed_diario_data['i90_diario']
+                transformed_diario_data['i90_diario'],
+                target_date
             )
-            breakpoint()
             
             if omie_prepared.empty or i90_prepared.empty:
                 print("❌ Data preparation failed")
@@ -534,18 +503,22 @@ class UOFUPLinkingAlgorithm:
             # Filter for active UPs only
             i90_prepared_filtered = i90_prepared[i90_prepared['up'].isin(active_ups['up'])]
             
-            # Step 4: Find matches
-            matches = self._find_volume_matches(omie_prepared, i90_prepared_filtered, target_date)
+            # Step 4: Find initial matches (both exact and ambiguous)
+            exact_matches_df, ambiguous_matches_df = self._find_volume_matches(
+                omie_prepared, i90_prepared_filtered, target_date
+            )
             
-            if matches.empty:
+            if exact_matches_df.empty and ambiguous_matches_df.empty:
                 print("❌ No matches found")
                 return pd.DataFrame(columns=['up', 'uof'])
                 
             # Step 5: Resolve ambiguities by comparing diario data 94 days ago and then if needed intra data
-            resolved_matches = self._resolve_ambiguous_matches(matches, target_date)
+            all_resolved_matches = self._resolve_ambiguous_matches(
+                exact_matches_df, ambiguous_matches_df, target_date
+            )
             
             # Step 6: Create final links
-            final_matches_df = self._create_final_matches_df(resolved_matches)
+            final_matches_df = self._create_final_matches_df(all_resolved_matches)
             
             print(f"\n🎉 LINKING PROCESS COMPLETE")
             print(f"Final result: {len(final_matches_df)} UOF-UP links created")
@@ -555,7 +528,7 @@ class UOFUPLinkingAlgorithm:
             
         except Exception as e:
             print(f"❌ Error in linking process: {e}")
-            return pd.DataFrame(columns=['up', 'uof']) 
+            return pd.DataFrame(columns=['up', 'uof'])
 
     def save_links_to_database(self, links_df: pd.DataFrame, table_name: str, 
                               if_exists: str = 'append') -> bool:
