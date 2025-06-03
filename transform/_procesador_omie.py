@@ -4,6 +4,8 @@ from datetime import datetime
 import sys
 import os
 import numpy as np
+import pytz
+import time
 
 # Add necessary imports
 from pathlib import Path
@@ -14,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utilidades.etl_date_utils import DateUtilsETL, TimeUtils
 from utilidades.data_validation_utils import DataValidationUtils
+from utilidades.progress_utils import with_progress
 
 class OMIEProcessor:
     """
@@ -27,371 +30,7 @@ class OMIEProcessor:
         self.date_utils = DateUtilsETL()
         self.data_validator = DataValidationUtils()
 
-    def _filter_matched_units(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Filter data to only include matched units (Casada) and apply buy/sell logic.
-        Based on the logic from carga_omie.py for intra and diario markets.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame with OMIE data
-            
-        Returns:
-            pd.DataFrame: Filtered DataFrame with only matched units
-        """
-        print("\n🔍 FILTERING MATCHED UNITS")
-        print("-"*30)
-        
-        initial_rows = len(df)
-        
-        # Filter only matched units (Casada)
-        if 'Ofertada (O)/Casada (C)' in df.columns:
-            df = df[df['Ofertada (O)/Casada (C)'] == 'C']
-            print(f"   Filtered to matched units: {len(df)} rows")
-        
-        # Apply buy/sell multiplier logic
-        if 'Tipo Oferta' in df.columns:
-            df['Extra'] = np.where(df['Tipo Oferta'] == 'C', -1, 1)
-            print(f"   Applied buy/sell multiplier")
-        
-        print(f"   Rows: {initial_rows} → {len(df)}")
-        print("-"*30)
-        
-        return df
-
-    def _standardize_energy_column(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Standardize the energy column by cleaning numeric formatting.
-        Based on the logic from carga_omie.py.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            
-        Returns:
-            pd.DataFrame: DataFrame with standardized energy column
-        """
-        print("\n⚡ STANDARDIZING ENERGY COLUMN")
-        print("-"*30)
-        
-        if 'Energía Compra/Venta' in df.columns:
-            # Check if the column is already numeric
-            if pd.api.types.is_numeric_dtype(df['Energía Compra/Venta']):
-                # Already numeric, just rename
-                df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
-                print(f"   Column already numeric, renamed to 'volumenes'")
-            else:
-                # Clean numeric formatting (remove thousands separator and fix decimal)
-                df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace('.', '')
-                df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.')
-                df['Energía Compra/Venta'] = df['Energía Compra/Venta'].astype(float)
-                
-                # Rename to standard column name
-                df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
-                print(f"   Cleaned string format and renamed to 'volumenes'")
-        
-        elif 'Cantidad' in df.columns:
-            # For continuo market data
-            if pd.api.types.is_numeric_dtype(df['Cantidad']):
-                df = df.rename(columns={'Cantidad': 'volumenes'})
-                print(f"   'Cantidad' already numeric, renamed to 'volumenes'")
-            else:
-                df['Cantidad'] = df['Cantidad'].str.replace('.', '')
-                df['Cantidad'] = df['Cantidad'].str.replace(',', '.')
-                df['Cantidad'] = df['Cantidad'].astype(float)
-                df = df.rename(columns={'Cantidad': 'volumenes'})
-                print(f"   Processed 'Cantidad' column for continuo market")
-        
-        print("-"*30)
-        return df
-
-    def _standardize_price_column(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Standardize the price column for continuo market data.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            
-        Returns:
-            pd.DataFrame: DataFrame with standardized price column
-        """
-        if 'Precio' in df.columns:
-            df['Precio'] = df['Precio'].str.replace('.', '')
-            df['Precio'] = df['Precio'].str.replace(',', '.')
-            df['Precio'] = df['Precio'].astype(float)
-            df = df.rename(columns={'Precio': 'precio'})
-        
-        return df
-
-    def _process_unit_columns(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
-        """
-        Process unit columns based on market type.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            mercado (str): Market type ('diario', 'intra', 'continuo')
-            
-        Returns:
-            pd.DataFrame: DataFrame with processed unit columns
-        """
-        print("\n🏭 PROCESSING UNIT COLUMNS")
-        print("-"*30)
-        
-        if mercado in ['diario', 'intra']:
-            # For diario and intra markets, rename Unidad to uof
-            if 'Unidad' in df.columns:
-                df = df.rename(columns={'Unidad': 'uof'})
-                print(f"   Renamed 'Unidad' to 'uof'")
-        
-        elif mercado == 'continuo':
-            # For continuo market, handle buy and sell units separately
-            df_buy = pd.DataFrame()
-            df_sell = pd.DataFrame()
-            
-            if 'Unidad compra' in df.columns:
-                df_buy = df[df['Unidad compra'].notna()].copy()
-                df_buy = df_buy.rename(columns={'Unidad compra': 'uof'})
-                # Make buy volumes negative
-                if 'volumenes' in df_buy.columns:
-                    df_buy['volumenes'] = -df_buy['volumenes']
-                print(f"   Processed buy units: {len(df_buy)} rows")
-            
-            if 'Unidad venta' in df.columns:
-                df_sell = df[df['Unidad venta'].notna()].copy()
-                df_sell = df_sell.rename(columns={'Unidad venta': 'uof'})
-                print(f"Processed sell units: {len(df_sell)} rows")
-            
-            # Combine buy and sell data
-            if not df_buy.empty and not df_sell.empty:
-                df = pd.concat([df_buy, df_sell], ignore_index=True)
-            elif not df_buy.empty:
-                df = df_buy
-            elif not df_sell.empty:
-                df = df_sell
-            
-            print(f"   Combined units: {len(df)} rows")
-        
-        print("-"*30)
-        return df
-
-    def _process_datetime_diario_intra(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Process datetime for intra and diario markets.
-        Combines 'Fecha' and 'Hora' columns to create datetime_utc.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame with 'Fecha' and 'Hora' columns
-            
-        Returns:
-            pd.DataFrame: DataFrame with datetime_utc column
-        """
-        print("\n🕐 PROCESSING DATETIME (INTRA/DIARIO)")
-        print("-"*30)
-        
-        if 'Fecha' in df.columns and 'Hora' in df.columns:
-
-            # Convert Fecha to datetime
-            df['fecha'] = pd.to_datetime(df['Fecha'], format="mixed")
-            
-            # Convert Hora to integer
-            df['hora'] = df['Hora'].astype(int)
-            
-            # Create naive datetime by combining date and hour
-            df['datetime_naive'] = df['fecha'] + pd.to_timedelta(df['hora'] - 1, unit='h')
-            
-            # Convert to UTC using DateUtilsETL
-            utc_df = self.date_utils.convert_naive_to_utc(df['datetime_naive'])
-            df['datetime_utc'] = utc_df['datetime_utc']
-            
-            # Clean up intermediate columns
-            df = df.drop(columns=['datetime_naive'], errors='ignore')
-            
-            print(f"   Created datetime_utc from Fecha and Hora")
-        
-        print("-"*30)
-        return df
-
-    def _process_datetime_continuo(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Process datetime for continuo market.
-        Uses 'Contrato' column to extract delivery period and applies DST adjustments.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame with 'Contrato' column
-            
-        Returns:
-            pd.DataFrame: DataFrame with delivery_period column in UTC
-        """
-        print("\n🕐 PROCESSING DATETIME (CONTINUO)")
-        print("-"*30)
-        
-        if 'Fecha' in df.columns:
-            # Process file date (fecha_fichero)
-            df['fecha'] = pd.to_datetime(df['Fecha'], format="mixed") #some dates have hours ie 00:00:00
-            df['fecha_fichero'] = df['fecha'].dt.strftime('%Y-%m-%d')
-        
-        if 'Contrato' in df.columns:
-            # Extract delivery date from contract string (first 8 characters: YYYYMMDD)
-            df['delivery_date_str'] = df['Contrato'].str.strip().str[:8]
-            df['delivery_date'] = pd.to_datetime(df['delivery_date_str'], format="%Y%m%d")
-            
-            # Get transition dates for DST handling
-            year_min = df['delivery_date'].dt.year.min()
-            year_max = df['delivery_date'].dt.year.max()
-            start_range = datetime(year_min - 1, 1, 1)
-            end_range = datetime(year_max + 1, 12, 31)
-            transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
-            
-            # Apply hour adjustment logic from ajuste_horario function
-            df['delivery_hour'] = df.apply(
-                lambda row: self._adjust_continuo_hour(row, transition_dates), 
-                axis=1
-            )
-            
-            # Create naive delivery period datetime (local time)
-            df['delivery_period_naive'] = df['delivery_date'] + pd.to_timedelta(df['delivery_hour'] - 1, unit='h')
-            
-            # Convert naive datetime to UTC using DateUtilsETL
-            utc_df = self.date_utils.convert_naive_to_utc(df['delivery_period_naive'])
-            df['datetime_utc'] = utc_df['datetime_utc']
-            
-            # Clean up intermediate columns
-            df = df.drop(columns=['delivery_date_str', 'delivery_date', 'delivery_hour', 'delivery_period_naive'], errors='ignore')
-            
-            print(f"   Created delivery_period in UTC from Contrato")
-        
-        print("-"*30)
-        return df
-
-    def _adjust_continuo_hour(self, row, transition_dates: Dict) -> int:
-        """
-        Adjust hour for continuo market based on DST transitions.
-        Implements the ajuste_horario logic from carga_omie.py.
-        
-        Args:
-            row: DataFrame row with delivery date and contract info
-            transition_dates: Dictionary of DST transition dates
-            
-        Returns:
-            int: Adjusted hour
-        """
-        date_ref = row['delivery_date'].date()
-        is_special_date = date_ref in transition_dates
-        tipo_cambio_hora = transition_dates.get(date_ref, 0)
-        
-        # Extract hour from contract string (positions 9-11)
-        contract_hour = int(row['Contrato'].strip()[9:11])
-        
-        if is_special_date:
-            if tipo_cambio_hora == 2:  # 23-hour day (spring forward)
-                if (contract_hour + 1) < 3:
-                    return contract_hour + 1
-                else:
-                    return contract_hour
-            
-            elif tipo_cambio_hora == 1:  # 25-hour day (fall back)
-                if row['Contrato'].strip()[-1].isdigit():
-                    if (contract_hour + 1) < 3:
-                        return contract_hour + 1
-                    else:
-                        return contract_hour + 2
-                elif row['Contrato'].strip()[-1] == 'A':
-                    return contract_hour + 1
-                elif row['Contrato'].strip()[-1] == 'B':
-                    return contract_hour + 2
-        
-        # Normal days
-        return contract_hour + 1
-
-    def _aggregate_data(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
-        """
-        Aggregate data by grouping columns based on market type.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            mercado (str): Market type ('diario', 'intra', 'continuo')
-            
-        Returns:
-            pd.DataFrame: Aggregated DataFrame
-        """
-        print("\n📊 AGGREGATING DATA")
-        print("-"*30)
-        
-        initial_rows = len(df)
-        
-        if mercado in ['diario', 'intra']:
-            # Group by uof, date, hour, and id_mercado
-            group_cols = ['uof', 'datetime_utc', 'id_mercado']
-            df = df.groupby(group_cols).agg({'volumenes': 'sum'}).reset_index()
-        
-        elif mercado == 'continuo':
-            # For continuo, no aggregation needed as each row represents a trade
-            pass
-        
-        print(f"   Rows: {initial_rows} → {len(df)}")
-        print("-"*30)
-        return df
-
-    def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """
-        Select final columns based on dataset type and validation requirements.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            dataset_type (str): Type of dataset ('volumenes_omie' or 'volumenes_mic')
-            
-        Returns:
-            pd.DataFrame: DataFrame with final columns
-        """
-        print("\n📋 FINALIZING COLUMNS")
-        print("-"*30)
-        
-        if dataset_type == 'volumenes_omie':
-            required_cols = self.data_validator.processed_volumenes_omie_required_cols
-        elif dataset_type == 'volumenes_mic':
-            required_cols = self.data_validator.processed_volumenes_mic_required_cols
-        else:
-            raise ValueError(f"Unknown dataset type: {dataset_type}")
-        
-        # Filter to only include required columns that exist
-        available_cols = [col for col in required_cols if col in df.columns]
-        df = df[available_cols]
-        
-        print(f"   Selected columns: {available_cols}")
-        print("-"*30)
-        return df
-
-    def _validate_data(self, df: pd.DataFrame, validation_type: str, dataset_type: str) -> pd.DataFrame:
-        """
-        Validate data structure and types.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            validation_type (str): 'raw' or 'processed'
-            dataset_type (str): Dataset type for validation
-            
-        Returns:
-            pd.DataFrame: Validated DataFrame
-        """
-        print(f"\n🔍 DATA VALIDATION ({validation_type.upper()})")
-        print("-"*30)
-        
-        if df.empty:
-            print("⚠️  Empty DataFrame - Skipping validation")
-            return df
-        
-        try:
-            if validation_type == "processed":
-                df = self.data_validator.validate_processed_data(df, dataset_type)
-            elif validation_type == "raw":
-                df = self.data_validator.validate_raw_data(df, dataset_type)
-            
-            print("✅ Validation passed")
-        except Exception as e:
-            print(f"❌ Validation failed: {str(e)}")
-            raise
-        
-        print("-"*30)
-        return df
-
+    # === 1. CLEANING ===
     def _clean_empty_rows(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Remove rows that are completely empty or have only NaN values in critical columns.
@@ -426,6 +65,705 @@ class OMIEProcessor:
         print("-"*30)
         return df
 
+    # === 2. PROCESSING ENERGY, PRICE, UOF, GRANULARITY COLUMNS ===
+    def _add_granularity_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add granularity column based on the unique values in the 'Hora' column.
+        If max hora value > 25, assigns 'Quince minutos', otherwise 'Hora'.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with 'Hora' column
+            
+        Returns:
+            pd.DataFrame: DataFrame with added 'granularidad' column
+        """
+        print("\n⏱️ ADDING GRANULARITY COLUMN")
+        print("-"*30)
+        
+        if 'Hora' in df.columns:
+            # Get unique values from Hora column
+            unique_horas = df['Hora'].unique()
+            max_hora = max(unique_horas)
+            
+            # Determine granularity based on max hora value
+            if max_hora > 25:
+                granularity = 'Quince minutos'
+            else:
+                granularity = 'Hora'
+            
+            # Add granularity column
+            df['granularity'] = granularity
+            
+            print(f"   Unique hora values: {sorted(unique_horas)}")
+            print(f"   Max hora value: {max_hora}")
+            print(f"   Assigned granularity: {granularity}")
+        else:
+            print("   ⚠️  'Hora' column not found, skipping granularity assignment")
+        
+        print("-"*30)
+        return df
+    
+    def _process_and_filter_energy_column(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
+        """
+        Process energy columns and apply filtering/multipliers based on market type.
+        Consolidates energy column cleaning, filtering, and buy/sell logic.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            mercado (str): Market type ('diario', 'intra', 'continuo')
+            
+        Returns:
+            pd.DataFrame: DataFrame with processed energy column and applied filters
+        """
+        print("\n⚡ PROCESSING ENERGY AND FILTERS")
+        print("-"*30)
+        
+        initial_rows = len(df)
+        
+        # Helper function to clean numeric column
+        def clean_numeric_column(column_series):
+            if pd.api.types.is_numeric_dtype(column_series):
+                return column_series
+            else:
+                return (column_series.str.replace('.', '')
+                                  .str.replace(',', '.')
+                                  .astype(float))
+        
+        if mercado in ['diario', 'intra']:
+            # Filter only matched units (Casada)
+            if 'Ofertada (O)/Casada (C)' in df.columns:
+                df = df[df['Ofertada (O)/Casada (C)'] == 'C']
+                print(f"   Filtered to matched units: {len(df)} rows")
+            
+            # Process energy column
+            if 'Energía Compra/Venta' in df.columns:
+                # Clean and convert to numeric
+                df['Energía Compra/Venta'] = clean_numeric_column(df['Energía Compra/Venta'])
+                
+                # Apply buy/sell multiplier logic
+                if 'Tipo Oferta' in df.columns:
+                    #if casada then set multiplier to -1, otherwise 1
+                    df['Extra'] = np.where(df['Tipo Oferta'] == 'C', -1, 1)
+                    df['Energía Compra/Venta'] = df['Energía Compra/Venta'] * df['Extra']
+                    print(f"   Applied buy/sell multiplier")
+                
+                # Rename to standard column name
+                df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
+                print(f"   Processed and renamed 'Energía Compra/Venta' to 'volumenes'")
+        
+        elif mercado == 'continuo':
+            # For continuo market, process Cantidad column
+            if 'Cantidad' in df.columns:
+                df['Cantidad'] = clean_numeric_column(df['Cantidad'])
+                df = df.rename(columns={'Cantidad': 'volumenes'})
+                print(f"   Processed 'Cantidad' column for continuo market")
+        
+        print(f"   Rows: {initial_rows} → {len(df)}")
+        print("-"*30)
+        return df
+
+    def _standardize_price_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardize the price column for continuo market data.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            
+        Returns:
+            pd.DataFrame: DataFrame with standardized price column
+        """
+        if 'Precio' in df.columns:
+            df['Precio'] = df['Precio'].str.replace('.', '')
+            df['Precio'] = df['Precio'].str.replace(',', '.')
+            df['Precio'] = df['Precio'].astype(float)
+            df = df.rename(columns={'Precio': 'precio'})
+        
+        return df
+
+    def _process_uof_columns(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
+        """
+        Process unit columns based on market type. For diairo and intra markets, rename Unidad to uof. 
+        For continuo markets, handle buy and sell units separately, making sell volumes positive and buy volumes negative.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            mercado (str): Market type ('diario', 'intra', 'continuo')
+            
+        Returns:
+            pd.DataFrame: DataFrame with processed unit columns
+        """
+        print("\n🏭 PROCESSING UNIT COLUMNS")
+        print("-"*30)
+        
+        if mercado in ['diario', 'intra']:
+            # For diario and intra markets, rename Unidad to uof
+            if 'Unidad' in df.columns:
+                df = df.rename(columns={'Unidad': 'uof'})
+                print(f"   Renamed 'Unidad' to 'uof'")
+        
+        elif mercado == 'continuo':
+            # For continuo market, handle buy and sell units separately
+            df_buy = pd.DataFrame()
+            df_sell = pd.DataFrame()
+            
+            if 'Unidad compra' in df.columns: 
+                df_buy = df[df['Unidad compra'].notna()].copy()
+                df_buy = df_buy.rename(columns={'Unidad compra': 'uof'})
+                # Make buy volumes negative
+                if 'volumenes' in df_buy.columns:
+                    df_buy['volumenes'] = -df_buy['volumenes']
+                print(f"   Processed buy units: {len(df_buy)} rows")
+            
+            if 'Unidad venta' in df.columns:
+                df_sell = df[df['Unidad venta'].notna()].copy()
+                df_sell = df_sell.rename(columns={'Unidad venta': 'uof'})
+                print(f"Processed sell units: {len(df_sell)} rows")
+            
+            # Combine buy and sell data
+            if not df_buy.empty and not df_sell.empty:
+                df = pd.concat([df_buy, df_sell], ignore_index=True)
+            elif not df_buy.empty:
+                df = df_buy
+            elif not df_sell.empty:
+                df = df_sell
+            
+            print(f"   Combined units: {len(df)} rows")
+        
+        print("-"*30)
+        return df
+    
+    # === 3. PROCESSING DATETIME COLUMN ===
+    def _preprocess_datetime_column(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
+        """
+        Standardize datetime columns (Fecha and Hora) for all market types.
+        This is the first step before UTC conversion.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            mercado (str): Market type ('diario', 'intra', 'continuo')
+            
+        Returns:
+            pd.DataFrame: DataFrame with standardized Fecha and Hora columns
+        """
+        print("\n🕐 STANDARDIZING DATETIME COLUMNS")
+        print("-"*30)
+        
+        # Convert Fecha to datetime for all market types
+        df['Fecha'] = pd.to_datetime(df['Fecha'], format="mixed")  # some dates have hours ie 00:00:00
+        
+        if mercado == 'continuo':
+            # For continuo market, extract from Contrato column
+            if 'Contrato' in df.columns:
+                # Extract delivery date from contract string (first 8 characters: YYYYMMDD)
+                df['delivery_date_str'] = df['Contrato'].str.strip().str[:8]
+                df['Fecha'] = pd.to_datetime(df['delivery_date_str'], format="%Y%m%d")
+                
+                # Extract delivery hour (keep 1-based for consistency)
+                df['delivery_hour'] = df['Contrato'].str.strip()[9:11].astype(int)
+                df['Hora'] = df['delivery_hour']
+                
+                print(f"   Extracted Fecha and Hora from Contrato for continuo market (1-based hour)")
+            
+            # Store file date for continuo market
+            df['fecha_fichero'] = df['Fecha'].dt.strftime('%Y-%m-%d')
+        
+        elif mercado in ['diario', 'intra']:
+            # For diario and intra markets, keep Hora as 1-based integer for DST parsing
+            if 'Hora' in df.columns:
+                df['Hora'] = df['Hora'].astype(int)  # Keep 1-based
+                print(f"   Kept Hora as 1-based for {mercado} market DST parsing")
+        
+        print(f"   Standardized Fecha and Hora columns for {mercado} market")
+        print("-"*30)
+        return df
+    
+    def _standardize_datetime(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
+        """
+        Ensures a standard UTC datetime column with proper granularity handling.
+        Handles different input formats and properly processes DST transitions.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            mercado (str): Market type ('diario', 'intra', 'continuo')
+            
+        Returns:
+            pd.DataFrame: DataFrame with standardized datetime_utc column
+        """
+        if df.empty: 
+            return df
+
+        # Verify required columns exist
+        required_cols = ['Fecha', 'Hora', 'granularity']
+        if not all(col in df.columns for col in required_cols):
+            raise ValueError(f"Required columns: {required_cols} not found in DataFrame.")
+
+        # Ensure Fecha is datetime
+        df['Fecha'] = pd.to_datetime(df['Fecha'])
+        
+        # Get timezone object
+        tz = pytz.timezone('Europe/Madrid')
+        
+        # Get transition dates for relevant year range
+        year_min = df['Fecha'].dt.year.min() - 1
+        year_max = df['Fecha'].dt.year.max() + 1
+        start_range = pd.Timestamp(year=year_min, month=1, day=1)
+        end_range = pd.Timestamp(year=year_max, month=12, day=31)
+        transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
+        
+        # Create mask for DST transition days
+        df['is_dst_day'] = df['Fecha'].dt.date.apply(lambda x: x in transition_dates)
+        
+        # Split data by granularity and DST status
+        #hourly data
+        df_hourly_dst = df[(df['granularity'] == 'Hora') & (df['is_dst_day'])].copy()
+        df_hourly_normal = df[(df['granularity'] == 'Hora') & (~df['is_dst_day'])].copy()
+
+        #15min data *TODO: Implement 15min data processing
+        df_15min_dst = df[(df['granularity'] == 'Quince minutos') & (df['is_dst_day'])].copy()
+        df_15min_normal = df[(df['granularity'] == 'Quince minutos') & (~df['is_dst_day'])].copy()
+        
+        # Process hourly data
+        df_hourly_processed_dst = pd.DataFrame()
+        if not df_hourly_dst.empty:
+            print(f"Processing {len(df_hourly_dst)} rows of hourly DST data...")
+            df_hourly_processed_dst = self._process_omie_hourly_dst_data(df_hourly_dst, transition_dates)
+        
+        df_hourly_processed_normal = pd.DataFrame()
+        if not df_hourly_normal.empty:
+            print(f"Processing {len(df_hourly_normal)} rows of hourly non-DST data...")
+            df_hourly_processed_normal = self._process_omie_hourly_normal_data(df_hourly_normal)
+        
+        # Process 15-minute data (when implemented)
+        df_15min_processed_dst = pd.DataFrame()
+        if not df_15min_dst.empty:
+            print(f"Processing {len(df_15min_dst)} rows of 15-minute DST data...")
+            df_15min_processed_dst = self._process_omie_15min_dst_data(df_15min_dst, transition_dates)
+        
+        df_15min_processed_normal = pd.DataFrame()
+        if not df_15min_normal.empty:
+            print(f"Processing {len(df_15min_normal)} rows of 15-minute non-DST data...")
+            df_15min_processed_normal = self._process_omie_15min_normal_data(df_15min_normal)
+        
+        # Combine results
+        final_df = pd.concat([
+            df_hourly_processed_dst, 
+            df_hourly_processed_normal,
+            df_15min_processed_dst, 
+            df_15min_processed_normal
+        ], ignore_index=True)
+        
+        # Clean up intermediate columns
+        cols_to_drop = ['Fecha', 'Hora', 'granularity', 'is_dst_day', 'datetime_local', 'datetime_naive']
+        final_df = final_df.drop(columns=[c for c in cols_to_drop if c in final_df.columns], errors='ignore')
+        
+        # Drop rows with invalid datetimes and sort
+        final_df = final_df.dropna(subset=['datetime_utc'])
+        if not final_df.empty:
+            final_df = final_df.sort_values(by='datetime_utc').reset_index(drop=True)
+        
+        return final_df
+
+    @with_progress(message="Processing OMIE hourly DST data")
+    def _process_omie_hourly_dst_data(self, df: pd.DataFrame, transition_dates: Dict) -> pd.DataFrame:
+        """
+        Process OMIE hourly data for DST transition days.
+        Handles spring forward (23 hours: 1-23, skip hour 2) and fall back (25 hours: repeat hour 2).
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with DST transition days
+            transition_dates (Dict): Dictionary of DST transition dates
+            
+        Returns:
+            pd.DataFrame: DataFrame with processed datetime_utc
+        """
+        try:
+            result_df = df.copy()
+            
+            # Apply the parsing function to create datetime_local
+            result_df['datetime_local'] = result_df.apply(
+                lambda row: self._parse_omie_hourly_datetime_local(row['Fecha'], row['Hora'], transition_dates), 
+                axis=1
+            )
+            
+            # Convert to UTC
+            utc_df = self.date_utils.convert_local_to_utc(result_df['datetime_local'])
+            result_df['datetime_utc'] = utc_df['datetime_utc']
+            
+            # Convert to 15-minute frequency
+            result_df = self.date_utils.convert_hourly_to_15min(result_df, "volumenes_omie")
+            
+            return result_df
+        
+        except Exception as e:
+            print(f"Error processing OMIE hourly DST data: {e}")
+            return pd.DataFrame()
+
+    @with_progress(message="Processing OMIE hourly normal data (vectorized)")
+    def _process_omie_hourly_normal_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Process OMIE hourly data for normal (non-DST transition) days using vectorized operations.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with normal days
+            
+        Returns:
+            pd.DataFrame: DataFrame with processed datetime_utc
+        """
+        try:
+            result_df = df.copy()
+            tz = pytz.timezone('Europe/Madrid')
+            
+            # Create naive datetime by combining date and hour (convert from 1-based to 0-based here)
+            result_df['datetime_naive'] = result_df['Fecha'] + pd.to_timedelta(result_df['Hora'] - 1, unit='h')
+            
+            # Vectorized localization for normal days (no DST ambiguity)
+            local_dt = result_df['datetime_naive'].dt.tz_localize(tz, ambiguous='infer', nonexistent='shift_forward')
+            result_df['datetime_utc'] = local_dt.dt.tz_convert('UTC')
+            
+            # Convert to 15-minute frequency
+            result_df = self.date_utils.convert_hourly_to_15min(result_df, "volumenes_omie")
+            
+            return result_df
+        
+        except Exception as e:
+            print(f"Error processing OMIE hourly normal data: {e}")
+            return pd.DataFrame()
+
+    @with_progress(message="Processing OMIE 15-minute DST data")
+    def _process_omie_15min_dst_data(self, df: pd.DataFrame, transition_dates: Dict) -> pd.DataFrame:
+        """
+        Process OMIE 15-minute data for DST transition days.
+        Handles spring forward (92 intervals) and fall back (100 intervals).
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with DST transition days
+            transition_dates (Dict): Dictionary of DST transition dates
+            
+        Returns:
+            pd.DataFrame: DataFrame with processed datetime_utc
+        """
+        try:
+            result_df = df.copy()
+            
+            # Apply the parsing function to create datetime_local
+            result_df['datetime_local'] = result_df.apply(
+                lambda row: self._parse_omie_15min_datetime_local(row['Fecha'], row['Hora'], transition_dates), 
+                axis=1
+            )
+            
+            # Convert to UTC
+            utc_df = self.date_utils.convert_local_to_utc(result_df['datetime_local'])
+            result_df['datetime_utc'] = utc_df['datetime_utc']
+            
+            return result_df
+        
+        except Exception as e:
+            print(f"Error processing OMIE 15-minute DST data: {e}")
+            return pd.DataFrame()
+
+    @with_progress(message="Processing OMIE 15-minute normal data (vectorized)")
+    def _process_omie_15min_normal_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Process OMIE 15-minute data for normal (non-DST transition) days using vectorized operations.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with normal days
+            
+        Returns:
+            pd.DataFrame: DataFrame with processed datetime_utc
+        """
+        try:
+            result_df = df.copy()
+            tz = pytz.timezone('Europe/Madrid')
+            
+            # Create naive datetime by combining date and hour (convert from 1-based to 0-based here)
+            # For 15-minute data, Hora represents the 15-minute interval (1-96), convert to 0-95
+            result_df['datetime_naive'] = result_df['Fecha'] + pd.to_timedelta((result_df['Hora'] - 1) * 15, unit='m')
+            
+            # Vectorized localization for normal days (no DST ambiguity)
+            local_dt = result_df['datetime_naive'].dt.tz_localize(tz, ambiguous='infer', nonexistent='shift_forward')
+            result_df['datetime_utc'] = local_dt.dt.tz_convert('UTC')
+            
+            return result_df
+        
+        except Exception as e:
+            print(f"Error processing OMIE 15-minute normal data: {e}")
+            return pd.DataFrame()
+
+    def _parse_omie_hourly_datetime_local(self, fecha, hora_int, transition_dates: Dict) -> pd.Timestamp:
+        """
+        Parse OMIE hourly data into timezone-aware datetime in Europe/Madrid timezone.
+        Handles DST transitions:
+        - Spring forward: 23 hours (1-23), hour 2 doesn't exist
+        - Fall back: 25 hours (1-25), hour 2 is repeated (first occurrence and second occurrence)
+        
+        Args:
+            fecha: Date object or datetime object
+            hora_int: Hour integer (1-based indexing: 1=00:00, 2=01:00, etc.)
+            transition_dates: Dictionary of DST transition dates
+            
+        Returns:
+            Timezone-aware pd.Timestamp in Europe/Madrid timezone
+        """
+        # Ensure fecha is a date object
+        if isinstance(fecha, pd.Timestamp):
+            fecha = fecha.date()
+        elif isinstance(fecha, str):
+            fecha = pd.to_datetime(fecha).date()
+    
+        # Get timezone object
+        tz = pytz.timezone('Europe/Madrid')
+        
+        # Convert 1-based hora_int to 0-based hour (1=00:00, 2=01:00, etc.)
+        hour_24 = hora_int - 1
+        
+        # Check if this is a DST transition date
+        is_transition_date = fecha in transition_dates
+        # Determine the type of DST transition for this date:
+        # - 0: Normal day (no transition)
+        # - 1: Fall back transition (25-hour day, hour repeated)
+        # - 2: Spring forward transition (23-hour day, hour skipped)
+        transition_type = transition_dates.get(fecha, 0) if is_transition_date else 0
+        
+        # Initialize is_dst for DST handling
+        is_dst = None
+        
+        # Handle DST transitions
+        if is_transition_date:
+            if transition_type == 2:  # Spring forward: 23-hour day (skip hour 2:00)
+                if hour_24 == 2:
+                    # Hour 2:00 doesn't exist on spring forward day, shifting to hour 3
+                    print(f"Warning: Hour 2 found on spring forward day {fecha}, shifting to hour 3")
+                    hour_24 = 3
+                    is_dst = True
+                elif hour_24 >= 3:
+                    # Hours after 2:00 are already correct (DST is in effect)
+                    is_dst = True
+            
+            elif transition_type == 1:  # Fall back: 25-hour day (repeat hour 2:00)
+                if hour_24 == 1:  # This is 1:00 AM (still DST)
+                    is_dst = True
+                elif hora_int >= 3 and hora_int <= 25:
+                    # This represents the period after the fall back
+                    # Map hora_int 3-25 to actual hours 2-24 in standard time
+                    if hora_int == 3:
+                        # This is the second occurrence of 2:00 AM (now in standard time)
+                        hour_24 = 2
+                        is_dst = False
+                    else:
+                        # Map remaining hours: hora_int 4-25 -> hours 3-24
+                        hour_24 = hora_int - 2
+                        is_dst = False
+                else:
+                    is_dst = None  # Let pytz decide
+        else:
+            is_dst = None  # Normal day, let pytz decide
+        
+        # Create naive datetime
+        naive_dt = pd.Timestamp(
+            year=fecha.year,
+            month=fecha.month,
+            day=fecha.day,
+            hour=hour_24,
+            minute=0,
+            second=0
+        )
+        
+        # Localize the datetime with DST handling
+        try:
+            if is_transition_date and transition_type in [1, 2]:
+                local_dt = tz.localize(naive_dt, is_dst=is_dst)
+            else:
+                local_dt = tz.localize(naive_dt)
+        except pytz.exceptions.AmbiguousTimeError:
+            # For ambiguous times (fall-back), default to first occurrence if not specified
+            local_dt = tz.localize(naive_dt, is_dst=True if is_dst is None else is_dst)
+        except pytz.exceptions.NonExistentTimeError:
+            # For non-existent times (spring-forward), shift forward
+            shifted_dt = naive_dt.replace(hour=3)
+            local_dt = tz.localize(shifted_dt, is_dst=True)
+        
+        return local_dt
+    
+    def _parse_omie_15min_datetime_local(self, fecha, hora_index, transition_dates: Dict) -> pd.Timestamp:
+        """
+        Parse OMIE 15-minute format data into a timezone-aware datetime in Europe/Madrid timezone.
+        Handles DST transitions correctly.
+        
+        Args:
+            fecha: Date object or datetime object
+            hora_index: 15-minute interval index (1-96 for normal days, 1-92 for spring forward, 1-100 for fall back)
+            transition_dates: Dictionary of DST transition dates
+            
+        Returns:
+            Timezone-aware pd.Timestamp in Europe/Madrid timezone
+        """
+        # Ensure fecha is a date object
+        if isinstance(fecha, pd.Timestamp):
+            fecha = fecha.date()
+        elif isinstance(fecha, str):
+            fecha = pd.to_datetime(fecha).date()
+        
+        # Ensure index is an integer
+        index = int(hora_index)
+        if index < 1:
+            raise ValueError(f"Invalid 15-minute index: {hora_index}. Must be ≥ 1.")
+        
+        # Get timezone object
+        tz = pytz.timezone('Europe/Madrid')
+        
+        # Check if this is a DST transition date
+        is_transition_date = fecha in transition_dates
+        transition_type = transition_dates.get(fecha, 0) if is_transition_date else 0
+        
+        # Calculate number of intervals for the day
+        if is_transition_date:
+            if transition_type == 2:  # Spring forward: skip hour 2
+                num_intervals = 92  # 96 - 4 (skipped 15-min intervals)
+            elif transition_type == 1:  # Fall back: repeat hour 2
+                num_intervals = 100  # 96 + 4 (repeated 15-min intervals)
+        else:
+            num_intervals = 96  # Normal day
+        
+        # Handle out-of-bounds index
+        if index > num_intervals:
+            raise ValueError(f"Index {index} out of bounds for date {fecha} with {num_intervals} intervals.")
+        
+        # Calculate hour and minute
+        hour = (index - 1) // 4
+        minute = ((index - 1) % 4) * 15
+        
+        # Handle DST transitions
+        if is_transition_date:
+            if transition_type == 2:  # Spring forward
+                if hour >= 2:
+                    hour += 1  # Skip hour 2
+            elif transition_type == 1:  # Fall back
+                if hour >= 2:
+                    # For fall back, we need to handle the repeated hour 2
+                    if index > 8:  # After first occurrence of hour 2
+                        hour += 1
+        
+        # Create timestamp
+        ts = pd.Timestamp.combine(fecha, time(hour=hour, minute=minute))
+        
+        # Localize with appropriate DST handling
+        try:
+            is_dst = None
+            if is_transition_date:
+                if transition_type == 1:  # Fall back
+                    # For fall back, first occurrence of hour 2 is DST, second is not
+                    is_dst = hour < 2 or (hour == 2 and index <= 8)
+                elif transition_type == 2:  # Spring forward
+                    # For spring forward, all times after the transition are DST
+                    is_dst = hour >= 3
+            
+            local_dt = tz.localize(ts, is_dst=is_dst)
+            return local_dt
+            
+        except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError) as e:
+            print(f"Warning: Could not localize {ts} on date {fecha}: {e}")
+            # Return a reasonable fallback
+            if transition_type == 2:  # Spring forward
+                ts = ts.replace(hour=max(3, hour))  # Ensure we're after spring forward
+            return tz.localize(ts, is_dst=True)
+    
+
+    # === 4. AGGREGATION ===
+    def _aggregate_data(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
+        """
+        Aggregate data by grouping columns based on market type.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            mercado (str): Market type ('diario', 'intra', 'continuo')
+            
+        Returns:
+            pd.DataFrame: Aggregated DataFrame
+        """
+        print("\n📊 AGGREGATING DATA")
+        print("-"*30)
+        
+        initial_rows = len(df)
+        
+        if mercado in ['diario', 'intra']:
+            # Group by uof, date, hour, and id_mercado
+            group_cols = ['uof', 'datetime_utc', 'id_mercado']
+            df = df.groupby(group_cols).agg({'volumenes': 'sum'}).reset_index()
+        
+        elif mercado == 'continuo':
+            # For continuo, no aggregation needed as each row represents a trade
+            pass
+        
+        print(f"   Rows: {initial_rows} → {len(df)}")
+        print("-"*30)
+        return df
+
+    # === 5. SELECT AND FINALIZE COLUMNS ===
+    def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+        """
+        Select final columns based on dataset type and validation requirements.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            dataset_type (str): Type of dataset ('volumenes_omie' or 'volumenes_mic')
+            
+        Returns:
+            pd.DataFrame: DataFrame with final columns
+        """
+        print("\n📋 FINALIZING COLUMNS")
+        print("-"*30)
+        
+        if dataset_type == 'volumenes_omie':
+            required_cols = self.data_validator.processed_volumenes_omie_required_cols
+        elif dataset_type == 'volumenes_mic':
+            required_cols = self.data_validator.processed_volumenes_mic_required_cols
+        else:
+            raise ValueError(f"Unknown dataset type: {dataset_type}")
+        
+        # Filter to only include required columns that exist
+        available_cols = [col for col in required_cols if col in df.columns]
+        df = df[available_cols]
+        
+        print(f"   Selected columns: {available_cols}")
+        print("-"*30)
+        return df
+
+    # === 6. DATA VALIDATION ===
+    def _validate_final_data(self, df: pd.DataFrame, dataset_type: str, validation_type: str = "processed") -> pd.DataFrame:
+        """
+        Validate data structure and types. Deffault for omie is processed (we dont check for raw data validation)
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame
+            validation_type (str): 'raw' or 'processed'
+            dataset_type (str): Dataset type for validation
+            
+        Returns:
+            pd.DataFrame: Validated DataFrame
+        """
+        print(f"\n🔍 DATA VALIDATION ({validation_type.upper()})")
+        print("-"*30)
+        
+        if df.empty:
+            print("⚠️  Empty DataFrame - Skipping validation")
+            return df
+        
+        try:
+            if validation_type == "processed":
+                df = self.data_validator.validate_processed_data(df, dataset_type)
+            elif validation_type == "raw":
+                df = self.data_validator.validate_raw_data(df, dataset_type)
+            
+            print("✅ Validation passed")
+        except Exception as e:
+            print(f"❌ Validation failed: {str(e)}")
+            raise
+        
+        print("-"*30)
+        return df
+
+    # === MAIN PIPELINE FUNCTIONS ===
     def transform_omie_diario(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Transform OMIE diario market data.
@@ -444,19 +782,24 @@ class OMIEProcessor:
             print("\n❌ EMPTY INPUT")
             empty_df = pd.DataFrame(columns=self.data_validator.processed_volumenes_omie_required_cols)
             return empty_df
+        
+        mercado = "diario"
+        dataset_type = "volumenes_omie"
 
         # Define processing pipeline
         pipeline = [
             (self._clean_empty_rows, {}),
-            (self._standardize_energy_column, {}),
-            (self._process_unit_columns, {"mercado": "diario"}),
-            (self._process_datetime_diario_intra, {}),
-            (self._aggregate_data, {"mercado": "diario"}),
-            (self._select_and_finalize_columns, {"dataset_type": "volumenes_omie"}),
-            (self._validate_data, {"validation_type": "processed", "dataset_type": "volumenes_omie"})
+            (self._add_granularity_column, {}),
+            (self._process_and_filter_energy_column, {"mercado": mercado}),
+            (self._process_uof_columns, {"mercado": mercado}),
+            (self._preprocess_datetime_column, {"mercado": mercado}),
+            (self._standardize_datetime, {"mercado": mercado}),
+            (self._aggregate_data, {"mercado": mercado}),
+            (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
+            (self._validate_final_data, {"dataset_type": dataset_type}),
         ]
 
-        return self._execute_pipeline(df, pipeline, "DIARIO")
+        return self._execute_pipeline(df, pipeline, "DIARIO")   
 
     def transform_omie_intra(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -477,15 +820,20 @@ class OMIEProcessor:
             empty_df = pd.DataFrame(columns=self.data_validator.processed_volumenes_omie_required_cols)
             return empty_df
 
+        mercado = "intra"
+        dataset_type = "volumenes_omie"
+
         # Define processing pipeline
         pipeline = [
             (self._clean_empty_rows, {}),
-            (self._standardize_energy_column, {}),
-            (self._process_unit_columns, {"mercado": "intra"}),
-            (self._process_datetime_diario_intra, {}),
-            (self._aggregate_data, {"mercado": "intra"}),
-            (self._select_and_finalize_columns, {"dataset_type": "volumenes_omie"}),
-            (self._validate_data, {"validation_type": "processed", "dataset_type": "volumenes_omie"})
+            (self._add_granularity_column, {}),
+            (self._process_and_filter_energy_column, {"mercado": mercado}),
+            (self._process_uof_columns, {"mercado": mercado}),
+            (self._preprocess_datetime_column, {"mercado": mercado}),
+            (self._standardize_datetime, {"mercado": mercado}),
+            (self._aggregate_data, {"mercado": mercado}),
+            (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
+            (self._validate_final_data, {"validation_type": "processed", "dataset_type": dataset_type}),
         ]
 
         return self._execute_pipeline(df, pipeline, "INTRA")
@@ -504,6 +852,9 @@ class OMIEProcessor:
         print("🔄 STARTING OMIE CONTINUO TRANSFORMATION")
         print("="*80)
 
+        mercado = "continuo"
+        dataset_type = "volumenes_mic" #this is not a real dataset type (a filename), this identifier is just used to validate the data
+
         if df.empty:
             print("\n❌ EMPTY INPUT")
             empty_df = pd.DataFrame(columns=self.data_validator.processed_volumenes_mic_required_cols)
@@ -512,12 +863,13 @@ class OMIEProcessor:
         # Define processing pipeline
         pipeline = [
             (self._clean_empty_rows, {}),
-            (self._standardize_energy_column, {}),
-            (self._standardize_price_column, {}),
-            (self._process_unit_columns, {"mercado": "continuo"}),
-            (self._process_datetime_continuo, {}),
-            (self._select_and_finalize_columns, {"dataset_type": "volumenes_mic"}),
-            (self._validate_data, {"validation_type": "processed", "dataset_type": "volumenes_mic"})
+            (self._process_and_filter_energy_column, {"mercado": mercado}),
+            (self._process_uof_columns, {"mercado": mercado}),
+            (self._preprocess_datetime_column, {"mercado": mercado}),
+            (self._standardize_datetime, {"mercado": mercado}),
+            (self._aggregate_data, {"mercado": mercado}),
+            (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
+            (self._validate_final_data, {"validation_type": "processed", "dataset_type": dataset_type}),
         ]
 
         return self._execute_pipeline(df, pipeline, "CONTINUO")
@@ -549,7 +901,7 @@ class OMIEProcessor:
                 print(f"   Rows: {df_processed.shape[0]}")
                 print(f"   Columns: {df_processed.shape[1]}")
 
-                if df_processed.empty and step_func.__name__ != '_validate_data':
+                if df_processed.empty and step_func.__name__ != '_validate_final_data':
                     print("\n❌ PIPELINE HALTED")
                     print(f"DataFrame became empty after step: {step_func.__name__}")
                     raise ValueError(f"DataFrame empty after: {step_func.__name__}")
@@ -568,17 +920,20 @@ class OMIEProcessor:
 
 def example_usage():    
     processor = OMIEProcessor()
-    df_intra = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/intra/2025/01/volumenes_omie.csv")
-    df_diario = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/diario/2025/01/volumenes_omie.csv")
-    df_continuo = pd.read_csv("/Users/jjcosta/Desktop/git repo/timescale_v_duckdb_testing/data/raw/continuo/2025/01/volumenes_omie.csv")
+    df_intra = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/intra/2024/03/volumenes_omie.csv")
+    df_diario = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/diario/2024/10/volumenes_omie.csv")
+    df_continuo = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/continuo/2025/02/volumenes_omie.csv")
     
-    #df_intra = processor.transform_omie_intra(df_intra)
-    #df_diario = processor.transform_omie_diario(df_diario)
-    df_continuo = processor.transform_omie_continuo(df_continuo)
-    #print(df_intra)
-    #print(df_diario)
-    print(df_continuo)
+    df_intra = processor.transform_omie_intra(df_intra)
+    print(df_intra)
+    breakpoint()
 
+    df_diario = processor.transform_omie_diario(df_diario)
+    print(df_diario)
+    breakpoint()
+
+    df_continuo = processor.transform_omie_continuo(df_continuo)
+    print(df_continuo)
 
 if __name__ == "__main__":
     example_usage()

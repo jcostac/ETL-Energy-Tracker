@@ -39,12 +39,6 @@ class TransformadorOMIE:
         # OMIE market configuration
         self.omie_markets = ['diario', 'intra', 'continuo']
         
-        # All markets use the same dataset type
-        self.market_dataset_map = {
-            'diario': 'volumenes_omie',
-            'intra': 'volumenes_omie', 
-            'continuo': 'volumenes_omie'  # Changed from volumenes_mic to volumenes_omie
-        }
 
         # Map market names to config classes
         self.market_config_map = {
@@ -810,4 +804,5 @@ def example_usage():
     
 # Example usage and testing
 if __name__ == "__main__":
-   example_usage()
+   #example_usage()
+   pass

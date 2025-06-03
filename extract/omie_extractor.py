@@ -290,6 +290,9 @@ class OMIEExtractor:
             "markets_failed": [],
             "date_range": date_range_str
         }
+
+        if mercados_lst is None:
+            mercados_lst = ['diario', 'intra', 'continuo']
         
         market_successes = []
         try:
@@ -352,9 +355,9 @@ class OMIEExtractor:
 
 def example_usage():
     omie_extractor = OMIEExtractor()
-    #omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-04", fecha_fin_carga="2025-01-04")
-    omie_extractor.extract_omie_intra(fecha_inicio_carga="2024-06-10", fecha_fin_carga="2024-06-11")
-    #omie_extractor.extract_omie_continuo(fecha_inicio_carga="2025-01-05", fecha_fin_carga="2025-01-05")
+    omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-10-26", fecha_fin_carga="2024-10-28")
+    #omie_extractor.extract_omie_intra(fecha_inicio_carga="2024-10-26", fecha_fin_carga="2024-10-28")
+    #omie_extractor.extract_omie_continuo(fecha_inicio_carga="2025-02-25", fecha_fin_carga="2025-02-27")
 
 
 if __name__ == "__main__":
