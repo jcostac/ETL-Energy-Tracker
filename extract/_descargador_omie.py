@@ -232,7 +232,7 @@ class OMIEDownloader:
             # Construct the full URL for the file
             url = f"{self.base_url}{filename}"
            
-            print(f"Downloading {filename} for {year_month}...")
+            print(f"\nDownloading {filename} for {year_month}...")
             response = requests.get(url)
            
             if response.status_code == 200:
