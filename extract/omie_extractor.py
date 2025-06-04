@@ -355,8 +355,8 @@ class OMIEExtractor:
 
 def example_usage():
     omie_extractor = OMIEExtractor()
-    omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-10-26", fecha_fin_carga="2024-10-28")
-    #omie_extractor.extract_omie_intra(fecha_inicio_carga="2024-10-26", fecha_fin_carga="2024-10-28")
+    #omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
+    omie_extractor.extract_omie_intra(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
     #omie_extractor.extract_omie_continuo(fecha_inicio_carga="2025-02-25", fecha_fin_carga="2025-02-27")
 
 
