@@ -152,7 +152,7 @@ class OMIEExtractor:
                 print(f"  ❌ {error_msg}")
                 return duplicates_df, error_msg
             
-        return duplicates_df
+        return duplicates_df, None
 
     def extract_omie_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
                           intra_lst: Optional[List[int]] = None) -> None:
@@ -210,7 +210,7 @@ class OMIEExtractor:
 
                                # For rows where sesion == 2 (id_mercado = 3) if the date matches the current day, otherwise (d-1) (id_mercado = 8)
                                 df.loc[session_2_mask, 'id_mercado'] = np.where(
-                                    df.loc[session_2_mask, 'Fecha'] == day, 3, 8
+                                    df.loc[session_2_mask, 'Fecha'] == day.date(), 3, 8
                                 )
 
 
@@ -231,7 +231,7 @@ class OMIEExtractor:
                 print(f"  ❌ {error_msg}")
                 return duplicates_df, error_msg
 
-        return duplicates_df
+        return duplicates_df, None
 
 
     def extract_omie_continuo(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
@@ -286,6 +286,7 @@ class OMIEExtractor:
 
             except Exception as e:
                 print(f"  ❌ Error downloading continuo data for {day_str}: {e}")
+                raise e
 
     def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None , mercados_lst: Optional[List[str]] = None) -> Dict:
         """
@@ -359,14 +360,22 @@ class OMIEExtractor:
             bool: True if extraction was successful, False otherwise
         """
         try:
-            duplicates_df, error_msg = extract_function(fecha_inicio_carga, fecha_fin_carga)
+            if extract_function == self.extract_omie_diario or extract_function == self.extract_omie_intra:
+                duplicates_df, error_msg = extract_function(fecha_inicio_carga, fecha_fin_carga)
+
+                if error_msg: #for diario and intra market bc we dont raise an error for these markets but rather return a df and an error msg
+                    raise Exception(error_msg)
             
-            if error_msg:
-                raise Exception(error_msg)
-            
-            status_details["markets_downloaded"].append(market_name)
-            return True
+                status_details["markets_downloaded"].append(market_name)
+                return True
         
+
+            else: #for continuo market, since we dont return a df or an error msg, we just raise an error
+                extract_function(fecha_inicio_carga, fecha_fin_carga)
+            
+                status_details["markets_downloaded"].append(market_name)
+                return True
+            
         except Exception as e:
             status_details["markets_failed"].append({
                 "market": market_name,

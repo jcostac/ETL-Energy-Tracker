@@ -139,19 +139,24 @@ class RawFileUtils(StorageFileUtils):
         df = df.drop_duplicates(keep='last')  
         exact_dups = df_before - len(df)
         
-        if exact_dups > 0:
-            print(f"Removed {exact_dups} exact duplicate rows")
-            print("Actual duplicates:")
-            duplicates_df = pd.DataFrame({
+        try:
+            if exact_dups > 0:
+                print(f"Removed {exact_dups} exact duplicate rows")
+                print("Actual duplicates:")
+                duplicates_df = pd.DataFrame({
                 'Unidad': duplicates['Unidad'].unique(),
                 'Fecha': duplicates.groupby('Unidad')['Fecha'].unique().apply(lambda x: list(x)).values
             })
-            print(duplicates.head(10))
-            print(duplicates.tail(10))
+                print(duplicates.head(10))
+                print(duplicates.tail(10))
 
-            return df, duplicates_df
+                return df, duplicates_df
         
-        else:
+            else:#for datasets with no duplicates, return empty df
+                return df, pd.DataFrame()
+        
+        except Exception as e: #for datasets that do not have unidad column, return empty df *ALL DATASETS EXCEPT FOR OMIE WILL NOT HAVE UNIDAD COLUMN*
+            print(f"Error dropping raw duplicates: {e}")
             return df, pd.DataFrame()
 
     #@deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")

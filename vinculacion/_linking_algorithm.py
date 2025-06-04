@@ -307,16 +307,10 @@ class UOFUPLinkingAlgorithm:
             # Show ambiguous matches summary
             ambiguous_ups = ambiguous_matches_df.groupby('up')['uof'].count()
             print(f"\n⚠️  AMBIGUOUS MATCHES DETECTED:")
-            breakpoint()
             for up, count in ambiguous_ups.items():
                 uofs = ambiguous_matches_df[ambiguous_matches_df['up'] == up]['uof'].tolist()
                 print(f"   UP {up} matches {count} UOFs: {', '.join(uofs)}")
-        
-        # Show top matches
-        print(f"\n🏆 Top 5 matches:")
-        top_matches = exact_matches_df.head()
-        for idx, row in top_matches.iterrows():
-            print(f"   {row['up']} ↔ {row['uof']} (confidence: {row['confidence']:.3f}, type: {row['match_type']})")
+            breakpoint()
         
         return exact_matches_df, ambiguous_matches_df
 
@@ -531,7 +525,8 @@ class UOFUPLinkingAlgorithm:
                     raise ValueError("UPs to link not found in the active UPs list")
                 
             # Step 2: Extract data and transform it for initial matching
-            # self.data_extractor.extract_data_for_matching(target_date)
+            self.data_extractor.extract_data_for_matching(target_date)
+            breakpoint()
             transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
             
             if 'omie_diario' not in transformed_diario_data or 'i90_diario' not in transformed_diario_data:
@@ -561,11 +556,15 @@ class UOFUPLinkingAlgorithm:
             if exact_matches_df.empty and ambiguous_matches_df.empty:
                 print("❌ No matches found")
                 return pd.DataFrame(columns=['up', 'uof'])
+            
+            breakpoint()
                 
             # Step 5: Resolve ambiguities by comparing diario data 94 days ago and then if needed intra data
             all_resolved_matches = self._resolve_ambiguous_matches(
                 exact_matches_df, ambiguous_matches_df, target_date
-            )
+            ) 
+
+            breakpoint()
 
             # Step 6: Resolve UOF conflicts
             all_resolved_matches, conflicted_ups = self._resolve_uof_conflicts(all_resolved_matches)
@@ -589,7 +588,7 @@ def example_usage():
     algorithm = UOFUPLinkingAlgorithm()
     #get the target date
     target_date = algorithm.config.get_linking_target_date()
-    links_df = algorithm.link_uofs_to_ups(target_date)
+    links_df = algorithm.link_uofs_to_ups(target_date, ups_to_link= None)
     print(links_df)
 
 if __name__ == "__main__":

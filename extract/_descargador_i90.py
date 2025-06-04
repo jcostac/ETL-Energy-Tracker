@@ -252,6 +252,8 @@ class I90Downloader:
 
         #concat and turn NaNs into 0s
         df_concat = pd.concat(all_dfs)
+        #drop all columns that are fully NaNs
+        df_concat = df_concat.dropna(axis=1, how='all')
         df_concat = df_concat.fillna(0).infer_objects()
 
         # Explicitly format the 'fecha' column to ensure consistency in the output

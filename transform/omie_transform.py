@@ -709,8 +709,10 @@ class TransformadorOMIE:
             print("\n" + "="*80)
             print(f"🏁 OMIE TRANSFORMATION PIPELINE COMPLETE")
             print(f"✅ Successful: {len(status_details['markets_processed'])}")
-            print(f"❌ Failed: {len(status_details['markets_failed'])}")
-            print("="*80 + "\n")
+
+            if not overall_success:
+                print(f"❌ Failed: {len(status_details['markets_failed'])}")
+                print("="*80 + "\n")
                 
         except Exception as e:
             overall_success = False
