@@ -185,7 +185,7 @@ class OMIEDownloader:
         else:
             raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
    
-    def _check_intras(self, intras: list) -> list:
+    def _parse_intra_list(self, intras: list) -> list:
         """
         Check if the intras are valid.If they pass an int convert to str ie 1-> "01"
         """
@@ -251,9 +251,9 @@ class OMIEDownloader:
                             #filter by intras we want to donwload if needed
                             if intras is not None:
                                 #check intras are valid
-                                intras = self._check_intras(intras)
+                                parsed_intras = self._parse_intra_list(intras)
                                 #if intras is not None, filter files to process by intras
-                                if file[-6:-4] not in intras:
+                                if file[-6:-4] not in parsed_intras:
                                     print(f"Skipping {file} because it is not the intras list provided for download")
                                     continue
                             try:
@@ -338,6 +338,10 @@ class OMIEDownloader:
         # Process date column
         if 'Fecha' in df.columns:
             df['Fecha'] = pd.to_datetime(df['Fecha'], format="%d/%m/%Y")
+
+             # Extract the date part directly
+            df['Fecha'] = df['Fecha'].dt.date
+
  
         # Add session column for Intradiario if filename provided
         if self.mercado == "intra":

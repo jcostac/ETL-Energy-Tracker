@@ -142,10 +142,17 @@ class RawFileUtils(StorageFileUtils):
         if exact_dups > 0:
             print(f"Removed {exact_dups} exact duplicate rows")
             print("Actual duplicates:")
+            duplicates_df = pd.DataFrame({
+                'Unidad': duplicates['Unidad'].unique(),
+                'Fecha': duplicates.groupby('Unidad')['Fecha'].unique().apply(lambda x: list(x)).values
+            })
             print(duplicates.head(10))
             print(duplicates.tail(10))
 
-        return df
+            return df, duplicates_df
+        
+        else:
+            return df, pd.DataFrame()
 
     #@deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
     def write_raw_csv(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
@@ -174,6 +181,7 @@ class RawFileUtils(StorageFileUtils):
             filename = f"{dataset_type}.csv"
             full_file_path = file_path / filename
             
+            #if file exists, read it and concatenate with new data
             if full_file_path.exists():
                 try:
                     # Read existing CSV file
@@ -186,27 +194,36 @@ class RawFileUtils(StorageFileUtils):
                     #only if mercado is not continuo, because we want to keep all the data for continuo (there can be exact dups)
                     if mercado != "continuo":
                         print("Dropping raw duplicates")
-                        combined_df = self.drop_raw_duplicates(combined_df)
+                        combined_df, duplicates_df = self.drop_raw_duplicates(combined_df)
                     else:
                         print("Not dropping raw duplicates for continuo market")
                     
                     # Save back to CSV without any type conversions
                     combined_df.to_csv(full_file_path, index=False)
                     print(f"Successfully updated existing file: {filename}")
+
+                    return duplicates_df
                     
                 except pd.errors.EmptyDataError:
                     # Handle case where existing file is empty
                     df.to_csv(full_file_path, index=False)
                     print(f"Replaced empty file with new data: {filename}")
+
+                    return duplicates_df
                     
                 except Exception as e:
                     print(f"Error reading existing file {filename}: {str(e)}")
                     raise
                     
             else:
-                # Create new file if it doesn't exist
-                df.to_csv(full_file_path, index=False)
-                print(f"Created new file: {filename}")
+                if mercado != "continuo":
+                    print("Dropping raw duplicates")
+                    df, duplicates_df = self.drop_raw_duplicates(df)
+                    # Create new file if it doesn't exist
+                    df.to_csv(full_file_path, index=False)
+                    print(f"Created new file: {filename}")
+
+                return duplicates_df
                 
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")

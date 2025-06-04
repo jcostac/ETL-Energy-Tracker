@@ -35,7 +35,7 @@ class TransformadorOMIE:
 
         # Define dataset types and transformation modes
         self.transform_types = ['latest', 'batch', 'single', 'multiple']
-        
+
 
         # OMIE market configuration
         self.omie_markets = ['diario', 'intra', 'continuo']
@@ -744,6 +744,8 @@ def example_usage():
     
     # Example: Transform latest data for all markets
     result = transformer.transform_data_for_all_markets(transform_type='latest')
+
+    breakpoint()
     
     print("Transformation Results:")
     print(f"Success: {result['status']['success']}")
