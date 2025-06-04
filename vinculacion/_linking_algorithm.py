@@ -126,9 +126,9 @@ class UOFUPLinkingAlgorithm:
         omie_prepared['volumenes'] = omie_prepared['volumenes'].fillna(0)
         i90_prepared['volumenes'] = i90_prepared['volumenes'].fillna(0)
 
-         # Group by uof/up and hour, then sum volumenes (preserve the entity columns)
-        omie_prepared = omie_prepared.groupby(['uof', 'hour'])['volumenes'].sum().reset_index()
-        i90_prepared = i90_prepared.groupby(['up', 'hour'])['volumenes'].sum().reset_index()
+         # Group by uof/up and hour, then average volumenes (avg since we replicated hourly vols 4x to achieve 15 min resolution)
+        omie_prepared = omie_prepared.groupby(['uof', 'hour'])['volumenes'].mean().reset_index()
+        i90_prepared = i90_prepared.groupby(['up', 'hour'])['volumenes'].mean().reset_index()
 
         #round volumenes to 4 decimal places to handle float precision issues
         omie_prepared['volumenes'] = omie_prepared['volumenes'].round(4)
@@ -195,10 +195,10 @@ class UOFUPLinkingAlgorithm:
                 profiles[up_uof] = volume_profile 
                 hashes[up_uof] = self._compute_hourly_hash(volume_profile) 
 
-                if up_uof == "ZABU":
-                    print(f"up_uof: {up_uof}")
-                    print(f"volume_profile: {volume_profile}")
-                    print(f"hash: {hashes[up_uof]}")
+                #if up_uof == "ZABU":
+                #    print(f"up_uof: {up_uof}")
+                #    print(f"volume_profile: {volume_profile}")
+                #    print(f"hash: {hashes[up_uof]}")
                 
             return profiles, hashes
 
@@ -234,7 +234,6 @@ class UOFUPLinkingAlgorithm:
                     exact_matches.append({
                         'up': up,
                         'uof': matching_uofs[0],
-                        'confidence': 1.0,
                         "match_type": "exact_unique"
                     })
                 else:
@@ -243,8 +242,7 @@ class UOFUPLinkingAlgorithm:
                         ambiguous_matches.append({
                             'up': up,
                             'uof': uof,
-                            'confidence': 1.0,
-                            'match_type': 'exact_ambiguous'
+                            'match_type': 'ambiguous'
                         })
 
         return exact_matches, ambiguous_matches
@@ -315,13 +313,58 @@ class UOFUPLinkingAlgorithm:
             for up, count in ambiguous_ups.items():
                 uofs = ambiguous_matches_df[ambiguous_matches_df['up'] == up]['uof'].tolist()
                 print(f"   UP {up} matches {count} UOFs: {', '.join(uofs)}")
-            breakpoint()
         
         return exact_matches_df, ambiguous_matches_df
+    
+    def _resolve_name_matches(self, ambiguous_matches_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Resolves ambiguous matches by prioritizing exact name matches between UP and UOF
+        
+        Args:
+            ambiguous_matches_df: DataFrame with ambiguous matches
+            
+        Returns:
+            Tuple of (name_resolved_matches_df, remaining_ambiguous_matches_df)
+        """
+        if ambiguous_matches_df.empty:
+            return pd.DataFrame(), ambiguous_matches_df
+            
+        print(f"\n🎯 RESOLVING AMBIGUOUS MATCHES BY NAME MATCHING")
+        print("-"*50)
+        
+        name_resolved_matches = []
+        remaining_ambiguous = []
+        
+        # Group by UP to handle each UP's ambiguous matches
+        for up in ambiguous_matches_df['up'].unique():
+            up_matches = ambiguous_matches_df[ambiguous_matches_df['up'] == up]
+            matching_uofs = up_matches['uof'].tolist()
+            
+            # Check if UP name matches any of the UOF names
+            if up in matching_uofs:
+                print(f"🎯 Found name match: UP '{up}' matches UOF '{up}' (resolving ambiguity)")
+                # Add the name match as resolved
+                name_resolved_matches.append({
+                    'up': up,
+                    'uof': up,
+                    'match_type': 'name_resolved'
+                })
+            else:
+                # Keep all matches for this UP as still ambiguous
+                for _, match in up_matches.iterrows():
+                    remaining_ambiguous.append(match.to_dict())
+        
+        name_resolved_df = pd.DataFrame(name_resolved_matches)
+        remaining_ambiguous_df = pd.DataFrame(remaining_ambiguous)
+        
+        print(f"✅ Resolved {len(name_resolved_df)} matches by name matching")
+        print(f"⚠️  Remaining ambiguous matches: {len(remaining_ambiguous_df)}")
+        
+        return name_resolved_df, remaining_ambiguous_df
 
     def _resolve_ambiguous_matches(self, exact_matches_df: pd.DataFrame, ambiguous_matches_df: pd.DataFrame, target_date: str) -> pd.DataFrame:
         """
-        Resolves ambiguous matches by checking historical data n-94 days and intra markets
+        Resolves ambiguous matches by checking name matches first, then historical data and intra markets
         
         Args:
             exact_matches_df: Exact matches from initial matching
@@ -342,7 +385,17 @@ class UOFUPLinkingAlgorithm:
             print("✅ No ambiguous matches to resolve")
             return all_matches_df
 
-        # Try historical data (94 days back)
+        # Step 1: Try name matching first
+        name_resolved_df, remaining_ambiguous_matches_df = self._resolve_name_matches(remaining_ambiguous_matches_df)
+        if not name_resolved_df.empty:
+            all_matches_df = pd.concat([all_matches_df, name_resolved_df], ignore_index=True)
+
+        # If no more ambiguous matches, return early
+        if remaining_ambiguous_matches_df.empty:
+            print("✅ All ambiguous matches resolved by name matching")
+            return all_matches_df
+
+        # Step 2: Try historical data (94 days back)
         print(f"\n📅 Checking historical data (-{self.config.HISTORICAL_CHECK_WINDOW} days)")
         target_date_yesterday = (pd.to_datetime(target_date) - 
                          timedelta(days=1)).strftime('%Y-%m-%d')
@@ -358,13 +411,13 @@ class UOFUPLinkingAlgorithm:
                     target_date_yesterday
                 )
 
-                # Filter the dfs by the uofs and ups in the ambiguous_matches_df
+                # Filter the dfs by the uofs and ups in the remaining ambiguous_matches_df
                 ambiguous_uofs = remaining_ambiguous_matches_df['uof'].unique()
                 ambiguous_ups = remaining_ambiguous_matches_df['up'].unique()
                 omie_diario_filtered = omie_diario[omie_diario['uof'].isin(ambiguous_uofs)]
                 i90_diario_filtered = i90_diario[i90_diario['up'].isin(ambiguous_ups)]
                 
-                # Find the volume matches again but only for the ambiguous uofs and ups
+                # Find the volume matches again but only for the remaining ambiguous uofs and ups
                 exact_matches_historical_df, still_ambiguous_matches_df = self._find_volume_matches(
                     omie_diario_filtered, i90_diario_filtered, target_date_yesterday
                 )
@@ -379,7 +432,7 @@ class UOFUPLinkingAlgorithm:
         except Exception as e:
             print(f"⚠️ Could not resolve using historical data: {e}")
         
-        # Try intra markets if there are still ambiguous matches
+        # Step 3: Try intra markets if there are still ambiguous matches
         if not remaining_ambiguous_matches_df.empty:
             print(f"\n🔍 Checking intra markets for remaining {len(remaining_ambiguous_matches_df)} ambiguities on {target_date}")
 
@@ -530,8 +583,7 @@ class UOFUPLinkingAlgorithm:
                     raise ValueError("UPs to link not found in the active UPs list")
                 
             # Step 2: Extract data and transform it for initial matching
-            self.data_extractor.extract_data_for_matching(target_date)
-            breakpoint()
+            #self.data_extractor.extract_data_for_matching(target_date)
             transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
             
             if 'omie_diario' not in transformed_diario_data or 'i90_diario' not in transformed_diario_data:
@@ -562,9 +614,8 @@ class UOFUPLinkingAlgorithm:
                 print("❌ No matches found")
                 return pd.DataFrame(columns=['up', 'uof'])
             
-            breakpoint()
                 
-            # Step 5: Resolve ambiguities by comparing diario data 94 days ago and then if needed intra data
+            # Step 5: Resolve ambiguities by first checking name matches, then comparing diario data 94 days ago and then if needed intra data
             all_resolved_matches = self._resolve_ambiguous_matches(
                 exact_matches_df, ambiguous_matches_df, target_date
             ) 
@@ -593,7 +644,7 @@ def example_usage():
     algorithm = UOFUPLinkingAlgorithm()
     #get the target date
     target_date = algorithm.config.get_linking_target_date()
-    links_df = algorithm.link_uofs_to_ups(target_date, ups_to_link= None)
+    links_df = algorithm.link_uofs_to_ups(target_date, ups_to_link= ["ZABU"])
     print(links_df)
 
 if __name__ == "__main__":
