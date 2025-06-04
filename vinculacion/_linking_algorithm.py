@@ -195,6 +195,11 @@ class UOFUPLinkingAlgorithm:
                 profiles[up_uof] = volume_profile 
                 hashes[up_uof] = self._compute_hourly_hash(volume_profile) 
 
+                if up_uof == "ZABU":
+                    print(f"up_uof: {up_uof}")
+                    print(f"volume_profile: {volume_profile}")
+                    print(f"hash: {hashes[up_uof]}")
+                
             return profiles, hashes
 
         except Exception as e:
