@@ -410,24 +410,29 @@ class UOFUPLinkingAlgorithm:
                     diario_data['i90_diario'],
                     target_date_yesterday
                 )
+                print(f"✅ Prepared historical data for {target_date_yesterday}")
+            
+            else:
+                print("❌ No historical data available")
+                return all_matches_df
 
-                # Filter the dfs by the uofs and ups in the remaining ambiguous_matches_df
-                ambiguous_uofs = remaining_ambiguous_matches_df['uof'].unique()
-                ambiguous_ups = remaining_ambiguous_matches_df['up'].unique()
-                omie_diario_filtered = omie_diario[omie_diario['uof'].isin(ambiguous_uofs)]
-                i90_diario_filtered = i90_diario[i90_diario['up'].isin(ambiguous_ups)]
-                
-                # Find the volume matches again but only for the remaining ambiguous uofs and ups
-                exact_matches_historical_df, still_ambiguous_matches_df = self._find_volume_matches(
-                    omie_diario_filtered, i90_diario_filtered, target_date_yesterday
-                )
+            # Filter the dfs by the uofs and ups in the remaining ambiguous_matches_df
+            ambiguous_uofs = remaining_ambiguous_matches_df['uof'].unique()
+            ambiguous_ups = remaining_ambiguous_matches_df['up'].unique()
+            omie_diario_filtered = omie_diario[omie_diario['uof'].isin(ambiguous_uofs)]
+            i90_diario_filtered = i90_diario[i90_diario['up'].isin(ambiguous_ups)]
+            
+            # Find the volume matches again but only for the remaining ambiguous uofs and ups
+            exact_matches_historical_df, still_ambiguous_matches_df = self._find_volume_matches(
+                omie_diario_filtered, i90_diario_filtered, target_date_yesterday
+            )
 
-                if not exact_matches_historical_df.empty:
-                    print(f"✅ Resolved {len(exact_matches_historical_df)} matches using historical data")
-                    all_matches_df = pd.concat([all_matches_df, exact_matches_historical_df], ignore_index=True)
-                    remaining_ambiguous_matches_df = still_ambiguous_matches_df
-                else:
-                    print("⚠️ No matches resolved using historical data")
+            if not exact_matches_historical_df.empty:
+                print(f"✅ Resolved {len(exact_matches_historical_df)} matches using historical data")
+                all_matches_df = pd.concat([all_matches_df, exact_matches_historical_df], ignore_index=True)
+                remaining_ambiguous_matches_df = still_ambiguous_matches_df
+            else:
+                print("⚠️ No matches resolved using historical data")
 
         except Exception as e:
             print(f"⚠️ Could not resolve using historical data: {e}")
@@ -442,11 +447,12 @@ class UOFUPLinkingAlgorithm:
                 if 'omie_intra' in intra_data and 'i90_intra' in intra_data:
                     omie_intra = intra_data['omie_intra']
                     i90_intra = intra_data['i90_intra']
+                    print(f"✅ Extracted intra data for {target_date}")
                 else:
                     print("❌ No intra data available")
                     return all_matches_df
                 
-                # Try each session (1, 2, 3)
+                # Try each session at a time (1, 2, 3)
                 for id_mercado in range(1, 4):                        
                     if remaining_ambiguous_matches_df.empty:
                         break
@@ -541,6 +547,8 @@ class UOFUPLinkingAlgorithm:
         for uof in conflicted_uofs:
             ups = matches_df[matches_df['uof'] == uof]['up'].tolist()
             print(f"   UOF {uof} matched to UPs: {', '.join(ups)}")
+
+        breakpoint()
         
         # Remove all conflicted matches for now (conservative approach)
         # Alternative: implement priority-based resolution
@@ -649,6 +657,8 @@ def example_usage():
 
 if __name__ == "__main__":
     example_usage()
+
+
 
 
 
