@@ -143,19 +143,13 @@ class RawFileUtils(StorageFileUtils):
             if exact_dups > 0:
                 print(f"Removed {exact_dups} exact duplicate rows")
                 print("Actual duplicates:")
+                print(duplicates_df.head(10))
+                print(duplicates_df.tail(10))
 
                 # Group by Unidad and Fecha, then aggregate id_mercado
                 duplicates_grouped = duplicates.groupby(["Unidad", "Fecha", "id_mercado", "Hora"]).size().reset_index(name='count')
                 duplicates_df = duplicates_grouped[["Unidad", "Fecha", "id_mercado", "Hora", "count"]]
-            
-            
-        
-                print(duplicates.head(10))
-                print(duplicates.tail(10))
-                print(duplicates_df.head(10))
-                print(duplicates_df.tail(10))
-                breakpoint()
-
+    
                 return df, duplicates_df
         
             else:#for datasets with no duplicates, return empty df
