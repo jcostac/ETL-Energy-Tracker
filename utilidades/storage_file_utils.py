@@ -143,44 +143,18 @@ class RawFileUtils(StorageFileUtils):
             if exact_dups > 0:
                 print(f"Removed {exact_dups} exact duplicate rows")
                 print("Actual duplicates:")
-                
-                # Convert Fecha column to consistent YYYY-MM-DD format
-                def format_fecha(fecha_series):
-                    formatted_dates = []
-                    for fecha in fecha_series.unique():
-                        if pd.isna(fecha):
-                            continue
-                        try:
-                            # Handle different date formats
-                            if isinstance(fecha, str):
-                                # Try to parse string dates
-                                if len(fecha) == 10 and fecha.count('-') == 2:  # Already YYYY-MM-DD
-                                    formatted_dates.append(fecha)
-                                else:
-                                    # Try to parse other string formats
-                                    parsed_date = pd.to_datetime(fecha).strftime('%Y-%m-%d')
-                                    formatted_dates.append(parsed_date)
-                            else:
-                                # Handle datetime objects
-                                parsed_date = pd.to_datetime(fecha).strftime('%Y-%m-%d')
-                                formatted_dates.append(parsed_date)
-                        except:
-                            # If parsing fails, convert to string as fallback
-                            formatted_dates.append(str(fecha))
-                    
-                    # Return comma-separated string instead of list
-                    return ', '.join(sorted(set(formatted_dates)))
-                
-                duplicates_df = pd.DataFrame({
-                    'Unidad': duplicates['Unidad'].unique(),
-                    'Fecha': [format_fecha(duplicates[duplicates['Unidad'] == unidad]['Fecha']) 
-                             for unidad in duplicates['Unidad'].unique()]
-                })
-                
+
+                # Group by Unidad and Fecha, then aggregate id_mercado
+                duplicates_grouped = duplicates.groupby(["Unidad", "Fecha", "id_mercado", "Hora"]).size().reset_index(name='count')
+                duplicates_df = duplicates_grouped[["Unidad", "Fecha", "id_mercado", "Hora", "count"]]
+            
+            
+        
                 print(duplicates.head(10))
                 print(duplicates.tail(10))
                 print(duplicates_df.head(10))
                 print(duplicates_df.tail(10))
+                breakpoint()
 
                 return df, duplicates_df
         
