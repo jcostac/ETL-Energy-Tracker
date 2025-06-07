@@ -344,10 +344,10 @@ class DiarioConfig(I90Config):
     def has_precios_sheets(cls) -> bool:
         return False  # No price extraction implemented
 
-class IntradiarioConfig(I90Config):
+class IntraConfig(I90Config):
     def __init__(self, fecha):
         """
-        Initialize the intradiario downloader with date-based market selection.
+        Initialize the intra downloader with date-based market selection.
         
         Args:
             fecha (datetime, optional): The date for which to configure markets.
@@ -360,7 +360,7 @@ class IntradiarioConfig(I90Config):
         
         # Use provided date or current date
         if fecha is None:
-            raise ValueError("Fecha is required for IntradiarioConfig")
+            raise ValueError("Fecha is required for IntraConfig")
         
         # Get individual IDs for each Intra market (Intra 1 through Intra 7)
         self.intra_1_id: str = self.id_mercado_map["Intra 1"]  # ID: 2

@@ -362,6 +362,116 @@ class UOFUPLinkingAlgorithm:
         
         return name_resolved_df, remaining_ambiguous_df
 
+    def _create_intra_volume_profiles(self, df: pd.DataFrame, up_or_uof: str) -> Tuple[Dict[str, List[float]], Dict[str, str]]:
+        """
+        Creates combined volume profiles for intra data across all sessions.
+        Each profile combines volumes from sessions 2, 3, 4 into a single hash.
+        
+        Args:
+            df: DataFrame containing intra volume data with 'id_mercado' column
+            up_or_uof: Column name for the entity ('uof' or 'up')
+            
+        Returns:
+            Tuple containing:
+            - Dict mapping entity names to combined session volume profiles
+            - Dict mapping entity names to their hash values
+        """
+        profiles = {}
+        hashes = {}
+        
+        try:
+            for up_uof in df[up_or_uof].unique():
+                # Filter for entity (either uof or up)
+                up_uof_data = df[df[up_or_uof] == up_uof]
+                
+                # Create combined volume profile for all sessions
+                combined_volume_profile = []
+                
+                # Process each session (2, 3, 4) in order
+                for id_mercado in [2, 3, 4]:
+                    session_data = up_uof_data[up_uof_data['id_mercado'] == id_mercado].sort_values('hour')
+                    
+                    # Add hourly volumes for this session (24 hours)
+                    session_volumes = []
+                    for hour in range(24):
+                        hour_data = session_data[session_data['hour'] == hour]
+                        if not hour_data.empty and hour_data['volumenes'].iloc[0] != 0:
+                            session_volumes.append(hour_data['volumenes'].iloc[0])
+                    
+                    # Extend the combined profile with this session's volumes
+                    combined_volume_profile.extend(session_volumes)
+                
+                # Store combined profile and hash
+                profiles[up_uof] = combined_volume_profile
+                hashes[up_uof] = self._compute_hourly_hash(combined_volume_profile)
+                
+            return profiles, hashes
+
+        except Exception as e:
+            print(f"❌ Error creating intra volume profiles: {e}")
+            raise e
+
+    def _find_intra_volume_matches(self, omie_df: pd.DataFrame, i90_df: pd.DataFrame,
+                                 target_date: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Finds potential UOF-UP matches based on combined intra session volume patterns
+        
+        Args:
+            omie_df: Combined OMIE intra data across all sessions
+            i90_df: Combined I90 intra data across all sessions
+            target_date: Target date for matching
+            
+        Returns:
+            Tuple of (exact_matches_df, ambiguous_matches_df)
+        """
+        print(f"\n🔍 FINDING COMBINED INTRA VOLUME MATCHES FOR {target_date}")
+        print("-"*60)
+        
+        if omie_df.empty or i90_df.empty:
+            print("⚠️  No intra data available for target date")
+            return pd.DataFrame(), pd.DataFrame()
+            
+        print(f"📊 Combined intra data for {target_date}:")
+        print(f"   - OMIE UOFs: {omie_df['uof'].nunique()}")
+        print(f"   - I90 UPs: {i90_df['up'].nunique()}")
+        print(f"   - Sessions available: {sorted(omie_df['id_mercado'].unique())}")
+    
+        # Create combined session volume profiles for UOFs
+        print("\n🔧 Creating combined intra volume profiles for UOFs...")    
+        uof_profiles, uof_hashes = self._create_intra_volume_profiles(omie_df, 'uof')
+        print(f"✅ Created {len(uof_profiles)} UOF combined intra profiles")
+        
+        # Create combined session volume profiles for UPs
+        print("\n🔧 Creating combined intra volume profiles for UPs...")
+        up_profiles, up_hashes = self._create_intra_volume_profiles(i90_df, 'up')
+        print(f"✅ Created {len(up_profiles)} UP combined intra profiles")
+        
+        # Create reverse mapping for efficient lookup
+        hash_to_uofs = {}
+        for uof, hash_val in uof_hashes.items(): 
+            if hash_val not in hash_to_uofs:
+                hash_to_uofs[hash_val] = []
+            hash_to_uofs[hash_val].append(uof)
+        
+        # Find exact matches based on identical combined hashes
+        print("\n🔍 Finding hash-based matches for combined intra profiles...")
+        exact_matches, ambiguous_matches = self._find_hash_matches(up_hashes, hash_to_uofs)
+        
+        if not exact_matches and not ambiguous_matches:
+            print("⚠️  No intra volume matches found")
+            return pd.DataFrame(), pd.DataFrame()
+        
+        # Convert to DataFrame
+        exact_matches_df = pd.DataFrame(exact_matches) if exact_matches else pd.DataFrame()
+        ambiguous_matches_df = pd.DataFrame(ambiguous_matches) if ambiguous_matches else pd.DataFrame()
+        
+        print(f"\n📊 COMBINED INTRA MATCHING RESULTS:")
+        print(f"   ✅ Unique exact matches: {len(exact_matches_df)}")
+        print(f"   ⚠️  Ambiguous exact matches: {len(ambiguous_matches_df)}")
+        print(f"   📈 Total matches: {len(exact_matches_df) + len(ambiguous_matches_df)}")
+        
+        return exact_matches_df, ambiguous_matches_df
+
     def _resolve_ambiguous_matches(self, exact_matches_df: pd.DataFrame, ambiguous_matches_df: pd.DataFrame, target_date: str) -> pd.DataFrame:
         """
         Resolves ambiguous matches by checking name matches first, then historical data and intra markets
@@ -439,86 +549,58 @@ class UOFUPLinkingAlgorithm:
         
         # Step 3: Try intra markets if there are still ambiguous matches
         if not remaining_ambiguous_matches_df.empty:
-            print(f"\n🔍 Checking intra markets for remaining {len(remaining_ambiguous_matches_df)} ambiguities on {target_date}")
+            print(f"\n🔍 Checking combined intra markets for remaining {len(remaining_ambiguous_matches_df)} ambiguities on {target_date}")
 
             try:
                 intra_data = self.data_extractor.transform_intra_data_for_ambiguous_matches(target_date)
 
-                if 'omie_intra' in intra_data and 'i90_intra' in intra_data:
-                    omie_intra = intra_data['omie_intra']
-                    i90_intra = intra_data['i90_intra']
-                    print(f"✅ Extracted intra data for {target_date}")
-                else:
-                    print("❌ No intra data available")
-                    return all_matches_df
+                # Check if we have intra data by looking for the actual keys
+                omie_intra_keys = [k for k in intra_data.keys() if k.startswith('omie_intra_')]
+                i90_intra_keys = [k for k in intra_data.keys() if k.startswith('i90_intra_')]
                 
-                # Try each session at a time (1, 2, 3)
-                for id_mercado in range(1, 4):                        
-                    if remaining_ambiguous_matches_df.empty:
-                        break
-                        
-                    print(f"   📊 Checking Intra Session {id_mercado}")
+                if omie_intra_keys and i90_intra_keys:
+                    print(f"✅ Extracted intra data for {target_date}")
                     
-                    # Filter intra data for current session
-                    omie_intra_session = omie_intra[omie_intra['id_mercado'] == id_mercado]
-                    i90_intra_session = i90_intra[i90_intra['id_mercado'] == id_mercado]
+                    # Combine all intra sessions into single dataframes
+                    omie_intra_list = [intra_data[key] for key in omie_intra_keys]
+                    i90_intra_list = [intra_data[key] for key in i90_intra_keys]
                     
-                    if omie_intra_session.empty or i90_intra_session.empty:
-                        print(f"   ⚠️ No data for session {id_mercado}, skipping")
-                        continue
+                    omie_intra = pd.concat(omie_intra_list, ignore_index=True)
+                    i90_intra = pd.concat(i90_intra_list, ignore_index=True)
                     
                     # Filter by remaining ambiguous UOFs and UPs
                     ambiguous_uofs = remaining_ambiguous_matches_df['uof'].unique()
                     ambiguous_ups = remaining_ambiguous_matches_df['up'].unique()
-                    omie_intra_filtered = omie_intra_session[omie_intra_session['uof'].isin(ambiguous_uofs)]
-                    i90_intra_filtered = i90_intra_session[i90_intra_session['up'].isin(ambiguous_ups)]
+                    omie_intra_filtered = omie_intra[omie_intra['uof'].isin(ambiguous_uofs)]
+                    i90_intra_filtered = i90_intra[i90_intra['up'].isin(ambiguous_ups)]
                     
                     # Prepare data for this session
-                    omie_prepared, i90_prepared = self._prepare_volume_data(
+                    omie_intra_prepared, i90_intra_prepared = self._prepare_volume_data(
                         omie_intra_filtered,
                         i90_intra_filtered,
                         target_date
                     )
                     
-                    # Find volume matches for this session
-                    exact_matches_intra_df, remaining_ambiguous_matches_df = self._find_volume_matches(
-                        omie_prepared, i90_prepared, target_date
+                    # Find volume matches using combined intra profiles
+                    exact_matches_intra_df, remaining_ambiguous_matches_df = self._find_intra_volume_matches(
+                        omie_intra_prepared, i90_intra_prepared, target_date
                     )
                     
                     if not exact_matches_intra_df.empty:
-                        print(f"   ✅ Found {len(exact_matches_intra_df)} exact matches in session {id_mercado}")
+                        print(f"✅ Found {len(exact_matches_intra_df)} exact matches using combined intra data")
                         all_matches_df = pd.concat([all_matches_df, exact_matches_intra_df], ignore_index=True)
                     
-                    print(f"   📊 Remaining ambiguous matches: {len(remaining_ambiguous_matches_df)}")
-                
+                    print(f"📊 Remaining ambiguous matches: {len(remaining_ambiguous_matches_df)}")
+                    
+                else:
+                    print("❌ No intra data available")
+                    return all_matches_df
+
             except Exception as e:
                 print(f"⚠️ Could not resolve using intra data: {e}")
 
         return all_matches_df
-
-    def _create_final_matches_df(self, matches_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Creates final matches DataFrame with only UP and UOF columns
-        
-        Args:
-            matches_df: DataFrame with all matches including metadata
-            
-        Returns:
-            pd.DataFrame: Final matches with columns [up, uof]
-        """
-        if matches_df.empty:
-            return pd.DataFrame(columns=['up', 'uof'])
-        
-        # Keep only the essential columns and remove duplicates
-        final_df = matches_df[['up', 'uof']].drop_duplicates().reset_index(drop=True)
-        
-        print(f"📊 Final matches summary:")
-        print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
-        print(f"   - Unique UPs matched: {final_df['up'].nunique()}")
-        print(f"   - Unique UOFs matched: {final_df['uof'].nunique()}")
-        
-        return final_df
-
+    
     def _resolve_uof_conflicts(self, matches_df: pd.DataFrame) -> pd.DataFrame:
         """
         Resolves conflicts where the same UOF is matched to multiple UPs
@@ -535,7 +617,7 @@ class UOFUPLinkingAlgorithm:
         print(f"\n🔍 CHECKING FOR UOF CONFLICTS")
         print("-"*40)
         
-        # Find UOFs that are matched to multiple UPs
+        # Find UOFs that are matched to multiple UPs (have a value count > 1)
         uof_counts = matches_df['uof'].value_counts()
         conflicted_uofs = uof_counts[uof_counts > 1].index.tolist()
         
@@ -563,6 +645,29 @@ class UOFUPLinkingAlgorithm:
         
         return clean_matches_df, conflicted_ups
 
+    def _create_final_matches_df(self, matches_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Creates final matches DataFrame with only UP and UOF columns
+        
+        Args:
+            matches_df: DataFrame with all matches including metadata
+            
+        Returns:
+            pd.DataFrame: Final matches with columns [up, uof]
+        """
+        if matches_df.empty:
+            return pd.DataFrame(columns=['up', 'uof'])
+        
+        # Keep only the essential columns and remove duplicates
+        final_df = matches_df[['up', 'uof']].drop_duplicates().reset_index(drop=True)
+        
+        print(f"📊 Final matches summary:")
+        print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
+        print(f"   - Unique UPs matched: {final_df['up'].nunique()}")
+        print(f"   - Unique UOFs matched: {final_df['uof'].nunique()}")
+        
+        return final_df
+
     ### MAIN METHOD TO LINK UOFs TO UPs FOR A GIVEN DATE ###
     def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None) -> pd.DataFrame:
         """
@@ -582,15 +687,17 @@ class UOFUPLinkingAlgorithm:
             # Step 1: Get all active UPs if ups_to_link is not provided
             active_ups = self._get_active_ups()
 
-            #if ups_to_link list is provided, filter the active ups to only the ones in the list
+            #if ups list we wanto to link  is provided, filter the active ups to only the ones in the list
             if ups_to_link:
                 active_ups = active_ups[active_ups['up'].isin(ups_to_link)]
+                print(f"🔍 Filtered active UPs to only the ones in the list: {ups_to_link}")
+                print(f"🔍 Number of UPs we are filtering for: {len(active_ups)}")
 
                 if active_ups.empty:
                     print("❌ UPs to link not found in the active UPs list")
                     raise ValueError("UPs to link not found in the active UPs list")
                 
-            # Step 2: Extract data and transform it for initial matching
+            # Step 2: Extract data for diario and intra for both i90 and omie, but trasnform only diario data for initial matching
             #self.data_extractor.extract_data_for_matching(target_date)
             transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
             
@@ -622,13 +729,11 @@ class UOFUPLinkingAlgorithm:
                 print("❌ No matches found")
                 return pd.DataFrame(columns=['up', 'uof'])
             
-                
+            breakpoint()    
             # Step 5: Resolve ambiguities by first checking name matches, then comparing diario data 94 days ago and then if needed intra data
             all_resolved_matches = self._resolve_ambiguous_matches(
                 exact_matches_df, ambiguous_matches_df, target_date
             ) 
-
-            breakpoint()
 
             # Step 6: Resolve UOF conflicts
             all_resolved_matches, conflicted_ups = self._resolve_uof_conflicts(all_resolved_matches)
@@ -652,7 +757,8 @@ def example_usage():
     algorithm = UOFUPLinkingAlgorithm()
     #get the target date
     target_date = algorithm.config.get_linking_target_date()
-    links_df = algorithm.link_uofs_to_ups(target_date, ups_to_link= ["ZABU"])
+    ups_to_link = None #if None, all active UPs will be linked
+    links_df = algorithm.link_uofs_to_ups(target_date, ups_to_link=ups_to_link)
     print(links_df)
 
 if __name__ == "__main__":
