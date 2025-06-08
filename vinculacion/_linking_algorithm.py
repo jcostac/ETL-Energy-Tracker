@@ -698,7 +698,7 @@ class UOFUPLinkingAlgorithm:
                     raise ValueError("UPs to link not found in the active UPs list")
                 
             # Step 2: Extract data for diario and intra for both i90 and omie, but trasnform only diario data for initial matching
-            #self.data_extractor.extract_data_for_matching(target_date)
+            self.data_extractor.extract_data_for_matching(target_date)
             transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
             
             if 'omie_diario' not in transformed_diario_data or 'i90_diario' not in transformed_diario_data:

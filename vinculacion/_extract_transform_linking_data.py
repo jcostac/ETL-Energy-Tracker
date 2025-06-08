@@ -175,7 +175,7 @@ class VinculacionDataExtractor:
                 if intra_transformed is not None and not intra_transformed.empty:
                     # Split by intra session using id_mercado
                     # Session mapping: session 1 = id_mercado 2, session 2 = id_mercado 3, session 3 = id_mercado 4
-                    session_mapping = {2: 1, 3: 2, 4: 3}  # id_mercado: session_number
+                    session_mapping = {"2": 1, "3": 2, "4": 3}  # id_mercado: session_number
                     
                     for id_mercado, session_num in session_mapping.items():
                         #filter the data by the id_mercado
