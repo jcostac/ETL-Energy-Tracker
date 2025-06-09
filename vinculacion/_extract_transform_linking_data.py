@@ -237,3 +237,58 @@ class VinculacionDataExtractor:
             print(f"❌ Error transforming intra data: {e}")
             return {}
             
+    def transform_and_combine_data_for_linking(self, target_date: str) -> Dict[str, pd.DataFrame]:
+        """
+        Transforms and combines diario and intra data for a given date.
+        
+        Args:
+            target_date: Target date for transformation.
+            
+        Returns:
+            Dict containing combined 'omie_combined' and 'i90_combined' DataFrames.
+        """
+        print(f"\n🔄 TRANSFORMING & COMBINING ALL DATA FOR {target_date}")
+        print("="*60)
+        
+        # 1. Transform diario data
+        diario_data = self.transform_diario_data_for_initial_matching(target_date)
+        
+        # 2. Transform intra data
+        intra_data = self.transform_intra_data_for_ambiguous_matches(target_date)
+        
+        # 3. Combine OMIE data
+        omie_dfs = []
+        if 'omie_diario' in diario_data and not diario_data['omie_diario'].empty:
+            df = diario_data['omie_diario'].copy()
+            df['id_mercado'] = 1 # Diario is market 1
+            omie_dfs.append(df)
+        
+        omie_intra_keys = [k for k in intra_data.keys() if k.startswith('omie_intra_')]
+        for key in sorted(omie_intra_keys): # Sort to keep session order (1, 2, 3)
+            if intra_data.get(key) is not None and not intra_data[key].empty:
+                omie_dfs.append(intra_data[key])
+            
+        omie_combined = pd.concat(omie_dfs, ignore_index=True) if omie_dfs else pd.DataFrame()
+
+        # 4. Combine I90 data
+        i90_dfs = []
+        if 'i90_diario' in diario_data and not diario_data['i90_diario'].empty:
+            df = diario_data['i90_diario'].copy()
+            df['id_mercado'] = 1 # Diario is market 1
+            i90_dfs.append(df)
+            
+        i90_intra_keys = [k for k in intra_data.keys() if k.startswith('i90_intra_')]
+        for key in sorted(i90_intra_keys): # Sort to keep session order (1, 2, 3)
+            if intra_data.get(key) is not None and not intra_data[key].empty:
+                i90_dfs.append(intra_data[key])
+            
+        i90_combined = pd.concat(i90_dfs, ignore_index=True) if i90_dfs else pd.DataFrame()
+        
+        if not omie_combined.empty:
+            print(f"✅ Combined OMIE data: {len(omie_combined)} records, markets: {sorted(omie_combined.id_mercado.unique())}")
+        
+        if not i90_combined.empty:
+            print(f"✅ Combined I90 data: {len(i90_combined)} records, markets: {sorted(i90_combined.id_mercado.unique())}")
+
+        return {'omie_combined': omie_combined, 'i90_combined': i90_combined}
+            
