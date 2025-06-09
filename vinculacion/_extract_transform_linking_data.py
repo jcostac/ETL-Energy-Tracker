@@ -43,40 +43,32 @@ class VinculacionDataExtractor:
         print("="*60)
 
         try:
-            
-            # Step 1: Download OMIE raw data
-            print(f"\n📥 DOWNLOADING OMIE RAW DATA")
-            print(f"Date range: {target_date}")
-            print("-"*40)
-            
+            #-- Downloading OMIE raw data for both diario and intra
+            print(f"\n📥 DOWNLOADING OMIE DATA")
             try:
                 omie_download_result = self.omie_extractor.extract_data_for_all_markets(fecha_inicio_carga=target_date, fecha_fin_carga=target_date, mercados_lst=self.config.OMIE_MARKETS) 
                 
                 if omie_download_result['success']:
                     print(f"✅ OMIE raw data download successful")
                 else:
-                    print(f"⚠️  OMIE raw data download had issues: {omie_download_result.get('details', {})}")
+                    raise Exception(f"⚠️  OMIE raw data download had issues: {omie_download_result.get('details', {})}")
                     
             except Exception as e:
                 print(f"❌ OMIE raw data download failed: {e}")
                 raise e 
             
-            # Step 2: Download I90 raw data (volumenes only)
-            print(f"\n📥 DOWNLOADING I90 RAW DATA")
-            print(f"Date range: {target_date}")
-            print("-"*40)
-            
+            #-- Downloading I90 raw data (volumenes only) for both diario and intra
+            print(f"\n📥 DOWNLOADING I90 DATA")
             try:
                 i90_download_result = self.i90_extractor.extract_data_for_all_markets(fecha_inicio_carga=target_date, fecha_fin_carga=target_date,
                                                                                        mercados_lst=self.config.I90_MARKETS)
                 
                 if i90_download_result['success']:
                     print(f"✅ I90 raw data download successful")
+                    return i90_download_result, omie_download_result
                 else:
-                    print(f"⚠️  I90 raw data download had issues: {i90_download_result.get('details', {})}")
-
-                return i90_download_result, omie_download_result
-            
+                    raise Exception(f"⚠️  I90 raw data download had issues: {i90_download_result.get('details', {})}")
+                
             except Exception as e:
                 print(f"❌ I90 raw data download failed: {e}")
                 raise e
@@ -85,11 +77,11 @@ class VinculacionDataExtractor:
             print(f"❌ Error during data extraction: {e}")
             raise e
         
-    def transform_diario_data_for_initial_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
+    def transform_diario_data_for_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
         Transforms diario data for initial matching
         """
-        print(f"\n🔍 TRANSFORMING DIARIO DATA FOR INITIAL MATCHING")
+        print(f"\n🔍 TRANSFORMING DIARIO DATA FOR MATCHING")
         print("-"*50)
 
         # Step 3: Transform OMIE data (diario)
@@ -98,22 +90,6 @@ class VinculacionDataExtractor:
 
         transformed_diario_data = {}
 
-        omie_result = self.omie_transformer.transform_data_for_all_markets(
-            mercados_lst= ['diario'], #only transfrom diario
-            transform_type='single',
-            fecha_inicio=target_date,
-        )
-        
-        if omie_result['status']['success'] and 'diario' in omie_result['data']:
-            omie_data = omie_result['data']['diario']
-            if omie_data is not None and not omie_data.empty:
-                transformed_diario_data['omie_diario'] = omie_data
-                print(f"✅ OMIE diario: {len(omie_data)} records extracted")
-            else:
-                print("⚠️  OMIE diario: No data extracted")
-        else:
-            print("❌ OMIE diario transformation failed")
-            
         # Step 4: Transform I90 data (diario)
         print(f"\n🔄 TRANSFORMING I90 DATA")
         print("-"*40)
@@ -136,6 +112,22 @@ class VinculacionDataExtractor:
         else:
             print("❌ I90 diario transformation failed")
             raise Exception("I90 diario transformation failed")
+
+        omie_result = self.omie_transformer.transform_data_for_all_markets(
+            mercados_lst= ['diario'], #only transfrom diario
+            transform_type='single',
+            fecha_inicio=target_date,
+        )
+        
+        if omie_result['status']['success'] and 'diario' in omie_result['data']:
+            omie_data = omie_result['data']['diario']
+            if omie_data is not None and not omie_data.empty:
+                transformed_diario_data['omie_diario'] = omie_data
+                print(f"✅ OMIE diario: {len(omie_data)} records extracted")
+            else:
+                print("⚠️  OMIE diario: No data extracted")
+        else:
+            print("❌ OMIE diario transformation failed")
             
         print(f"\n✅ DATA TRANSFORMATION COMPLETE")
         print(f"Total datasets extracted: {len(transformed_diario_data)}")
@@ -143,9 +135,9 @@ class VinculacionDataExtractor:
         
         return transformed_diario_data
             
-    def transform_intra_data_for_ambiguous_matches(self, target_date: str) -> Dict[str, pd.DataFrame]:
+    def transform_intra_data_for_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
-        Transforms I90 intra data and OMIE intra data for resolving ambiguous matches
+        Transforms I90 intra data and OMIE intra data for matching
         Note: Raw data should already be downloaded by extract_data_for_matching method
         
         Args:
@@ -175,7 +167,7 @@ class VinculacionDataExtractor:
                 if intra_transformed is not None and not intra_transformed.empty:
                     # Split by intra session using id_mercado
                     # Session mapping: session 1 = id_mercado 2, session 2 = id_mercado 3, session 3 = id_mercado 4
-                    session_mapping = {2: 1, 3: 2, 4: 3}  # id_mercado: session_number
+                    session_mapping = {"2": 1, "3": 2, "4": 3}  # id_mercado: session_number
                     
                     for id_mercado, session_num in session_mapping.items():
                         #filter the data by the id_mercado
@@ -226,9 +218,9 @@ class VinculacionDataExtractor:
                     print("⚠️  No OMIE intra data extracted")
             else:
                 print("❌ OMIE intra data transformation failed")
-            
+                
             print(f"\n✅ INTRA DATA TRANSFORMATION COMPLETE")
-            print(f"Total intra datasets by session: {len(transformed_intra_data)}")
+            print(f"Total intra datasets (OMIE + i90): {len(transformed_intra_data)}")
             print("-"*50)
             
             return transformed_intra_data
@@ -237,3 +229,61 @@ class VinculacionDataExtractor:
             print(f"❌ Error transforming intra data: {e}")
             return {}
             
+    def transform_and_combine_data_for_linking(self, target_date: str) -> Dict[str, pd.DataFrame]:
+        """
+        Transforms and combines diario and intra data for a given date.
+        
+        Args:
+            target_date: Target date for transformation.
+            
+        Returns:
+            Dict containing combined 'omie_combined' and 'i90_combined' DataFrames.
+        """
+        print(f"\n🔄 TRANSFORMING & COMBINING ALL DATA FOR {target_date}")
+        print("="*60)
+        
+        # 1. Transform diario data
+        diario_data = self.transform_diario_data_for_matching(target_date)
+        
+        # 2. Transform intra data
+        intra_data = self.transform_intra_data_for_matching(target_date)
+        
+        print("🔄 COMBINING OMIE DATA")
+        # 3. Combine OMIE data
+        omie_dfs = []
+        if 'omie_diario' in diario_data and not diario_data['omie_diario'].empty:
+            df = diario_data['omie_diario'].copy()
+            df['id_mercado'] = 1 # Diario is market 1
+            omie_dfs.append(df)
+        
+        omie_intra_keys = [k for k in intra_data.keys() if k.startswith('omie_intra_')]
+        for key in sorted(omie_intra_keys): # Sort to keep session order (1, 2, 3)
+            if intra_data.get(key) is not None and not intra_data[key].empty:
+                #append intra df
+                omie_dfs.append(intra_data[key])
+            
+        omie_combined = pd.concat(omie_dfs, ignore_index=True) if omie_dfs else pd.DataFrame()
+
+        if not omie_combined.empty:
+            print(f"✅ Combined OMIE data: {len(omie_combined)} records, markets: {sorted(omie_combined.id_mercado.unique())}")
+
+        print("🔄 COMBINING I90 DATA")
+        # 4. Combine I90 data
+        i90_dfs = []
+        if 'i90_diario' in diario_data and not diario_data['i90_diario'].empty:
+            df = diario_data['i90_diario'].copy()
+            df['id_mercado'] = "1" # Diario is market 1
+            i90_dfs.append(df)
+            
+        i90_intra_keys = [k for k in intra_data.keys() if k.startswith('i90_intra_')]
+        for key in sorted(i90_intra_keys): # Sort to keep session order (1, 2, 3)
+            if intra_data.get(key) is not None and not intra_data[key].empty:
+                i90_dfs.append(intra_data[key])
+            
+        i90_combined = pd.concat(i90_dfs, ignore_index=True) if i90_dfs else pd.DataFrame()
+        
+        if not i90_combined.empty:
+            print(f"✅ Combined I90 data: {len(i90_combined)} records, markets: {sorted(i90_combined.id_mercado.unique())}")
+
+        return {'omie_combined': omie_combined, 'i90_combined': i90_combined}
+        

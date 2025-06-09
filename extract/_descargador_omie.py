@@ -65,7 +65,7 @@ class OMIEDownloader:
                         with zip_ref.open(file) as f:
  
                             # Read the CSV data
-                            df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
+                            df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1', skip_blank_lines=True)
  
                             # Process the dataframe
                             df = self._process_df(df, file)
@@ -159,6 +159,7 @@ class OMIEDownloader:
  
                             # Read the CSV data
                             df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
+                            breakpoint()
  
                             # Process the dataframe
                             df = self._process_df(df, file)
@@ -184,7 +185,7 @@ class OMIEDownloader:
         else:
             raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
    
-    def _check_intras(self, intras: list) -> list:
+    def _parse_intra_list(self, intras: list) -> list:
         """
         Check if the intras are valid.If they pass an int convert to str ie 1-> "01"
         """
@@ -193,6 +194,7 @@ class OMIEDownloader:
         intras = [str(intra).zfill(2) for intra in intras]
         return intras
     
+    ####// MAIN DOWNLOADER METHOD //####
     def descarga_omie_datos(self, fecha_inicio_carga: str, fecha_fin_carga: str, intras: list = None) -> dict:
         """
         Descarga los datos diarios de OMIE para un rango de fechas.
@@ -230,7 +232,7 @@ class OMIEDownloader:
             # Construct the full URL for the file
             url = f"{self.base_url}{filename}"
            
-            print(f"Downloading {filename} for {year_month}...")
+            print(f"\nDownloading {filename} for {year_month}...")
             response = requests.get(url)
            
             if response.status_code == 200:
@@ -249,9 +251,9 @@ class OMIEDownloader:
                             #filter by intras we want to donwload if needed
                             if intras is not None:
                                 #check intras are valid
-                                intras = self._check_intras(intras)
+                                parsed_intras = self._parse_intra_list(intras)
                                 #if intras is not None, filter files to process by intras
-                                if file[-6:-4] not in intras:
+                                if file[-6:-4] not in parsed_intras:
                                     print(f"Skipping {file} because it is not the intras list provided for download")
                                     continue
                             try:
@@ -277,8 +279,9 @@ class OMIEDownloader:
                             for file in filtered_files:
                                 with zip_ref.open(file) as f:
                                     # Read the CSV data
-                                    df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
-                                   
+                                    df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1', skip_blank_lines=True)
+
+
                                     # Process the dataframe
                                     processed_df = self._process_df(df, file)
                                    
@@ -318,15 +321,27 @@ class OMIEDownloader:
         Returns:
             pd.DataFrame: Processed dataframe with standardized columns
         """
-        # Process energy column
+        # Drop any completely empty rows and columns
+        df = df.dropna(axis=0, how='all')
+        df = df.dropna(axis=1, how='all')
+        
         if 'Energía Compra/Venta' in df.columns:
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace('.', '')
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.')
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].astype(float)
+            # Replace commas with periods for decimal conversion
+            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.', regex=False)
+            
+            # Remove periods that are used as thousands separators
+            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(r'(?<=\d)\.(?=\d{3})', '', regex=True)
+            
+            # Convert to float, handling any remaining non-numeric values
+            df['Energía Compra/Venta'] = pd.to_numeric(df['Energía Compra/Venta'])
  
         # Process date column
         if 'Fecha' in df.columns:
             df['Fecha'] = pd.to_datetime(df['Fecha'], format="%d/%m/%Y")
+
+             # Extract the date part directly
+            df['Fecha'] = df['Fecha'].dt.date
+
  
         # Add session column for Intradiario if filename provided
         if self.mercado == "intra":
@@ -351,9 +366,6 @@ class OMIEDownloader:
         if self.mercado == "continuo":
             
             pass
- 
-        # Drop any completely empty columns
-        df = df.dropna(axis=1, how='all')
  
         return df
    
@@ -512,9 +524,9 @@ if __name__ == "__main__":
     #diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01") 
 
     intradiario = IntraOMIEDownloader()
-    intradiario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01")
+    intradiario.descarga_omie_datos(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
 
     continuo = ContinuoOMIEDownloader()
-    continuo.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01")
+    continuo.descarga_omie_datos(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
     #intradiario.descarga_datos_omie_latest_day()
     #intradiario.descarga_datos_omie_mensuales()

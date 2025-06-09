@@ -15,7 +15,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from utilidades.db_utils import DatabaseUtils
-from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntradiarioConfig
+from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntraConfig
 
 class I90Downloader:
     """
@@ -252,6 +252,8 @@ class I90Downloader:
 
         #concat and turn NaNs into 0s
         df_concat = pd.concat(all_dfs)
+        #drop all columns that are fully NaNs
+        df_concat = df_concat.dropna(axis=1, how='all')
         df_concat = df_concat.fillna(0).infer_objects()
 
         # Explicitly format the 'fecha' column to ensure consistency in the output
@@ -450,7 +452,8 @@ class IntradiarioDL(I90Downloader):
             fecha (datetime, optional): Date for market configuration. If None, uses current date.
         """
         super().__init__()
-        self.config = IntradiarioConfig(fecha=fecha) #fecha is passed to the config to determine which sheet to use for the corresponding intra markets
+        #fecha is passed to the IntraConfig to determine which sheets to use for the corresponding intra markets  (all sheets before intra reduciton or sheets for the corresponding intra markets after intra reduction)
+        self.config = IntraConfig(fecha=fecha) 
         self.precios_sheets = self.config.precios_sheets #not used for intra i90
         self.volumenes_sheets = self.config.volumenes_sheets  
 
@@ -458,8 +461,17 @@ class IntradiarioDL(I90Downloader):
         """
         Get intradiario volume data for a specific day.
         """
-        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
-        return df_volumenes
+        all_dfs = []
+        for sheet in self.volumenes_sheets:
+            df_sheet = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=[sheet], precios_sheets=None)
+            if not df_sheet.empty:
+                df_sheet['sheet_i90_volumenes'] = sheet
+                all_dfs.append(df_sheet)
+
+        if not all_dfs:
+            return pd.DataFrame()
+
+        return pd.concat(all_dfs, ignore_index=True)
     
     
 class SecundariaDL(I90Downloader):

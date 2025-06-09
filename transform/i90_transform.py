@@ -18,7 +18,7 @@ from utilidades.storage_file_utils import RawFileUtils, ProcessedFileUtils
 from transform._procesador_i90 import I90Processor # Import the new processor
 from configs.i90_config import (
         I90Config, # Base class
-        DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, IntradiarioConfig,
+        DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, IntraConfig,
         CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
     )
 import traceback
@@ -41,7 +41,7 @@ class TransformadorI90:
         # Map market names (strings) to their actual config classes (Type[I90Config])
         self.market_config_map: Dict[str, Type[I90Config]] = {
             'diario': DiarioConfig,
-            'intra': IntradiarioConfig,
+            'intra': IntraConfig,
             'secundaria': SecundariaConfig,
             'terciaria': TerciariaConfig,
             'rr': RRConfig,
@@ -93,7 +93,7 @@ class TransformadorI90:
             if mercado == 'intra' and fecha is not None:
                 return config_class(fecha)
             elif mercado == 'intra' and fecha is None:
-                raise ValueError("fecha parameter is required for IntradiarioConfig")
+                raise ValueError("fecha parameter is required for IntraConfig")
             else:
                 return config_class()
         except Exception as e:
@@ -156,6 +156,7 @@ class TransformadorI90:
                 invalid_markets = [m for m in mercados_lst if m not in known_markets_for_type]
                 if invalid_markets:
                     print(f"Warning: Market(s) {invalid_markets} are not associated with dataset type {dataset_type} or are unknown. Skipping them for this type.")
+                    print(f"Known markets for type {dataset_type}: {known_markets_for_type}")
                 relevant_markets = [m for m in mercados_lst if m in known_markets_for_type]
 
             if not relevant_markets:

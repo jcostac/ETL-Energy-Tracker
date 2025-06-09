@@ -18,7 +18,6 @@ class OMIEConfig:
         self._base_url = ""
         self._mercado = ""
         self._filename_pattern = ""
-        self._engine = ""
  
     @property
     def base_url(self):
@@ -51,24 +50,7 @@ class OMIEConfig:
         if "{year_month}" not in value:
             raise ValueError("filename_pattern must contain '{year_month}' placeholder")
         self._filename_pattern = value
- 
-    @property
-    def engine(self):
-        if not self._engine:
-            raise ValueError("Engine not set")
-        return self._engine
- 
-    @engine.setter
-    def engine(self, engine: str):
-        self._engine = engine
-        #test if the engine is working
-        try:
-            with self._engine.connect() as connection:
-                connection.execute(text("SELECT 1"))
-        except Exception as e:
-            print(f"Error in engine setting: {e}")
-            raise e
-       
+   
  
     def get_error_data(self) -> pd.DataFrame:
         """
@@ -77,20 +59,31 @@ class OMIEConfig:
         Returns:
             pd.DataFrame: DataFrame with error data containing dates and error types
         """
-       
-        self.engine = DatabaseUtils.create_engine('pruebas_BT')
-           
-        # Use DatabaseUtils.read_table to fetch error data
-        df_errores = DatabaseUtils.read_table(
-            self.engine,
-            table_name="Errores_i90_OMIE",
-            columns=["fecha", "tipo_error"],
-            where_clause='fuente_error = "omie-intra"'
-        )
-        # Convert 'fecha' column to date type
-        df_errores['fecha'] = pd.to_datetime(df_errores['fecha']).dt.date
- 
-        return df_errores
+        engine = None
+        try:
+            # Create engine for this operation
+            engine = DatabaseUtils.create_engine('pruebas_BT')
+            
+            # Use DatabaseUtils.read_table to fetch error data
+            df_errores = DatabaseUtils.read_table(
+                engine,
+                table_name="Errores_i90_OMIE",
+                columns=["fecha", "tipo_error"],
+                where_clause='fuente_error = "omie-intra"'
+            )
+            # Convert 'fecha' column to date type
+            df_errores['fecha'] = pd.to_datetime(df_errores['fecha']).dt.date
+
+            return df_errores
+            
+        except Exception as e:
+            print(f"Error getting error data: {e}")
+            raise e
+        
+        finally:
+            # Clean up the engine connection to avoid a connection pool error
+            if engine:
+                engine.dispose()
  
 class DiarioConfig(OMIEConfig):
     def __init__(self):

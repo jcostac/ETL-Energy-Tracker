@@ -36,6 +36,7 @@ class TransformadorOMIE:
         # Define dataset types and transformation modes
         self.transform_types = ['latest', 'batch', 'single', 'multiple']
 
+
         # OMIE market configuration
         self.omie_markets = ['diario', 'intra', 'continuo']
         
@@ -708,8 +709,10 @@ class TransformadorOMIE:
             print("\n" + "="*80)
             print(f"🏁 OMIE TRANSFORMATION PIPELINE COMPLETE")
             print(f"✅ Successful: {len(status_details['markets_processed'])}")
-            print(f"❌ Failed: {len(status_details['markets_failed'])}")
-            print("="*80 + "\n")
+
+            if not overall_success:
+                print(f"❌ Failed: {len(status_details['markets_failed'])}")
+                print("="*80 + "\n")
                 
         except Exception as e:
             overall_success = False
@@ -743,6 +746,8 @@ def example_usage():
     
     # Example: Transform latest data for all markets
     result = transformer.transform_data_for_all_markets(transform_type='latest')
+
+    breakpoint()
     
     print("Transformation Results:")
     print(f"Success: {result['status']['success']}")

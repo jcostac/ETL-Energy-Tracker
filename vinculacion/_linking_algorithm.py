@@ -7,6 +7,7 @@ from pathlib import Path
 import pretty_errors
 import pytz
 import hashlib
+import asyncio
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -24,22 +25,12 @@ class UOFUPLinkingAlgorithm:
         self.data_extractor = VinculacionDataExtractor()
         self.db_utils = DatabaseUtils()
         self.database_name = self.config.DATABASE_NAME if not database_name else database_name #energy_tracker == default bbdd name
-        self._engine = None
-        
-    @property
-    def engine(self):
-        if self._engine is None:
-            raise ValueError("Database engine not initialized. Please provide database_name in constructor.")
-        else:
-            return self._engine
     
-    @engine.setter
-    def engine(self, value):
-        #test engine connection
+    def _get_engine(self):
         try:
-            self._engine = value
+            return self.db_utils.create_engine(self.database_name)
         except Exception as e:
-            raise ValueError(f"❌ Error setting engine: {e}")
+            raise ValueError(f"❌ Error getting engine: {e}")
         
     def _get_active_ups(self) -> pd.DataFrame:
         """
@@ -49,12 +40,12 @@ class UOFUPLinkingAlgorithm:
             pd.DataFrame: Active UPs
         """
         try:
-            self.engine = self.db_utils.create_engine(self.database_name)
+            engine = self._get_engine()
                 
             # Use DatabaseUtils.read_table with where clause
             where_clause = "obsoleta != 1 OR obsoleta IS NULL"
             ups_df = self.db_utils.read_table(
-                engine=self.engine,
+                engine=engine,
                 table_name=self.config.UP_LISTADO_TABLE,
                 columns=['up'],
                 where_clause=where_clause
@@ -69,6 +60,9 @@ class UOFUPLinkingAlgorithm:
         except Exception as e:
             print(f"❌ Error fetching active UPs: {e}")
             raise e
+        
+        finally:
+            engine.dispose()
             
     def _prepare_volume_data(self, omie_data: pd.DataFrame, 
                           i90_data: pd.DataFrame, target_date: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -85,54 +79,70 @@ class UOFUPLinkingAlgorithm:
         """
         print("\n🔧 PREPARING VOLUME DATA FOR COMPARISON")
         print("-"*45)
-        
-        # Prepare OMIE data (UOFs)
-        omie_prepared = omie_data.copy()
-        if 'uof' in omie_prepared.columns and 'volumenes' in omie_prepared.columns:
-            omie_prepared = omie_prepared[['datetime_utc', 'uof', 'volumenes']].copy()
-            omie_prepared['hour'] = omie_prepared['datetime_utc'].dt.hour
-            
-            # Convert UTC datetime to local time, then extract date for filtering
-            madrid_tz = pytz.timezone('Europe/Madrid')
-            target_dt = pd.to_datetime(target_date).date()
-            
-            # Filter for target date using local time conversion
-            omie_local_dates = omie_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
-            omie_prepared = omie_prepared[omie_local_dates == target_dt].copy()
-            
-            print(f"✅ OMIE data prepared: {len(omie_prepared)} records, {omie_prepared['uof'].nunique()} unique UOFs")
-            print(f"   Unique hours in OMIE: {sorted(omie_prepared['hour'].unique())}")
-        else:
-            print("❌ OMIE data missing required columns")
-            raise Exception("OMIE data missing required columns")
-            
-        # Prepare I90 data (UPs)
-        i90_prepared = i90_data.copy()
-        if 'up' in i90_prepared.columns and 'volumenes' in i90_prepared.columns:
-            i90_prepared = i90_prepared[['datetime_utc', 'up', 'volumenes']].copy()
-            i90_prepared['hour'] = i90_prepared['datetime_utc'].dt.hour
-            
-            # Filter for target date using local time conversion
-            i90_local_dates = i90_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
-            i90_prepared = i90_prepared[i90_local_dates == target_dt].copy()
-            
-            print(f"✅ I90 data prepared: {len(i90_prepared)} records, {i90_prepared['up'].nunique()} unique UPs")
-            print(f"   Unique hours in I90: {sorted(i90_prepared['hour'].unique())}")
-        else:
-            print("❌ I90 data missing required columns")
-            raise Exception("I90 data missing required columns")
-        
-         #fill volumenes with 0 for hours with no data
-        omie_prepared['volumenes'] = omie_prepared['volumenes'].fillna(0)
-        i90_prepared['volumenes'] = i90_prepared['volumenes'].fillna(0)
 
-         # Group by uof/up and hour, then sum volumenes (preserve the entity columns)
-        omie_prepared = omie_prepared.groupby(['uof', 'hour'])['volumenes'].sum().reset_index()
-        i90_prepared = i90_prepared.groupby(['up', 'hour'])['volumenes'].sum().reset_index()
+        try:
+        
+            # Prepare OMIE data (UOFs)
+            omie_prepared = omie_data.copy()
+            if 'uof' in omie_prepared.columns and 'volumenes' in omie_prepared.columns:
+                omie_prepared = omie_prepared[['datetime_utc', 'uof', 'volumenes', 'id_mercado']].copy()
+                omie_prepared['hour'] = omie_prepared['datetime_utc'].dt.hour
+                
+                # Convert UTC datetime to local time, then extract date for filtering
+                madrid_tz = pytz.timezone('Europe/Madrid')
+                target_dt = pd.to_datetime(target_date).date()
+                
+                # Filter for target date using local time conversion
+                omie_local_dates = omie_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
+                omie_prepared = omie_prepared[omie_local_dates == target_dt].copy()
 
-        #round volumenes to 4 decimal places to handle float precision issues
-        omie_prepared['volumenes'] = omie_prepared['volumenes'].round(4)
-        i90_prepared['volumenes'] = i90_prepared['volumenes'].round(4)
+                #fill volumenes with 0 for hours with no data
+                omie_prepared['volumenes'] = omie_prepared['volumenes'].fillna(0)
+
+                #assure id_mercado column is integer
+                omie_prepared['id_mercado'] = omie_prepared['id_mercado'].astype(int)
+
+                #group by uof and hour, then average volumenes
+                omie_prepared = omie_prepared.groupby(['uof', 'hour', 'id_mercado'])['volumenes'].mean().reset_index()
+                
+                print(f"✅ OMIE data prepared: {len(omie_prepared)} records, {omie_prepared['uof'].nunique()} unique UOFs")
+            else:
+                print("❌ OMIE data missing required columns")
+                raise Exception("OMIE data missing required columns")
+                
+            # Prepare I90 data (UPs)
+            i90_prepared = i90_data.copy()
+            if 'up' in i90_prepared.columns and 'volumenes' in i90_prepared.columns:
+                i90_prepared = i90_prepared[['datetime_utc', 'up', 'volumenes', 'id_mercado']].copy()
+                i90_prepared['hour'] = i90_prepared['datetime_utc'].dt.hour
+                
+                # Filter for target date using local time conversion
+                i90_local_dates = i90_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
+                i90_prepared = i90_prepared[i90_local_dates == target_dt].copy()
+
+                #fill volumenes with 0 for hours with no data
+                i90_prepared['volumenes'] = i90_prepared['volumenes'].fillna(0)
+
+                #assure id_mercado column is integer
+                i90_prepared['id_mercado'] = i90_prepared['id_mercado'].astype(int)
+
+                #group by up and hour, then average volumenes
+                i90_prepared = i90_prepared.groupby(['up', 'hour', 'id_mercado'])['volumenes'].mean().reset_index()
+
+                print(f"✅ I90 data prepared: {len(i90_prepared)} records, {i90_prepared['up'].nunique()} unique UPs")
+            else:
+                print("❌ I90 data missing required columns")
+                raise Exception("I90 data missing required columns")
+        
+        except Exception as e:
+            print(f"❌ Error preparing volume data: {e}")
+            raise e
+        
+        #save to csv
+        omie_prepared.to_csv(f"omie_prepared_{target_date}.csv", index=False)
+        i90_prepared.to_csv(f"i90_prepared_{target_date}.csv", index=False)
+
+        breakpoint()
             
         return omie_prepared, i90_prepared
     
@@ -147,60 +157,143 @@ class UOFUPLinkingAlgorithm:
             str: MD5 hash of the volume profile
         """
         try:
-            # Round to 4 decimal places to handle float precision issues
-            rounded_volumes = [round(vol, 4) for vol in volume_list]
-            volume_str = ','.join(map(str, rounded_volumes))
+            volume_str = ','.join(map(str, volume_list))
             return hashlib.md5(volume_str.encode()).hexdigest()
         except Exception as e:
             print(f"❌ Error computing hourly hash: {e}")
             raise e
 
-    @with_progress(message="Creating volume profiles...", interval=2)
-    def _create_volume_profiles(self, df: pd.DataFrame, up_or_uof: str) -> Tuple[Dict[str, List[float]], Dict[str, str]]:
+    @with_progress(message="Creating combined volume profiles...", interval=2)
+    async def _create_combined_volume_profiles(self, df: pd.DataFrame, up_or_uof: str) -> Tuple[Dict[str, List[float]], Dict[str, str]]:
         """
-        Creates volume profiles for UOFs and UPs. A volume profile is a list of hourly values for a given entity.
-        The hash is computed from the volume profile.
+        Creates combined volume profiles for data across all markets (diario and intra).
+        Each profile combines volumes from markets 1(diario), 2, 3, 4 into a single list,
+        which is then hashed.
         
         Args:
-            df: DataFrame containing volume data
+            df: DataFrame containing volume data with 'id_mercado' and 'hour' columns
             up_or_uof: Column name for the entity ('uof' or 'up')
             
         Returns:
             Tuple containing:
-            - Dict mapping entity names to 24-hour volume profiles
+            - Dict mapping entity names to combined market volume profiles
             - Dict mapping entity names to their hash values
         """
         profiles = {}
         hashes = {}
         
         try:
-            for up_uof in df[up_or_uof].unique():
-                # Filter for entity (either uof or up) and sort by hour 
-                up_uof_data = df[df[up_or_uof] == up_uof].sort_values('hour')
+            unique_entities = df[up_or_uof].unique()
+            
+            # Process entities concurrently
+            tasks = [
+                self._process_single_entity(df, up_or_uof, entity_name) 
+                for entity_name in unique_entities
+            ]
+            
+            # Execute all tasks concurrently
+            results = await asyncio.gather(*tasks)
+            
+            # Combine results
+            for entity_name, profile, hash_value in results:
+                profiles[entity_name] = profile
+                hashes[entity_name] = hash_value
                 
-              
-                # Create ordered volume profile
-                volume_profile = []  # This list will hold the hourly volume data for the entity
-                for hour in range(24):
-                    # Filter the data for the current hour
-                    hour_data = up_uof_data[up_uof_data['hour'] == hour]
-                    if not hour_data.empty:
-                        # Check if the volume for this hour is non-zero before appending
-                        if hour_data['volumenes'].iloc[0] != 0:
-                            #we only appned the volumnes if there is hour data and the volume is not 0
-                            volume_profile.append(hour_data['volumenes'].iloc[0]) 
-                        
-                
-                # Store volume profile and hash for entity in the dict with its name as key
-                profiles[up_uof] = volume_profile 
-                hashes[up_uof] = self._compute_hourly_hash(volume_profile) 
-
+                if entity_name == "ZABU" or entity_name == "TERE":
+                    print(f"{up_or_uof}: {entity_name}")
+                    print(f"volume_profile: {profile}")
+                    print(f"hash: {hash_value}")
+                    print("-"*50)
+            
             return profiles, hashes
-
-        except Exception as e:
-            print(f"❌ Error creating volume profiles: {e}")
-            raise e
         
+        except Exception as e:
+            print(f"❌ Error creating combined volume profiles: {e}")
+            raise e
+
+    async def _process_single_entity(self, df: pd.DataFrame, up_or_uof: str, entity_name: str) -> Tuple[str, List[float], str]:
+        """
+        Process a single entity to create its volume profile and hash.
+        
+        Args:
+            df: DataFrame containing volume data
+            up_or_uof: Column name for the entity ('uof' or 'up')
+            entity_name: Name of the entity to process ie "ZABU"
+            
+        Returns:
+            Tuple of (entity_name, volume_profile, hash_value)
+        """
+        # Filter data for current entity
+        entity_data = df[df[up_or_uof] == entity_name]
+        
+        combined_volume_profile = []
+        
+        # Process each market (1: diario, 2-4: intra sessions) in order
+        for id_mercado in [1, 2, 3, 4]:
+            # Filter for the current market
+            market_data = entity_data[entity_data['id_mercado'] == id_mercado]
+            market_data = market_data.sort_values('hour')
+            
+            market_profile = []  # This will hold the volume profile for the current market
+
+            for hour in range(24):  # Iterate over all hours in the day
+                hour_data = market_data[market_data['hour'] == hour]  # Filter for the current hour
+
+                if not hour_data.empty:  # Check if there is data for the current hour
+                    hour_volume = hour_data['volumenes'].iloc[0]
+                    if hour_volume != 0:  # If the volume is not 0, append the volume to the profile
+                        market_profile.append(hour_volume)
+                    else:  # If the volume is 0, do not append anything to the profile
+                        pass
+
+            combined_volume_profile.extend(market_profile)  # Append the market profile to the combined profile
+        
+        # Compute hash (potentially CPU-bound, so we might want to run it in a thread pool)
+        hash_value = await asyncio.to_thread(self._compute_hourly_hash, combined_volume_profile)
+        
+        return entity_name, combined_volume_profile, hash_value
+
+    @with_progress(message="Creating combined volume profiles...", interval=2)
+    async def _run_matching_round(self, omie_df: pd.DataFrame, i90_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Runs one round of matching using prepared volume data.
+        Assumes input dataframes are already prepared and filtered.
+        """
+        if omie_df.empty or i90_df.empty:
+            print("⚠️  No data available for this matching round.")
+            return pd.DataFrame(columns=['up', 'uof', 'match_type']), pd.DataFrame(columns=['up', 'uof', 'match_type'])
+
+        # 1. Create volume profiles for UOFs and UPs concurrently
+        print("\n🔧 Creating volume profiles for UOFs and UPs...")    
+        
+        uof_task = self._create_combined_volume_profiles(omie_df, 'uof')
+        up_task = self._create_combined_volume_profiles(i90_df, 'up')
+        
+        # Execute both profile creation tasks concurrently
+        (uof_profiles, uof_hashes), (up_profiles, up_hashes) = await asyncio.gather(uof_task, up_task)
+        
+        print(f"✅ Created {len(uof_hashes)} UOF profiles and {len(up_hashes)} UP profiles")
+        
+        # 3. Create reverse mapping for lookup # ie: hash: list of uofs
+        hash_to_uofs = {}
+        for uof, hash_val in uof_hashes.items():
+            if hash_val not in hash_to_uofs:
+                hash_to_uofs[hash_val] = []
+            hash_to_uofs[hash_val].append(uof)
+            
+        # 4. Find matches based on up hashes
+        print("\n🔍 Finding hash-based matches...")
+        exact_matches, ambiguous_matches = self._find_hash_matches(up_hashes, hash_to_uofs)
+
+        exact_matches_df = pd.DataFrame(exact_matches)
+        ambiguous_matches_df = pd.DataFrame(ambiguous_matches)
+        
+        print(f"\n📊 MATCHING ROUND RESULTS:")
+        print(f"   ✅ Unique exact matches: {len(exact_matches_df)}")
+        print(f"   ⚠️  Ambiguous matches: {len(ambiguous_matches_df)}")
+        
+        return exact_matches_df, ambiguous_matches_df
+    
     @with_progress(message="Finding hash matches...", interval=2)
     def _find_hash_matches(self, up_hashes: Dict[str, str], hash_to_uofs: Dict[str, List[str]]) -> List[Dict[str, str]]:
         """
@@ -229,7 +322,6 @@ class UOFUPLinkingAlgorithm:
                     exact_matches.append({
                         'up': up,
                         'uof': matching_uofs[0],
-                        'confidence': 1.0,
                         "match_type": "exact_unique"
                     })
                 else:
@@ -238,229 +330,57 @@ class UOFUPLinkingAlgorithm:
                         ambiguous_matches.append({
                             'up': up,
                             'uof': uof,
-                            'confidence': 1.0,
-                            'match_type': 'exact_ambiguous'
+                            'match_type': 'ambiguous'
                         })
 
         return exact_matches, ambiguous_matches
         
-    def _find_volume_matches(self, omie_df: pd.DataFrame, i90_df: pd.DataFrame,
-                          target_date: str) -> pd.DataFrame:
+    def _resolve_name_matches(self, ambiguous_matches_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Finds potential UOF-UP matches based on volume patterns using hash-based comparison
+        Resolves ambiguous matches by prioritizing exact name matches between UP and UOF
         
         Args:
-            omie_df: Prepared OMIE data (already filtered by target date)
-            i90_df: Prepared I90 data (already filtered by target date)
-            target_date: Target date for matching
+            ambiguous_matches_df: DataFrame with ambiguous matches
             
         Returns:
-            pd.DataFrame: Potential matches with confidence scores
+            Tuple of (name_resolved_matches_df, remaining_ambiguous_matches_df)
         """
-        print(f"\n🔍 FINDING VOLUME MATCHES FOR {target_date}")
+        if ambiguous_matches_df.empty:
+            return pd.DataFrame(), ambiguous_matches_df
+            
+        print(f"\n🎯 RESOLVING AMBIGUOUS MATCHES BY NAME MATCHING")
         print("-"*50)
         
-        if omie_df.empty or i90_df.empty:
-            print("⚠️  No data available for target date")
-            return pd.DataFrame()
+        name_resolved_matches = []
+        remaining_ambiguous = []
+        
+        # Group by UP to handle each UP's ambiguous matches
+        for up in ambiguous_matches_df['up'].unique():
+            up_matches = ambiguous_matches_df[ambiguous_matches_df['up'] == up]
+            matching_uofs = up_matches['uof'].tolist()
             
-        print(f"📊 Data for {target_date}:")
-        print(f"   - OMIE UOFs: {omie_df['uof'].nunique()}")
-        print(f"   - I90 UPs: {i90_df['up'].nunique()}")
+            # Check if UP name matches any of the UOF names
+            if up in matching_uofs:
+                print(f"🎯 Found name match: UP '{up}' matches UOF '{up}' (resolving ambiguity)")
+                # Add the name match as resolved
+                name_resolved_matches.append({
+                    'up': up,
+                    'uof': up,
+                    'match_type': 'name_resolved'
+                })
+            else:
+                # Keep all matches for this UP as still ambiguous
+                for _, match in up_matches.iterrows():
+                    remaining_ambiguous.append(match.to_dict())
+        
+        name_resolved_df = pd.DataFrame(name_resolved_matches)
+        remaining_ambiguous_df = pd.DataFrame(remaining_ambiguous)
+        
+        print(f"✅ Resolved {len(name_resolved_df)} matches by name matching")
+        print(f"⚠️  Remaining ambiguous matches: {len(remaining_ambiguous_df)}")
+        
+        return name_resolved_df, remaining_ambiguous_df
     
-        # Step 1: Create 24-hour volume profiles for UOFs (OMIE)
-        print("\n🔧 Creating volume profiles for UOFs...")    
-        uof_profiles, uof_hashes = self._create_volume_profiles(omie_df, 'uof')
-        print(f"✅ Created {len(uof_profiles)} UOF volume profiles")
-        
-        # Step 2: Create 24-hour volume profiles for UPs (I90)
-        print("\n🔧 Creating volume profiles for UPs...")
-        up_profiles, up_hashes = self._create_volume_profiles(i90_df, 'up')
-        print(f"✅ Created {len(up_profiles)} UP volume profiles")
-        
-        # Step 3: Create reverse mapping for efficient lookup
-        hash_to_uofs = {}
-        for uof, hash_val in uof_hashes.items(): 
-            if hash_val not in hash_to_uofs:
-                hash_to_uofs[hash_val] = []
-            hash_to_uofs[hash_val].append(uof)
-        
-        # Step 4: Find exact matches based on identical hashes using the dedicated method
-        print("\n🔍 Finding hash-based matches...")
-        exact_matches, ambiguous_matches = self._find_hash_matches(up_hashes, hash_to_uofs)
-        
-        if not exact_matches and not ambiguous_matches:
-            print("⚠️  No volume matches found")
-            return pd.DataFrame(columns=['up', 'uof', 'confidence', 'match_type'])
-        
-        # Convert to DataFrame
-        exact_matches_df = pd.DataFrame(exact_matches)
-        ambiguous_matches_df = pd.DataFrame(ambiguous_matches)
-
-        
-        print(f"\n📊 MATCHING RESULTS:")
-        print(f"   ✅ Unique exact matches: {len(exact_matches_df)}")
-        print(f"   ⚠️  Ambiguous exact matches: {len(ambiguous_matches_df)}")
-        print(f"   📈 Total matches: {len(exact_matches_df) + len(ambiguous_matches_df)}")
-        
-        if len(ambiguous_matches_df) > 0:
-            # Show ambiguous matches summary
-            ambiguous_ups = ambiguous_matches_df.groupby('up')['uof'].count()
-            print(f"\n⚠️  AMBIGUOUS MATCHES DETECTED:")
-            breakpoint()
-            for up, count in ambiguous_ups.items():
-                uofs = ambiguous_matches_df[ambiguous_matches_df['up'] == up]['uof'].tolist()
-                print(f"   UP {up} matches {count} UOFs: {', '.join(uofs)}")
-        
-        # Show top matches
-        print(f"\n🏆 Top 5 matches:")
-        top_matches = exact_matches_df.head()
-        for idx, row in top_matches.iterrows():
-            print(f"   {row['up']} ↔ {row['uof']} (confidence: {row['confidence']:.3f}, type: {row['match_type']})")
-        
-        return exact_matches_df, ambiguous_matches_df
-
-    def _resolve_ambiguous_matches(self, exact_matches_df: pd.DataFrame, ambiguous_matches_df: pd.DataFrame, target_date: str) -> pd.DataFrame:
-        """
-        Resolves ambiguous matches by checking historical data n-94 days and intra markets
-        
-        Args:
-            exact_matches_df: Exact matches from initial matching
-            ambiguous_matches_df: Initial matches with potential ambiguities
-            target_date: Target date
-            
-        Returns:
-            pd.DataFrame: All resolved matches (exact + resolved ambiguous)
-        """
-        print(f"\n🔍 RESOLVING AMBIGUOUS MATCHES")
-        print("-"*40)
-        
-        # Start with exact matches
-        all_matches_df = exact_matches_df.copy() if not exact_matches_df.empty else pd.DataFrame()
-        remaining_ambiguous_matches_df = ambiguous_matches_df.copy()
-        
-        if remaining_ambiguous_matches_df.empty:
-            print("✅ No ambiguous matches to resolve")
-            return all_matches_df
-
-        # Try historical data (94 days back)
-        print(f"\n📅 Checking historical data (-{self.config.HISTORICAL_CHECK_WINDOW} days)")
-        target_date_yesterday = (pd.to_datetime(target_date) - 
-                         timedelta(days=1)).strftime('%Y-%m-%d')
-        
-        try:
-            self.data_extractor.extract_data_for_matching(target_date=target_date_yesterday)
-            diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date=target_date_yesterday)
-            
-            if 'omie_diario' in diario_data and 'i90_diario' in diario_data:
-                omie_diario, i90_diario = self._prepare_volume_data(
-                    diario_data['omie_diario'],
-                    diario_data['i90_diario'],
-                    target_date_yesterday
-                )
-
-                # Filter the dfs by the uofs and ups in the ambiguous_matches_df
-                ambiguous_uofs = remaining_ambiguous_matches_df['uof'].unique()
-                ambiguous_ups = remaining_ambiguous_matches_df['up'].unique()
-                omie_diario_filtered = omie_diario[omie_diario['uof'].isin(ambiguous_uofs)]
-                i90_diario_filtered = i90_diario[i90_diario['up'].isin(ambiguous_ups)]
-                
-                # Find the volume matches again but only for the ambiguous uofs and ups
-                exact_matches_historical_df, still_ambiguous_matches_df = self._find_volume_matches(
-                    omie_diario_filtered, i90_diario_filtered, target_date_yesterday
-                )
-
-                if not exact_matches_historical_df.empty:
-                    print(f"✅ Resolved {len(exact_matches_historical_df)} matches using historical data")
-                    all_matches_df = pd.concat([all_matches_df, exact_matches_historical_df], ignore_index=True)
-                    remaining_ambiguous_matches_df = still_ambiguous_matches_df
-                else:
-                    print("⚠️ No matches resolved using historical data")
-
-        except Exception as e:
-            print(f"⚠️ Could not resolve using historical data: {e}")
-        
-        # Try intra markets if there are still ambiguous matches
-        if not remaining_ambiguous_matches_df.empty:
-            print(f"\n🔍 Checking intra markets for remaining {len(remaining_ambiguous_matches_df)} ambiguities on {target_date}")
-
-            try:
-                intra_data = self.data_extractor.transform_intra_data_for_ambiguous_matches(target_date)
-
-                if 'omie_intra' in intra_data and 'i90_intra' in intra_data:
-                    omie_intra = intra_data['omie_intra']
-                    i90_intra = intra_data['i90_intra']
-                else:
-                    print("❌ No intra data available")
-                    return all_matches_df
-                
-                # Try each session (1, 2, 3)
-                for id_mercado in range(1, 4):                        
-                    if remaining_ambiguous_matches_df.empty:
-                        break
-                        
-                    print(f"   📊 Checking Intra Session {id_mercado}")
-                    
-                    # Filter intra data for current session
-                    omie_intra_session = omie_intra[omie_intra['id_mercado'] == id_mercado]
-                    i90_intra_session = i90_intra[i90_intra['id_mercado'] == id_mercado]
-                    
-                    if omie_intra_session.empty or i90_intra_session.empty:
-                        print(f"   ⚠️ No data for session {id_mercado}, skipping")
-                        continue
-                    
-                    # Filter by remaining ambiguous UOFs and UPs
-                    ambiguous_uofs = remaining_ambiguous_matches_df['uof'].unique()
-                    ambiguous_ups = remaining_ambiguous_matches_df['up'].unique()
-                    omie_intra_filtered = omie_intra_session[omie_intra_session['uof'].isin(ambiguous_uofs)]
-                    i90_intra_filtered = i90_intra_session[i90_intra_session['up'].isin(ambiguous_ups)]
-                    
-                    # Prepare data for this session
-                    omie_prepared, i90_prepared = self._prepare_volume_data(
-                        omie_intra_filtered,
-                        i90_intra_filtered,
-                        target_date
-                    )
-                    
-                    # Find volume matches for this session
-                    exact_matches_intra_df, remaining_ambiguous_matches_df = self._find_volume_matches(
-                        omie_prepared, i90_prepared, target_date
-                    )
-                    
-                    if not exact_matches_intra_df.empty:
-                        print(f"   ✅ Found {len(exact_matches_intra_df)} exact matches in session {id_mercado}")
-                        all_matches_df = pd.concat([all_matches_df, exact_matches_intra_df], ignore_index=True)
-                    
-                    print(f"   📊 Remaining ambiguous matches: {len(remaining_ambiguous_matches_df)}")
-                
-            except Exception as e:
-                print(f"⚠️ Could not resolve using intra data: {e}")
-
-        return all_matches_df
-
-    def _create_final_matches_df(self, matches_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Creates final matches DataFrame with only UP and UOF columns
-        
-        Args:
-            matches_df: DataFrame with all matches including metadata
-            
-        Returns:
-            pd.DataFrame: Final matches with columns [up, uof]
-        """
-        if matches_df.empty:
-            return pd.DataFrame(columns=['up', 'uof'])
-        
-        # Keep only the essential columns and remove duplicates
-        final_df = matches_df[['up', 'uof']].drop_duplicates().reset_index(drop=True)
-        
-        print(f"📊 Final matches summary:")
-        print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
-        print(f"   - Unique UPs matched: {final_df['up'].nunique()}")
-        print(f"   - Unique UOFs matched: {final_df['uof'].nunique()}")
-        
-        return final_df
-
     def _resolve_uof_conflicts(self, matches_df: pd.DataFrame) -> pd.DataFrame:
         """
         Resolves conflicts where the same UOF is matched to multiple UPs
@@ -477,7 +397,7 @@ class UOFUPLinkingAlgorithm:
         print(f"\n🔍 CHECKING FOR UOF CONFLICTS")
         print("-"*40)
         
-        # Find UOFs that are matched to multiple UPs
+        # Find UOFs that are matched to multiple UPs (have a value count > 1)
         uof_counts = matches_df['uof'].value_counts()
         conflicted_uofs = uof_counts[uof_counts > 1].index.tolist()
         
@@ -503,10 +423,33 @@ class UOFUPLinkingAlgorithm:
         
         return clean_matches_df, conflicted_ups
 
-    ### MAIN METHOD TO LINK UOFs TO UPs FOR A GIVEN DATE ###
-    def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None) -> pd.DataFrame:
+    def _create_final_matches_df(self, matches_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Main method to link UOFs to UPs for a given date
+        Creates final matches DataFrame with only UP and UOF columns
+        
+        Args:
+            matches_df: DataFrame with all matches including metadata
+            
+        Returns:
+            pd.DataFrame: Final matches with columns [up, uof]
+        """
+        if matches_df.empty:
+            return pd.DataFrame(columns=['up', 'uof'])
+        
+        # Keep only the essential columns and remove duplicates
+        final_df = matches_df[['up', 'uof']].drop_duplicates().reset_index(drop=True)
+        
+        print(f"📊 Final matches summary:")
+        print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
+        print(f"   - Unique UPs matched: {final_df['up'].nunique()}")
+        print(f"   - Unique UOFs matched: {final_df['uof'].nunique()}")
+        
+        return final_df
+
+    ### MAIN METHOD TO LINK UOFs TO UPs FOR A GIVEN DATE ###
+    async def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None) -> pd.DataFrame:
+        """
+        Main method to link UOFs to UPs for a given date using a two-round matching process.
         
         Args:
             target_date: Target date for linking (YYYY-MM-DD)
@@ -515,63 +458,93 @@ class UOFUPLinkingAlgorithm:
             pd.DataFrame: Final links with columns [up, uof]
         """
         print(f"\n🚀 STARTING UOF-UP LINKING PROCESS")
-        print(f"Target Date: {target_date} - ({self.config.DATA_DOWNLOAD_WINDOW} days window)")
+        print(f"Target Date: {target_date}")
         print("="*60)
         
         try:
             # Step 1: Get all active UPs if ups_to_link is not provided
             active_ups = self._get_active_ups()
 
-            #if ups_to_link list is provided, filter the active ups to only the ones in the list
+            #if ups list we wanto to link  is provided, filter the active ups to only the ones in the list
             if ups_to_link:
                 active_ups = active_ups[active_ups['up'].isin(ups_to_link)]
+                print(f"🔍 Filtered active UPs to only the ones in the list: {ups_to_link}")
+                print(f"🔍 Number of UPs we are filtering for: {len(active_ups)}")
 
                 if active_ups.empty:
                     print("❌ UPs to link not found in the active UPs list")
                     raise ValueError("UPs to link not found in the active UPs list")
                 
-            # Step 2: Extract data and transform it for initial matching
-            # self.data_extractor.extract_data_for_matching(target_date)
-            transformed_diario_data = self.data_extractor.transform_diario_data_for_initial_matching(target_date)
+            # Step 2: Extract and transform all data for target_date (today - 93 days ago)
+            #self.data_extractor.extract_data_for_matching(target_date)
+            #tranasform data and join diario + intra data for target_date into a single dataframe
+            all_data = self.data_extractor.transform_and_combine_data_for_linking(target_date)
             
-            if 'omie_diario' not in transformed_diario_data or 'i90_diario' not in transformed_diario_data:
-                print("❌ Required data not available")
-                raise ValueError("Required data not available")
-            
-         
-            # Step 3: Prepare data by adding hour and date columns for easier matching
-            omie_prepared, i90_prepared = self._prepare_volume_data(
-                transformed_diario_data['omie_diario'],
-                transformed_diario_data['i90_diario'],
-                target_date
-            )
-            
-            if omie_prepared.empty or i90_prepared.empty:
-                print("❌ Data preparation failed")
-                raise ValueError("Data preparation failed")
-                
-            # Filter for active UPs only
-            i90_prepared_filtered = i90_prepared[i90_prepared['up'].isin(active_ups['up'])]
-            
-            # Step 4: Find initial matches (both exact and ambiguous)
-            exact_matches_df, ambiguous_matches_df = self._find_volume_matches(
-                omie_prepared, i90_prepared_filtered, target_date
-            )
-            
-            if exact_matches_df.empty and ambiguous_matches_df.empty:
-                print("❌ No matches found")
-                return pd.DataFrame(columns=['up', 'uof'])
-                
-            # Step 5: Resolve ambiguities by comparing diario data 94 days ago and then if needed intra data
-            all_resolved_matches = self._resolve_ambiguous_matches(
-                exact_matches_df, ambiguous_matches_df, target_date
-            )
+            omie_combined = all_data.get('omie_combined')
+            i90_combined = all_data.get('i90_combined')
 
-            # Step 6: Resolve UOF conflicts
-            all_resolved_matches, conflicted_ups = self._resolve_uof_conflicts(all_resolved_matches)
+            if omie_combined is None or omie_combined.empty or i90_combined is None or i90_combined.empty:
+                raise Exception("❌ Required data not available for matching on target date.")
+
+            # Step 3: Prepare volume data (timezone conversion, date filtering, grouping, rounding)
+            omie_prepared, i90_prepared = self._prepare_volume_data(omie_combined, i90_combined, target_date)
+            
+            # Filter for active UPs only
+            i90_prepared_active = i90_prepared[i90_prepared['up'].isin(active_ups['up'])]
+            print(f"🔍 UPs after filtering: {len(i90_prepared)} -> {len(i90_prepared_active)}")
+            
+            # --- ROUND 1: Matching on target_date ---
+            print("\n\n--- ROUND 1: MATCHING ON TARGET DATE ---")
+            exact_matches_r1, ambiguous_matches_r1 = await self._run_matching_round(omie_prepared, i90_prepared_active)
+            
+            # --- AMBIGUITY RESOLUTION ---
+            print("\n\n--- RESOLVING AMBIGUITIES ---")
+            
+            # Step 1: Name Matching
+            name_resolved_df, remaining_ambiguous_df = self._resolve_name_matches(ambiguous_matches_r1)
+            
+            all_matches_list = [exact_matches_r1, name_resolved_df]
+            
+            # Step 2: Historical Matching (today - 94 days ago)
+            if not remaining_ambiguous_df.empty:
+                print(f"\n📅 Attempting to resolve {len(remaining_ambiguous_df)} matches with historical data...")
+                
+                historical_date = (pd.to_datetime(target_date) - timedelta(days=1)).strftime('%Y-%m-%d')
+                
+                #self.data_extractor.extract_data_for_matching(historical_date)
+                historic_data = self.data_extractor.transform_and_combine_data_for_linking(historical_date)
+                omie_hist = historic_data.get('omie_combined')
+                i90_hist = historic_data.get('i90_combined')
+
+                if omie_hist is not None and not omie_hist.empty and i90_hist is not None and not i90_hist.empty:
+                    # Prepare historical data through the same process
+                    omie_hist_prepared, i90_hist_prepared = self._prepare_volume_data(omie_hist, i90_hist, historical_date)
+
+                    ambiguous_uofs = remaining_ambiguous_df['uof'].unique()
+                    ambiguous_ups = remaining_ambiguous_df['up'].unique()
+                    omie_hist_filtered = omie_hist_prepared[omie_hist_prepared['uof'].isin(ambiguous_uofs)]
+                    i90_hist_filtered = i90_hist_prepared[i90_hist_prepared['up'].isin(ambiguous_ups)]
+
+                    # --- ROUND 2: Matching on historical_date ---
+                    print("\n\n--- ROUND 2: MATCHING ON HISTORICAL DATE ---")
+                    exact_matches_r2, ambiguous_matches_r2 = await self._run_matching_round(omie_hist_filtered, i90_hist_filtered)
+                    
+                    if not exact_matches_r2.empty:
+                        exact_matches_r2['match_type'] = 'historical_resolved'
+                        all_matches_list.append(exact_matches_r2)
+                    
+                    print(f"✅ Resolved {len(exact_matches_r2)} from historical data.")
+                    print(f"⚠️ Unresolved after historical check: {len(ambiguous_matches_r2)}")
+            
+            # --- FINALIZATION ---
+            # Consolidate all resolved matches
+            final_resolved_matches = pd.concat(all_matches_list, ignore_index=True)
+            
+            # Resolve UOF conflicts (e.g., UOF1 matched to UP1 and UP2)
+            final_resolved_matches, _ = self._resolve_uof_conflicts(final_resolved_matches)
 
             # Step 6: Create final links
-            final_matches_df = self._create_final_matches_df(all_resolved_matches)
+            final_matches_df = self._create_final_matches_df(final_resolved_matches)
             
             print(f"\n🎉 LINKING PROCESS COMPLETE")
             print(f"Final result: {len(final_matches_df)} UOF-UP links created")
@@ -584,16 +557,19 @@ class UOFUPLinkingAlgorithm:
             return pd.DataFrame(columns=['up', 'uof'])
 
    
-def example_usage():
+async def example_usage():
     # Initialize the algorithm
     algorithm = UOFUPLinkingAlgorithm()
-    #get the target date
+    # Get the target date
     target_date = algorithm.config.get_linking_target_date()
-    links_df = algorithm.link_uofs_to_ups(target_date)
+    ups_to_link = None  # If None, all active UPs will be linked
+    links_df = await algorithm.link_uofs_to_ups(target_date, ups_to_link=ups_to_link)
     print(links_df)
 
 if __name__ == "__main__":
-    example_usage()
+    asyncio.run(example_usage())
+
+
 
 
 

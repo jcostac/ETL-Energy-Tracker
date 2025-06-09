@@ -344,10 +344,10 @@ class DiarioConfig(I90Config):
     def has_precios_sheets(cls) -> bool:
         return False  # No price extraction implemented
 
-class IntradiarioConfig(I90Config):
+class IntraConfig(I90Config):
     def __init__(self, fecha):
         """
-        Initialize the intradiario downloader with date-based market selection.
+        Initialize the intra downloader with date-based market selection.
         
         Args:
             fecha (datetime, optional): The date for which to configure markets.
@@ -360,7 +360,7 @@ class IntradiarioConfig(I90Config):
         
         # Use provided date or current date
         if fecha is None:
-            raise ValueError("Fecha is required for IntradiarioConfig")
+            raise ValueError("Fecha is required for IntraConfig")
         
         # Get individual IDs for each Intra market (Intra 1 through Intra 7)
         self.intra_1_id: str = self.id_mercado_map["Intra 1"]  # ID: 2
@@ -681,7 +681,13 @@ def print_config_info():
 
     # --- Test Specific Configs ---
     # Get all subclasses of I90Config
-    configs_to_test = {cls.__name__: cls() for cls in I90Config.__subclasses__()}
+    configs_to_test = {}
+    for cls in I90Config.__subclasses__():
+        if cls.__name__ == 'IntraConfig':
+            # IntraConfig requires a fecha parameter - use a date before 2024-06
+            configs_to_test[cls.__name__] = cls(fecha=datetime(2024, 5, 1))
+        else:
+            configs_to_test[cls.__name__] = cls()
 
     print("\n\n=== SPECIFIC CONFIG CLASSES ===")
     for config_name, config_instance in configs_to_test.items():
