@@ -146,14 +146,20 @@ class RawFileUtils(StorageFileUtils):
                 print(duplicates.head(10))
                 print(duplicates.tail(10))
 
-                # Group by Unidad and Fecha, then aggregate id_mercado
-                duplicates_grouped = duplicates.groupby(["Unidad", "Fecha", "id_mercado", "Hora"]).size().reset_index(name='count')
-                duplicates_df = duplicates_grouped[["Unidad", "Fecha", "id_mercado", "Hora", "count"]]
-    
-                return df, duplicates_df
+                if "Unidad" in df.columns:
+                    # Group by Unidad and Fecha, then aggregate id_mercado
+                    duplicates_grouped = duplicates.groupby(["Unidad", "Fecha", "id_mercado", "Hora"]).size().reset_index(name='count')
+                    duplicates_df = duplicates_grouped[["Unidad", "Fecha", "id_mercado", "Hora", "count"]]
+                    return df, duplicates_df
+                else:
+                    return df
         
-            else:#for datasets with no duplicates, return empty df
-                return df, pd.DataFrame()
+            else:
+                if "Unidad" in df.columns:
+                    #for datasets with no duplicates, return empty df
+                    return df, pd.DataFrame()
+                else:
+                    return df
         
         except Exception as e: #for datasets that do not have unidad column, return empty df *ALL DATASETS EXCEPT FOR OMIE WILL NOT HAVE UNIDAD COLUMN*
             print(f"Error dropping raw duplicates: {e}")
