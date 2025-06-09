@@ -681,7 +681,13 @@ def print_config_info():
 
     # --- Test Specific Configs ---
     # Get all subclasses of I90Config
-    configs_to_test = {cls.__name__: cls() for cls in I90Config.__subclasses__()}
+    configs_to_test = {}
+    for cls in I90Config.__subclasses__():
+        if cls.__name__ == 'IntraConfig':
+            # IntraConfig requires a fecha parameter - use a date before 2024-06
+            configs_to_test[cls.__name__] = cls(fecha=datetime(2024, 5, 1))
+        else:
+            configs_to_test[cls.__name__] = cls()
 
     print("\n\n=== SPECIFIC CONFIG CLASSES ===")
     for config_name, config_instance in configs_to_test.items():

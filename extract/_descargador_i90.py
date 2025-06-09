@@ -461,12 +461,17 @@ class IntradiarioDL(I90Downloader):
         """
         Get intradiario volume data for a specific day.
         """
-        df_volumenes = pd.DataFrame()
+        all_dfs = []
         for sheet in self.volumenes_sheets:
-            df_volumenes
-            df_volumenes = pd.concat([df_volumenes, super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=sheet, precios_sheets=None)])
+            df_sheet = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=[sheet], precios_sheets=None)
+            if not df_sheet.empty:
+                df_sheet['sheet_i90_volumenes'] = sheet
+                all_dfs.append(df_sheet)
 
-        return df_volumenes
+        if not all_dfs:
+            return pd.DataFrame()
+
+        return pd.concat(all_dfs, ignore_index=True)
     
     
 class SecundariaDL(I90Downloader):

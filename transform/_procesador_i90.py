@@ -38,19 +38,25 @@ class I90Processor:
     def _apply_market_filters_and_id(self, df: pd.DataFrame, market_config: I90Config) -> pd.DataFrame:
         """
         Filters the DataFrame based on market config and adds id_mercado.
-        
-        Args:
-            df (pd.DataFrame): Input DataFrame (potentially pre-processed by extractor).
-                               Expected columns might include 'Sentido', 'Redespacho', 'UP', 'hora', 'volumen'/'precio', 'fecha'/'datetime_utc'.
-            market_config (I90Config): The configuration object instance for the specific market
-                                     (e.g., SecundariaConfig(), RestriccionesConfig()).
-            
-        Returns:
-            pd.DataFrame: DataFrame filtered and augmented with 'id_mercado',
-                          or an empty DataFrame if no data matches.
+        If 'sheet_i90_volumenes' exists, map it directly to id_mercado.
         """
         if df.empty:
             return pd.DataFrame() # Return empty if input is empty
+
+        # --- Direct mapping for intra markets ---
+        if 'sheet_i90_volumenes' in df.columns:
+            # Build the mapping from config (invert volumenes_sheet)
+            sheet_to_market_id = {
+                str(sheet): str(market_id)
+                for market_id, sheet in market_config.volumenes_sheet.items()
+                if sheet is not None
+            }
+            # Map the column (ensure both are strings for matching)
+            df['id_mercado'] = df['sheet_i90_volumenes'].astype(str).map(sheet_to_market_id)
+            df['id_mercado'] = df['id_mercado'].astype(str)
+            df = df.drop(columns=['sheet_i90_volumenes'])
+            return df
+
 
         all_market_dfs = []
         print(f"Applying market filters and id to DataFrame with shape: {df.shape}")
