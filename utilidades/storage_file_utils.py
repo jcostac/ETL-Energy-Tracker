@@ -152,18 +152,14 @@ class RawFileUtils(StorageFileUtils):
                     duplicates_df = duplicates_grouped[["Unidad", "Fecha", "id_mercado", "Hora", "count"]]
                     return df, duplicates_df
                 else:
-                    return df
+                    return df, pd.DataFrame()
         
             else:
-                if "Unidad" in df.columns:
-                    #for datasets with no duplicates, return empty df
                     return df, pd.DataFrame()
-                else:
-                    return df
         
         except Exception as e: #for datasets that do not have unidad column, return empty df *ALL DATASETS EXCEPT FOR OMIE WILL NOT HAVE UNIDAD COLUMN*
             print(f"Error dropping raw duplicates: {e}")
-            return df, pd.DataFrame()
+            raise e
 
     #@deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
     def write_raw_csv(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
