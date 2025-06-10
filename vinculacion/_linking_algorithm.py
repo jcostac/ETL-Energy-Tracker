@@ -480,9 +480,8 @@ class UOFUPLinkingAlgorithm:
                     print("❌ UPs to link not found in the active UPs list")
                     raise ValueError("UPs to link not found in the active UPs list")
                 
-            # Step 2: Extract and transform all data for target_date (today - 93 days ago)
+            # Step 2: Extract and transform all data for target_date
             self.data_extractor.extract_data_for_matching(target_date)
-            #transform data and join diario + intra data for target_date into a single dataframe
             all_data = self.data_extractor.transform_and_combine_data_for_linking(target_date)
 
 
@@ -510,36 +509,54 @@ class UOFUPLinkingAlgorithm:
             # Step 1: Name Matching
             name_resolved_df, remaining_ambiguous_df = self._resolve_name_matches(ambiguous_matches_r1)
             
-            all_matches_list = [exact_matches_r1, name_resolved_df]
+            # Collect all confirmed matches so far
+            confirmed_matches = pd.concat([exact_matches_r1, name_resolved_df], ignore_index=True)
             
-            # Step 2: Historical Matching (today - 94 days ago)
+            # Get already matched UPs and UOFs to exclude from further matching
+            matched_ups = set(confirmed_matches['up'].tolist()) if not confirmed_matches.empty else set()
+            matched_uofs = set(confirmed_matches['uof'].tolist()) if not confirmed_matches.empty else set()
+            
+            print(f"🔒 Excluding {len(matched_ups)} already matched UPs and {len(matched_uofs)} already matched UOFs from further matching")
+            
+            all_matches_list = [confirmed_matches]
+            
+            # Step 2: Historical Matching - only for remaining unmatched entities
             if not remaining_ambiguous_df.empty:
                 print(f"\n📅 Attempting to resolve {len(remaining_ambiguous_df)} matches with historical data...")
                 
                 historical_date = (pd.to_datetime(target_date) - timedelta(days=1)).strftime('%Y-%m-%d')
                 
-                #extract data for historical date
+                # Extract data for historical date
                 self.data_extractor.extract_data_for_matching(historical_date)
-
-                #transform data and join diario + intra data for historical date into a single dataframe
                 historic_data = self.data_extractor.transform_and_combine_data_for_linking(historical_date)
 
-                #get omie and i90 data from historic data
                 omie_hist = historic_data.get('omie_combined')
                 i90_hist = historic_data.get('i90_combined')
 
                 if omie_hist is not None and not omie_hist.empty and i90_hist is not None and not i90_hist.empty:
-                    # Prepare historical data through the same process
-                    omie_hist_prepared, i90_hist_prepared = self._prepare_volume_data(omie_hist, i90_hist, historical_date)
+                    
+                    # FILTER RAW HISTORICAL DATA TO EXCLUDE ALREADY MATCHED ENTITIES and only active ups for i90
+                    # Remove UOFs and UPs that were already matched in Round 1
+                    omie_hist_filtered_raw = omie_hist[~omie_hist['uof'].isin(matched_uofs)]
+                    i90_hist_filtered_raw = i90_hist[~i90_hist['up'].isin(matched_ups)]
 
-                    ambiguous_uofs = remaining_ambiguous_df['uof'].unique()
-                    ambiguous_ups = remaining_ambiguous_df['up'].unique()
-                    omie_hist_filtered = omie_hist_prepared[omie_hist_prepared['uof'].isin(ambiguous_uofs)]
-                    i90_hist_filtered = i90_hist_prepared[i90_hist_prepared['up'].isin(ambiguous_ups)]
+                    #get only active ups in i90_hist_filtered_raw
+                    i90_hist_filtered_raw = i90_hist_filtered_raw[i90_hist_filtered_raw['up'].isin(active_ups['up'])]
+                    
+                    print(f"🔍 Historical matching scope (after excluding already matched):")
+                    print(f"   - Total UOFs in historical data: {len(omie_hist['uof'].unique())}")
+                    print(f"   - Available UOFs (excluding matched): {len(omie_hist_filtered_raw['uof'].unique())}")
+                    print(f"   - Total UPs in historical data: {len(i90_hist['up'].unique())}")
+                    print(f"   - Available UPs (excluding matched): {len(i90_hist_filtered_raw['up'].unique())}")
+                    
+                    # Now prepare the filtered historical data
+                    omie_hist_prepared, i90_hist_prepared = self._prepare_volume_data(
+                        omie_hist_filtered_raw, i90_hist_filtered_raw, historical_date
+                    )
 
                     # --- ROUND 2: Matching on historical_date ---
-                    print("\n\n--- ROUND 2: MATCHING ON HISTORICAL DATE ---")
-                    exact_matches_r2, ambiguous_matches_r2 = await self._run_matching_round(omie_hist_filtered, i90_hist_filtered)
+                    print("\n\n--- ROUND 2: MATCHING ON HISTORICAL DATE (UNMATCHED ENTITIES ONLY) ---")
+                    exact_matches_r2, ambiguous_matches_r2 = await self._run_matching_round(omie_hist_prepared, i90_hist_prepared)
                     
                     if not exact_matches_r2.empty:
                         exact_matches_r2['match_type'] = 'historical_resolved'
@@ -547,15 +564,18 @@ class UOFUPLinkingAlgorithm:
                     
                     print(f"✅ Resolved {len(exact_matches_r2)} from historical data.")
                     print(f"⚠️ Unresolved after historical check: {len(ambiguous_matches_r2)}")
+                else:
+                    print("✅ All ambiguous matches were already resolved - no historical matching needed")
             
             # --- FINALIZATION ---
             # Consolidate all resolved matches
-            final_resolved_matches = pd.concat(all_matches_list, ignore_index=True)
+            final_resolved_matches = pd.concat(all_matches_list, ignore_index=True) if all_matches_list else pd.DataFrame()
             
-            # Resolve UOF conflicts (e.g., UOF1 matched to UP1 and UP2)
-            final_resolved_matches, _ = self._resolve_uof_conflicts(final_resolved_matches)
+            # Resolve UOF conflicts (should be minimal now due to exclusion logic)
+            if not final_resolved_matches.empty:
+                final_resolved_matches, _ = self._resolve_uof_conflicts(final_resolved_matches)
 
-            # Step 6: Create final links
+            # Create final links
             final_matches_df = self._create_final_matches_df(final_resolved_matches)
             
             print(f"\n🎉 LINKING PROCESS COMPLETE")
