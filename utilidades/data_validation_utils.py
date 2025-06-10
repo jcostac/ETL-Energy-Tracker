@@ -103,6 +103,8 @@ class DataValidationUtils:
                         df['uof'] = df['uof'].astype('str')
                     if 'precio' in df.columns:
                         df['precio'] = df['precio'].astype('float32')
+                    if 'tipo_transaccion' in df.columns:
+                        df['tipo_transaccion'] = df['tipo_transaccion'].astype('str')
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
             

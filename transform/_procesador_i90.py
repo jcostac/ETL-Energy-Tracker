@@ -38,7 +38,16 @@ class I90Processor:
     def _apply_market_filters_and_id(self, df: pd.DataFrame, market_config: I90Config) -> pd.DataFrame:
         """
         Filters the DataFrame based on market config and adds id_mercado.
-        If 'sheet_i90_volumenes' exists, map it directly to id_mercado.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame (potentially pre-processed by extractor).
+                               Expected columns might include 'Sentido', 'Redespacho', 'UP', 'hora', 'volumen'/'precio', 'fecha'/'datetime_utc'.
+            market_config (I90Config): The configuration object instance for the specific market
+                                     (e.g., SecundariaConfig(), RestriccionesConfig()).
+            
+        Returns:
+            pd.DataFrame: DataFrame filtered and augmented with 'id_mercado',
+                          or an empty DataFrame if no data matches.
         """
         if df.empty:
             return pd.DataFrame() # Return empty if input is empty
@@ -53,7 +62,7 @@ class I90Processor:
             }
             # Map the column (ensure both are strings for matching)
             df['id_mercado'] = df['sheet_i90_volumenes'].astype(str).map(sheet_to_market_id)
-            df['id_mercado'] = df['id_mercado'].astype(str)
+            df['id_mercado'] = df['id_mercado'].astype(int)
             df = df.drop(columns=['sheet_i90_volumenes'])
             return df
 
@@ -120,7 +129,7 @@ class I90Processor:
         final_df = pd.concat(all_market_dfs, ignore_index=True)
         # Ensure id_mercado is string type after concat (should be if added as string)
         if 'id_mercado' in final_df.columns:
-             final_df['id_mercado'] = final_df['id_mercado'].astype(str)
+             final_df['id_mercado'] = final_df['id_mercado'].astype(int)
         return final_df
 
     # === DATETIME HANDLING ===
@@ -630,6 +639,11 @@ class I90Processor:
             #rename precios to precio
             df = df.rename(columns={'precios': 'precio'})
             required_cols = self.data_validation_utils.processed_price_required_cols
+
+           # ADD TIPO TRANSACCIÓN HANDLING
+        if "Tipo Transacción" in df.columns:
+            df = df.rename(columns={"Tipo Transacción": "tipo_transaccion"})
+            required_cols.append('tipo_transaccion')
 
         print(f"Filtering columns: {required_cols}")
         df = df[required_cols]
