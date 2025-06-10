@@ -96,14 +96,17 @@ class UOFUPLinkingAlgorithm:
                 omie_local_dates = omie_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
                 omie_prepared = omie_prepared[omie_local_dates == target_dt].copy()
 
-                #fill volumenes with 0 for hours with no data
-                omie_prepared['volumenes'] = omie_prepared['volumenes'].fillna(0)
+                # Drop rows where volumenes is 0 or NA
+                omie_prepared = omie_prepared[
+                    (omie_prepared['volumenes'] != 0) & 
+                    (omie_prepared['volumenes'].notna())
+                ]
 
                 #assure id_mercado column is integer
                 omie_prepared['id_mercado'] = omie_prepared['id_mercado'].astype(int)
 
-                #group by uof and hour, then average volumenes
-                omie_prepared = omie_prepared.groupby(['uof', 'hour', 'id_mercado'])['volumenes'].mean().reset_index()
+                #group by uof and hour, then sum volumenes
+                omie_prepared = omie_prepared.groupby(['uof', 'hour', 'id_mercado'])['volumenes'].sum().reset_index()
                 
                 print(f"✅ OMIE data prepared: {len(omie_prepared)} records, {omie_prepared['uof'].nunique()} unique UOFs")
             else:
@@ -120,14 +123,17 @@ class UOFUPLinkingAlgorithm:
                 i90_local_dates = i90_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
                 i90_prepared = i90_prepared[i90_local_dates == target_dt].copy()
 
-                #fill volumenes with 0 for hours with no data
-                i90_prepared['volumenes'] = i90_prepared['volumenes'].fillna(0)
+                # Drop rows where volumenes is 0 or NA
+                i90_prepared = i90_prepared[
+                    (i90_prepared['volumenes'] != 0) & 
+                    (i90_prepared['volumenes'].notna())
+                ]
 
                 #assure id_mercado column is integer
                 i90_prepared['id_mercado'] = i90_prepared['id_mercado'].astype(int)
 
-                #group by up and hour, then average volumenes
-                i90_prepared = i90_prepared.groupby(['up', 'hour', 'id_mercado'])['volumenes'].mean().reset_index()
+                #group by up and hour, then sum volumenes
+                i90_prepared = i90_prepared.groupby(['up', 'hour', 'id_mercado'])['volumenes'].sum().reset_index()
 
                 print(f"✅ I90 data prepared: {len(i90_prepared)} records, {i90_prepared['up'].nunique()} unique UPs")
             else:
@@ -476,9 +482,11 @@ class UOFUPLinkingAlgorithm:
                     raise ValueError("UPs to link not found in the active UPs list")
                 
             # Step 2: Extract and transform all data for target_date (today - 93 days ago)
-            #self.data_extractor.extract_data_for_matching(target_date)
-            #tranasform data and join diario + intra data for target_date into a single dataframe
+            self.data_extractor.extract_data_for_matching(target_date)
+            #transform data and join diario + intra data for target_date into a single dataframe
             all_data = self.data_extractor.transform_and_combine_data_for_linking(target_date)
+
+
             
             omie_combined = all_data.get('omie_combined')
             i90_combined = all_data.get('i90_combined')
@@ -563,7 +571,7 @@ async def example_usage():
     # Get the target date
     target_date = algorithm.config.get_linking_target_date()
     ups_to_link = None  # If None, all active UPs will be linked
-    links_df = await algorithm.link_uofs_to_ups(target_date, ups_to_link=ups_to_link)
+    links_df = await algorithm.link_uofs_to_ups("2025-03-07", ups_to_link=ups_to_link)
     print(links_df)
 
 if __name__ == "__main__":
