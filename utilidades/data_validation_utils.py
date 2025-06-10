@@ -8,10 +8,10 @@ class DataValidationUtils:
 
         #processed data structure requirements
         self.processed_price_required_cols = ['datetime_utc', "id_mercado", "precio"]
-        self.processed_volumenesi90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
+        self.processed_volumenes_i90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
         self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
         self.processed_volumenes_mic_required_cols = ['datetime_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
-        self.processed_volumenesi3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
+        self.processed_volumenes_i3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
 
         #raw data structure requirements
         self.raw_price_required_cols = ['datetime_utc', 'value', 'indicador_id']
@@ -154,9 +154,9 @@ class DataValidationUtils:
             if validation_schema_type == "precios" or validation_schema_type == "precios_i90":
                 required_cols = self.processed_price_required_cols
             elif validation_schema_type == "volumenes_i90":
-                required_cols = self.processed_volumenesi90_required_cols
+                required_cols = self.processed_volumenes_i90_required_cols
             elif validation_schema_type == "volumenes_i3":
-                required_cols = self.processed_volumenesi3_required_cols
+                required_cols = self.processed_volumenes_i3_required_cols
             elif validation_schema_type == "volumenes_omie":
                 required_cols = self.processed_volumenes_omie_required_cols
             elif validation_schema_type == "volumenes_mic":

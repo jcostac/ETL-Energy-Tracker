@@ -629,25 +629,22 @@ class I90Processor:
     # === COLUMN FINALIZATION ===
     def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """Selects, orders, and standardizes final columns, filtering by required columns."""
-
+     
         if "Unidad de Programación" in df.columns:
             df = df.rename(columns={"Unidad de Programación": "up"})
 
         if dataset_type == 'volumenes_i90':
-           required_cols = self.data_validation_utils.processed_volumenesi90_required_cols
+            required_cols = self.data_validation_utils.processed_volumenes_i90_required_cols.copy()
         elif dataset_type == 'precios_i90':
             #rename precios to precio
             df = df.rename(columns={'precios': 'precio'})
-            required_cols = self.data_validation_utils.processed_price_required_cols
+            required_cols = self.data_validation_utils.processed_price_required_cols.copy()
 
-           # ADD TIPO TRANSACCIÓN HANDLING
+        # ADD TIPO TRANSACCIÓN HANDLING - only if column exists
         if "Tipo Transacción" in df.columns:
             df = df.rename(columns={"Tipo Transacción": "tipo_transaccion"})
             required_cols.append('tipo_transaccion')
-
         print(f"Filtering columns: {required_cols}")
-        df = df[required_cols]
-
         return df
 
     def _get_value_col(self, dataset_type: str) -> Optional[str]:

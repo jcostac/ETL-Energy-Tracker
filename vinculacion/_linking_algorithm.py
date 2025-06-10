@@ -105,6 +105,7 @@ class UOFUPLinkingAlgorithm:
                 #assure id_mercado column is integer
                 omie_prepared['id_mercado'] = omie_prepared['id_mercado'].astype(int)
 
+                
                 #group by uof and hour, then sum volumenes
                 omie_prepared = omie_prepared.groupby(['uof', 'hour', 'id_mercado'])['volumenes'].sum().reset_index()
                 
@@ -116,6 +117,11 @@ class UOFUPLinkingAlgorithm:
             # Prepare I90 data (UPs)
             i90_prepared = i90_data.copy()
             if 'up' in i90_prepared.columns and 'volumenes' in i90_prepared.columns:
+
+                #if tipo_transaccion is in the columns, filter by "Mercado"
+                if 'tipo_transaccion' in i90_prepared.columns:
+                    i90_prepared = i90_prepared[i90_prepared['tipo_transaccion'] == 'Mercado']
+
                 i90_prepared = i90_prepared[['datetime_utc', 'up', 'volumenes', 'id_mercado']].copy()
                 i90_prepared['hour'] = i90_prepared['datetime_utc'].dt.hour
                 
@@ -129,8 +135,6 @@ class UOFUPLinkingAlgorithm:
                     (i90_prepared['volumenes'].notna())
                 ]
 
-                #assure id_mercado column is integer
-                i90_prepared['id_mercado'] = i90_prepared['id_mercado'].astype(int)
 
                 #group by up and hour, then sum volumenes
                 i90_prepared = i90_prepared.groupby(['up', 'hour', 'id_mercado'])['volumenes'].sum().reset_index()
@@ -144,11 +148,6 @@ class UOFUPLinkingAlgorithm:
             print(f"❌ Error preparing volume data: {e}")
             raise e
         
-        #save to csv
-        omie_prepared.to_csv(f"omie_prepared_{target_date}.csv", index=False)
-        i90_prepared.to_csv(f"i90_prepared_{target_date}.csv", index=False)
-
-        breakpoint()
             
         return omie_prepared, i90_prepared
     
@@ -499,7 +498,7 @@ class UOFUPLinkingAlgorithm:
             
             # Filter for active UPs only
             i90_prepared_active = i90_prepared[i90_prepared['up'].isin(active_ups['up'])]
-            print(f"🔍 UPs after filtering: {len(i90_prepared)} -> {len(i90_prepared_active)}")
+            print(f"🔍 UPs after filtering: {len(i90_prepared['up'].unique())} -> {len(i90_prepared_active['up'].unique())}")
             
             # --- ROUND 1: Matching on target_date ---
             print("\n\n--- ROUND 1: MATCHING ON TARGET DATE ---")
@@ -519,8 +518,13 @@ class UOFUPLinkingAlgorithm:
                 
                 historical_date = (pd.to_datetime(target_date) - timedelta(days=1)).strftime('%Y-%m-%d')
                 
-                #self.data_extractor.extract_data_for_matching(historical_date)
+                #extract data for historical date
+                self.data_extractor.extract_data_for_matching(historical_date)
+
+                #transform data and join diario + intra data for historical date into a single dataframe
                 historic_data = self.data_extractor.transform_and_combine_data_for_linking(historical_date)
+
+                #get omie and i90 data from historic data
                 omie_hist = historic_data.get('omie_combined')
                 i90_hist = historic_data.get('i90_combined')
 
@@ -571,7 +575,7 @@ async def example_usage():
     # Get the target date
     target_date = algorithm.config.get_linking_target_date()
     ups_to_link = None  # If None, all active UPs will be linked
-    links_df = await algorithm.link_uofs_to_ups("2025-03-07", ups_to_link=ups_to_link)
+    links_df = await algorithm.link_uofs_to_ups("2025-03-08", ups_to_link=ups_to_link)
     print(links_df)
 
 if __name__ == "__main__":
