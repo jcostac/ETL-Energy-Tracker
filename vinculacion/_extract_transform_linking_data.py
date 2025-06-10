@@ -103,7 +103,6 @@ class VinculacionDataExtractor:
         
         if i90_result['status']['success'] and 'diario' in i90_result['data']:
             i90_data = i90_result['data']['diario']
-
             if i90_data is not None and not i90_data.empty:
                 transformed_diario_data['i90_diario'] = i90_data
                 print(f"✅ I90 diario: {len(i90_data)} records extracted")
@@ -167,7 +166,7 @@ class VinculacionDataExtractor:
                 if intra_transformed is not None and not intra_transformed.empty:
                     # Split by intra session using id_mercado
                     # Session mapping: session 1 = id_mercado 2, session 2 = id_mercado 3, session 3 = id_mercado 4
-                    session_mapping = {"2": 1, "3": 2, "4": 3}  # id_mercado: session_number
+                    session_mapping = {2: 1, 3: 2, 4: 3}  # id_mercado: session_number
                     
                     for id_mercado, session_num in session_mapping.items():
                         #filter the data by the id_mercado
@@ -272,7 +271,7 @@ class VinculacionDataExtractor:
         i90_dfs = []
         if 'i90_diario' in diario_data and not diario_data['i90_diario'].empty:
             df = diario_data['i90_diario'].copy()
-            df['id_mercado'] = "1" # Diario is market 1
+            df['id_mercado'] = 1 # Diario is market 1
             i90_dfs.append(df)
             
         i90_intra_keys = [k for k in intra_data.keys() if k.startswith('i90_intra_')]
@@ -287,3 +286,12 @@ class VinculacionDataExtractor:
 
         return {'omie_combined': omie_combined, 'i90_combined': i90_combined}
         
+
+def example_usage():
+    data_extractor = VinculacionDataExtractor()
+    data_extractor.transform_intra_data_for_matching("2025-03-07")
+    data_extractor.extract_data_for_matching("2025-03-07")
+
+
+if __name__ == "__main__":
+    example_usage()
