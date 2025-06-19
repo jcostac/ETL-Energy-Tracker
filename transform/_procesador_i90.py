@@ -14,7 +14,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from configs.i90_config import (
         I90Config, # Base might be useful too
         DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig,
-        CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
+        CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig,
+        IntraConfig
     )
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
@@ -733,6 +734,9 @@ class I90Processor:
             (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
             (self._validate_final_data, {"dataset_type": dataset_type}),
         ]
+
+        if isinstance(market_config, IntraConfig):
+            pipeline.append((self._process_intra_data, {"dataset_type": dataset_type}))
 
         try:
             df_processed = df.copy()
