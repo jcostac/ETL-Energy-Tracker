@@ -353,7 +353,7 @@ class OMIEDownloader:
             # Extract the date part directly
             df['Fecha'] = df['Fecha'].dt.date
  
-        # Add session column for Intradiario if filename provided
+        # Add session column and grouping dups for intra dataset
         if self.mercado == "intra":
             # Extract session from filename - handle .1 extension properly
             if file_name.endswith('.1'):
@@ -366,13 +366,11 @@ class OMIEDownloader:
             if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
                 df["sesion"] = int(session_str)
                 df["sesion"] = df["sesion"].astype("Int64")
-                print(f"Added [sesion] column with value: {session_str}")
+                print(f"Added sesion column with value: {session_str}")
             else:
                 print(f"Session '{session_str}' not in valid session list")
 
-        # Check for duplicates and group them (only for diario and intra markets, not continuo)
-        if self.mercado in ["diario", "intra"]:
-            # Check if there are duplicates
+            # Check if there are duplicates for intra market
             duplicate_count = df.duplicated().sum()
             if duplicate_count > 0:
                 print(f"Found {duplicate_count} duplicate rows. Grouping and aggregating...")

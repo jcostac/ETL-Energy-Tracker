@@ -144,6 +144,8 @@ class RawFileUtils(StorageFileUtils):
             print("Actual duplicates:")
             print(duplicates.head(10))
             print(duplicates.tail(10))
+        else:
+            print("No duplicates found")
         
         return df_without_duplicates
 
