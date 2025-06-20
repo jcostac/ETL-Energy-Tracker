@@ -56,6 +56,7 @@ class OMIEExtractor:
 
             # If start date > end date, raise error
             if fecha_inicio_carga_dt > fecha_fin_carga_dt:
+                print(f"Wrong input dates: {fecha_inicio_carga} > {fecha_fin_carga}")
                 raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
             
             print(f"Descargando datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
@@ -90,7 +91,7 @@ class OMIEExtractor:
             Exception: If there is an error during the extraction process
         """
         # Validate input dates
-        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
 
         # Convert to datetime objects
         fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
@@ -171,10 +172,10 @@ class OMIEExtractor:
         Note:
             After 2024-06-13, only Intra 1-3 are available due to regulatory changes
         """
-      
+    
         # Validate input dates
-        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
-
+        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        
         # Convert to datetime objects
         fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
         fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
@@ -233,7 +234,6 @@ class OMIEExtractor:
 
         return duplicates_df, None
 
-
     def extract_omie_continuo(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
         Extract continuous market data from OMIE.
@@ -247,7 +247,8 @@ class OMIEExtractor:
             None
         """
         # Validate input dates
-        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        
 
         # Convert to datetime objects
         fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
@@ -296,6 +297,9 @@ class OMIEExtractor:
         Returns:
             Dict: Dictionary containing success status and details of the extraction process
         """
+        # Validate input dates BEFORE starting any extraction
+        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        
         if (fecha_fin_carga is None and fecha_inicio_carga is None) or fecha_fin_carga == fecha_inicio_carga:
             date_range_str = f"Single day download for latest available day"
         else:

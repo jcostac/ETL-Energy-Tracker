@@ -35,3 +35,4 @@ if __name__ == "__main__":
     omie_download_multiple_days()
     time.sleep(10)
     omie_download_market_specific()
+
