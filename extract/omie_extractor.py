@@ -98,7 +98,6 @@ class OMIEExtractor:
         fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
 
         print(f"Processing market: diario")
-        duplicates_df = pd.DataFrame()
         # Download data for each day in the range
         for day in tqdm(pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt), desc="Extracting diario data"):
             # Extract year and month from date
@@ -123,13 +122,11 @@ class OMIEExtractor:
                                 # Add ID column for raw storage
                                 df['id_mercado'] = 1  # ID for daily market
                                 
-                                duplicates_df_day = self.raw_file_utils.write_raw_csv(
+                                self.raw_file_utils.write_raw_csv(
                                     year=year, month=month, df=df,
                                     dataset_type='volumenes_omie',
                                     mercado='diario'
                                 )
-
-                                duplicates_df = pd.concat([duplicates_df, duplicates_df_day])
 
                                 print(f"✅ Successfully saved raw diario data for {day_str}")
                             else:
@@ -139,21 +136,20 @@ class OMIEExtractor:
                         df = month_data
                         if df is not None and not df.empty:
                             df['id_mercado'] = 1
-                            duplicates_df_day = self.raw_file_utils.write_raw_csv(
+
+                            self.raw_file_utils.write_raw_csv(
                                 year=year, month=month, df=df,
                                 dataset_type='volumenes_omie',
                                 mercado='diario'
                             )
                             print(f"✅ Successfully saved raw diario data for {day_str}")
 
-                            duplicates_df = pd.concat([duplicates_df, duplicates_df_day])
-
             except Exception as e:
                 error_msg = f"Error downloading diario data for {day_str}: {e}"
                 print(f"  ❌ {error_msg}")
-                return duplicates_df, error_msg
+                raise e
             
-        return duplicates_df, None
+
 
     def extract_omie_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
                           intra_lst: Optional[List[int]] = None) -> None:
@@ -181,7 +177,6 @@ class OMIEExtractor:
         fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
 
         print(f"Processing market: intra")
-        duplicates_df = pd.DataFrame()
         # Download data for each day in the range
         for day in tqdm(pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt), desc="Extracting intra data"):
             # Extract year and month from date
@@ -214,15 +209,13 @@ class OMIEExtractor:
                                     df.loc[session_2_mask, 'Fecha'] == day.date(), 3, 8
                                 )
 
-
-                                duplicates_df_day = self.raw_file_utils.write_raw_csv(
+                                
+                                self.raw_file_utils.write_raw_csv(
                                         year=year, month=month, df=df,
                                         dataset_type='volumenes_omie',
                                         mercado='intra'
                                     )
-                                
-                                duplicates_df = pd.concat([duplicates_df, duplicates_df_day])
-                            
+                                                        
                                 print(f"✅ Successfully saved raw intra data for {day_str}")
                             else:
                                 print(f" ⚠️ No intra data found for {day_str}. Nothing was saved to raw folder.")
@@ -230,9 +223,7 @@ class OMIEExtractor:
             except Exception as e:
                 error_msg = f"Error downloading intra data for {day_str}: {e}"
                 print(f"  ❌ {error_msg}")
-                return duplicates_df, error_msg
-
-        return duplicates_df, None
+                raise e 
 
     def extract_omie_continuo(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
@@ -365,7 +356,7 @@ class OMIEExtractor:
         """
         try:
             if extract_function == self.extract_omie_diario or extract_function == self.extract_omie_intra:
-                duplicates_df, error_msg = extract_function(fecha_inicio_carga, fecha_fin_carga)
+                error_msg = extract_function(fecha_inicio_carga, fecha_fin_carga)
 
                 if error_msg: #for diario and intra market bc we dont raise an error for these markets but rather return a df and an error msg
                     raise Exception(error_msg)
@@ -383,7 +374,7 @@ class OMIEExtractor:
         except Exception as e:
             status_details["markets_failed"].append({
                 "market": market_name,
-                "error": str(e)
+                "error": error_msg
             })
             return False
 

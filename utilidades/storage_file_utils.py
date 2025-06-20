@@ -136,30 +136,16 @@ class RawFileUtils(StorageFileUtils):
          # First remove exact duplicates across all columns
         df_before = len(df)
         duplicates = df[df.duplicated(keep=False)]  # Get all duplicates
-        df = df.drop_duplicates(keep='last')  
-        exact_dups = df_before - len(df)
+        df_without_duplicates = df.drop_duplicates(keep='last')  
+        exact_dups = df_before - len(df_without_duplicates)
         
-        try:
-            if exact_dups > 0:
-                print(f"Removed {exact_dups} exact duplicate rows")
-                print("Actual duplicates:")
-                print(duplicates.head(10))
-                print(duplicates.tail(10))
-
-                if "Unidad" in df.columns:
-                    # Group by Unidad and Fecha, then aggregate id_mercado
-                    duplicates_grouped = duplicates.groupby(["Unidad", "Fecha", "id_mercado", "Hora"]).size().reset_index(name='count')
-                    duplicates_df = duplicates_grouped[["Unidad", "Fecha", "id_mercado", "Hora", "count"]]
-                    return df, duplicates_df
-                else:
-                    return df, pd.DataFrame()
+        if exact_dups > 0:
+            print(f"Removed {exact_dups} exact duplicate rows")
+            print("Actual duplicates:")
+            print(duplicates.head(10))
+            print(duplicates.tail(10))
         
-            else:
-                    return df, pd.DataFrame()
-        
-        except Exception as e: #for datasets that do not have unidad column, return empty df *ALL DATASETS EXCEPT FOR OMIE WILL NOT HAVE UNIDAD COLUMN*
-            print(f"Error dropping raw duplicates: {e}")
-            raise e
+        return df_without_duplicates
 
     #@deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
     def write_raw_csv(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
@@ -201,7 +187,7 @@ class RawFileUtils(StorageFileUtils):
                     #only if mercado is not continuo, because we want to keep all the data for continuo (there can be exact dups)
                     if mercado != "continuo":
                         print("Dropping raw duplicates")
-                        combined_df, duplicates_df = self.drop_raw_duplicates(combined_df)
+                        combined_df = self.drop_raw_duplicates(combined_df)
                     else:
                         print("Not dropping raw duplicates for continuo market")
                     
@@ -209,29 +195,23 @@ class RawFileUtils(StorageFileUtils):
                     combined_df.to_csv(full_file_path, index=False)
                     print(f"Successfully updated existing file: {filename}")
 
-                    return duplicates_df
-                    
                 except pd.errors.EmptyDataError:
                     # Handle case where existing file is empty
                     df.to_csv(full_file_path, index=False)
                     print(f"Replaced empty file with new data: {filename}")
 
-                    return duplicates_df
-                    
                 except Exception as e:
                     print(f"Error reading existing file {filename}: {str(e)}")
-                    raise
+                    raise 
                     
-            else:
+            else: #if file does not exist, create it by saving directly onto filepath
                 if mercado != "continuo":
                     print("Dropping raw duplicates")
-                    df, duplicates_df = self.drop_raw_duplicates(df)
+                    df = self.drop_raw_duplicates(df)
                     # Create new file if it doesn't exist
                     df.to_csv(full_file_path, index=False)
                     print(f"Created new file: {filename}")
 
-                return duplicates_df
-                
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")
             raise
