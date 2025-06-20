@@ -26,9 +26,9 @@ class DescargadorESIOS:
     def __init__(self):
 
         #get esios token from environment variable
-        self.esios_token = os.getenv('ESIOS_API_KEY')
+        self.esios_token = os.getenv('ESIOS_TOKEN')
         if not self.esios_token:
-            raise ValueError("ESIOS_API_KEY environment variable not set.")
+            raise ValueError("ESIOS_TOKEN environment variable not set.")
         
         #download window in days
         self.download_window = 93

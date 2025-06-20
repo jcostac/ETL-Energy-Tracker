@@ -30,7 +30,7 @@ class I90Downloader:
     
     def __init__(self):
         """Initialize the I90 downloader with ESIOS API token"""
-        self.esios_token = os.getenv('ESIOS_API_KEY')
+        self.esios_token = os.getenv('ESIOS_TOKEN')
         self.config = I90Config()
         self.lista_errores = self.config.get_error_data()
         self.temporary_download_path = self.config.temporary_download_path
