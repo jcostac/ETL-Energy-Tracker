@@ -901,7 +901,6 @@ class I90Processor:
             print(f"   UPs in baseline: {baseline_df['up'].nunique()}")
             print(f"   Time range: {baseline_df['datetime_utc'].min()} to {baseline_df['datetime_utc'].max()}")
 
-            breakpoint()
             
             return baseline_df
             
@@ -953,7 +952,6 @@ class I90Processor:
             session_result_df['id_mercado'] = session_id
             
             print(f"   ✅ Differences calculated: {len(session_result_df)} non-zero programs")
-            breakpoint()
             
             return session_result_df
             

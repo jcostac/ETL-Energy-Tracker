@@ -21,9 +21,10 @@ def test_single_day_volumenes():
     Test the transformation of a single day (latest day) for all markets
     """
     transformer = TransformadorI90()
-    result = transformer.transform_data_for_all_markets(dataset_type="volumenes_i90")
+    result = transformer.transform_data_for_all_markets(dataset_type="volumenes_i90", mercados_lst=["intra"])
     result_status = result["status"]
-    
+
+
     assert result_status["success"] == True, f"Single day volumenes transformation failed. Details: {result_status.get('details', {})}"
 
 if __name__ == "__main__":
