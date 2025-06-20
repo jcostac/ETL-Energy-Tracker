@@ -174,13 +174,13 @@ cython_debug/
 .pypirc
 
 #ignore all files in the data/raw directory
-data/raw/*
+data_lake/raw/*
 
 #ignore all files in the data/processed directory
-data/processed/*
+data_lake/processed/*
 
 #ignore all files in the data/temporary directory
-data/temporary/*
+data_lake/temporary/*
 
 #ignore all files in the tests directory
 tests/*

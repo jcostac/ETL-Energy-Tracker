@@ -12,7 +12,7 @@ def omie_download_single_day():
     Test the download of the omie for a single day for all markets
     """
     extractor = OMIEExtractor()
-    extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-01", fecha_fin_carga="2023-01-01")
+    extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-01", fecha_fin_carga="2025-03-01")
 
 def omie_download_multiple_days():
     """
@@ -31,8 +31,8 @@ def omie_download_market_specific():
 
 if __name__ == "__main__":
     omie_download_single_day()
-    time.sleep(10)
+    time.sleep(5)
     omie_download_multiple_days()
-    time.sleep(10)
+    time.sleep(5)
     omie_download_market_specific()
 

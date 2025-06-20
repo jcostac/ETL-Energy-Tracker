@@ -149,8 +149,6 @@ class OMIEExtractor:
                 print(f"  ❌ {error_msg}")
                 raise e
             
-
-
     def extract_omie_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
                           intra_lst: Optional[List[int]] = None) -> None:
         """
@@ -377,36 +375,4 @@ class OMIEExtractor:
                 "error": error_msg
             })
             return False
-
-def example_usage():
-    omie_extractor = OMIEExtractor()
-    fecha_inicio_carga = "2024-01-01"
-    fecha_fin_carga = "2024-12-31"
-
-    #omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
-    duplicates_df_intra, _ = omie_extractor.extract_omie_intra(fecha_inicio_carga=fecha_inicio_carga, fecha_fin_carga=fecha_fin_carga)
-    print(len(duplicates_df_intra))
-    #duplicates_df_diario = omie_extractor.extract_omie_diario(fecha_inicio_carga="2024-01-01", fecha_fin_carga="2024-12-31")
-    #print(len(duplicates_df_diario))
-    #omie_extractor.extract_omie_continuo(fecha_inicio_carga="2025-02-25", fecha_fin_carga="2025-02-27")
-    #save as excels+
-
-    try:
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
-        csv_dir = os.path.join(project_root, "data/temporary")
-        os.makedirs(csv_dir, exist_ok=True)
-        csv_path = os.path.join(csv_dir, "duplicates_intra.csv")
-        duplicates_df_intra.to_csv(csv_path, index=False)
-        print(f"✅ Successfully saved raw dups for {fecha_inicio_carga} to {fecha_fin_carga}")
-
-    except Exception as e:
-        print(f"Error saving excels: {e}") 
-       #duplicates_df_intra.to_csv(r"/Users/jjcosta/Desktop/git_repo/timescale_v_duckdb_testing/data/temporary/duplicates_intra.csv", index=False)
-        #duplicates_df_diario.to_csv("data/temporary/duplicates_diario.csv", index=False)
-
-
-
-if __name__ == "__main__":
-    example_usage()
-
 
