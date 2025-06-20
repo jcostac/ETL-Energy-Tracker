@@ -730,8 +730,10 @@ class I90Processor:
         print("="*70)
         
         try:        
-            # Get the date (assuming all data is for the same day)
-            target_date = df['datetime_utc'].iloc[0].date()
+             # Get the date by taking unique dates from datetime_utc and selecting the latest one
+            unique_dates = df['datetime_utc'].dt.date.unique()
+            target_date = max(unique_dates)  # Get the latest/last date
+            print(f"Target date for cumulative calculations: {target_date}")
             target_year = target_date.year
             target_month = target_date.month
             
@@ -741,8 +743,6 @@ class I90Processor:
             
             # Load corresponding diario data
             diario_df = self._load_diario_data_for_intra(target_year, target_month, target_date, dataset_type)
-
-            breakpoint()
             
             if diario_df.empty:
                 print("⚠️  No diario data found. Returning original intra data without processing.")
@@ -757,12 +757,9 @@ class I90Processor:
                 intra_dfs[session_id] = session_data
                 print(f"📋 Session {session_id}: {len(session_data)} records")
 
-            breakpoint()
             
             # Prepare diario data as baseline (session 0)
             diario_processed = self._prepare_diario_baseline(diario_df, target_date)
-
-            breakpoint()
             
             if diario_processed.empty:
                 print("⚠️  No processed diario data available. Cannot calculate cumulative differences.")
@@ -773,7 +770,6 @@ class I90Processor:
             previous_session_data = diario_processed  #start with diario data as previous session kinda like a session 0
             
             for session_id in sorted(intra_dfs.keys()): #ie session_id = 2, 3, 4
-                print(f"\n🔢 Calculating differences for Session {session_id}")
                 
                 current_session = intra_dfs[session_id]
                 
@@ -815,6 +811,7 @@ class I90Processor:
         Returns:
             pd.DataFrame: Diario data for the target date
         """
+        print("="*70)
         print(f"\n📂 Loading diario data for {target_date}")
         
         try:
@@ -869,8 +866,8 @@ class I90Processor:
         """
         if diario_df.empty:
             return pd.DataFrame()
-            
-        print(f"🔧 Preparing diario baseline for {target_date}")
+        print("="*70)
+        print(f"\n🔧 Preparing diario baseline for {target_date}")
         
         try:
             baseline_df = diario_df.copy()
@@ -903,6 +900,8 @@ class I90Processor:
             print(f"✅ Baseline prepared: {len(baseline_df)} records")
             print(f"   UPs in baseline: {baseline_df['up'].nunique()}")
             print(f"   Time range: {baseline_df['datetime_utc'].min()} to {baseline_df['datetime_utc'].max()}")
+
+            breakpoint()
             
             return baseline_df
             
@@ -924,6 +923,8 @@ class I90Processor:
             pd.DataFrame: DataFrame with calculated differences
         """
         try:
+            print("="*70)
+            print(f"\n🔧 Calculating differences for Session {session_id}")
             print(f"   📊 Current session records: {len(current_session)}")
             print(f"   📊 Previous session records: {len(previous_session)}")
             
@@ -952,6 +953,7 @@ class I90Processor:
             session_result_df['id_mercado'] = session_id
             
             print(f"   ✅ Differences calculated: {len(session_result_df)} non-zero programs")
+            breakpoint()
             
             return session_result_df
             
