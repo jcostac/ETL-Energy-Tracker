@@ -26,9 +26,9 @@ class DescargadorESIOS:
     def __init__(self):
 
         #get esios token from environment variable
-        self.esios_token = os.getenv('ESIOS_TOKEN')
+        self.esios_token = os.getenv('ESIOS_API_KEY')
         if not self.esios_token:
-            raise ValueError("ESIOS_TOKEN environment variable not set.")
+            raise ValueError("ESIOS_API_KEY environment variable not set.")
         
         #download window in days
         self.download_window = 93
@@ -179,7 +179,7 @@ class DescargadorESIOS:
     def _handle_response_error(self, response: requests.Response, indicator_id: str):
         """Helper method to raise appropriate errors based on status code."""
         if response.status_code == 401:
-            raise ValueError(f"Authentication error (401): Invalid or expired ESIOS_TOKEN.")
+            raise ValueError(f"Authentication error (401): Invalid or expired ESIOS_API_KEY.")
         elif response.status_code == 403:
             raise ValueError(f"Forbidden (403): Check API token permissions or IP restrictions. Response: {response.text[:200]}")
         elif response.status_code == 404:
