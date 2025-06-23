@@ -175,12 +175,15 @@ cython_debug/
 
 #ignore all files in the data/raw directory
 data_lake/raw/*
+data/raw/*
 
 #ignore all files in the data/processed directory
 data_lake/processed/*
+data/processed/*
 
 #ignore all files in the data/temporary directory
 data_lake/temporary/*
+data/temporary/*
 
 #ignore all files in the tests directory
 tests/*

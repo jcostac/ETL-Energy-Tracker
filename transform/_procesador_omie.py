@@ -81,24 +81,17 @@ class OMIEProcessor:
         print("-"*30)
         
         if 'Hora' in df.columns:
-            # Get unique values from Hora column
-            unique_horas = df['Hora'].unique()
-            max_hora = max(unique_horas)
-            
-            # Determine granularity based on max hora value
-            if max_hora > 25:
-                granularity = 'Quince minutos'
-            else:
-                granularity = 'Hora'
+            granularity = 'Hora'
+
+        elif "Periodo" in df.columns:
+            granularity = 'Quince minutos'
             
             # Add granularity column
             df['granularity'] = granularity
             
-            print(f"   Unique hora values: {sorted(unique_horas)}")
-            print(f"   Max hora value: {max_hora}")
             print(f"   Assigned granularity: {granularity}")
         else:
-            print("   ⚠️  'Hora' column not found, skipping granularity assignment")
+            raise Exception("'Hora' or 'Periodo' column not found, skipping granularity assignment")
         
         print("-"*30)
         return df
@@ -268,10 +261,31 @@ class OMIEProcessor:
             df['fecha_fichero'] = df['Fecha'].dt.strftime('%Y-%m-%d')
         
         elif mercado in ['diario', 'intra']:
-            # For diario and intra markets, keep Hora as 1-based integer for DST parsing
-            if 'Hora' in df.columns:
-                df['Hora'] = df['Hora'].astype(int)  # Keep 1-based
-                print(f"   Kept Hora as 1-based for {mercado} market DST parsing")
+
+            #if granularity is quince minutos, parse the Periodo column to create the Hora column
+            if df['granularity'] == 'Quince minutos':
+                if 'Periodo' in df.columns:
+                    print(f"   Found 'Periodo' column, data is in quince minutos granularity, parsing to create 'Hora' for {mercado} market")
+
+                # Expected format: HxQy where x is hour (1-24) and y is quarter (1-4)
+                periodo_regex = r'H(\d{1,2})Q(\d)'
+                
+                # Extract hour and quarter
+                extracted = df['Periodo'].str.extract(periodo_regex)
+                extracted.columns = ['hour_str', 'quarter_str']
+                
+                # Convert to numeric
+                hour = pd.to_numeric(extracted['hour_str'])
+                quarter = pd.to_numeric(extracted['quarter_str'])
+                
+                # Calculate 15-minute interval index (1-based)
+                # (hour - 1) * 4 gives the start of the hour block-
+                # + quarter gives the specific interval, ex: H2Q1 becomes period 
+                df['Hora'] = (hour - 1) * 4 + quarter
+                
+                print(f"   Successfully created 'Hora' as 15-min interval index from 'Periodo'")
+            
+            df['Hora'] = df['Hora'].astype(int)  # Keep 1-based, conver to int
         
         print(f"   Standardized Fecha and Hora columns for {mercado} market")
         print("-"*30)
