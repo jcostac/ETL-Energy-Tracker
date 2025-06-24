@@ -132,17 +132,22 @@ class OMIEProcessor:
             if 'Energía Compra/Venta' in df.columns:
                 # Clean and convert to numeric
                 df['Energía Compra/Venta'] = clean_numeric_column(df['Energía Compra/Venta'])
-                
-                # Apply buy/sell multiplier logic
-                if 'Tipo Oferta' in df.columns:
-                    #if casada then set multiplier to -1, otherwise 1
-                    df['Extra'] = np.where(df['Tipo Oferta'] == 'C', -1, 1)
-                    df['Energía Compra/Venta'] = df['Energía Compra/Venta'] * df['Extra']
-                    print(f"   Applied buy/sell multiplier")
-                
-                # Rename to standard column name
                 df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
                 print(f"   Processed and renamed 'Energía Compra/Venta' to 'volumenes'")
+
+            if 'Potencia Compra/Venta' in df.columns:
+                df['Potencia Compra/Venta'] = clean_numeric_column(df['Potencia Compra/Venta'])
+                #convert to energy since we are given power per hour not per 15 minutes
+                df['Potencia Compra/Venta'] = df['Potencia Compra/Venta'] / 4 
+                df = df.rename(columns={'Potencia Compra/Venta': 'volumenes'})
+                print(f"   Processed and renamed 'Potencia Compra/Venta' to 'volumenes'")
+                
+            # Apply buy/sell multiplier logic
+            if 'Tipo Oferta' in df.columns:
+                #if casada then set multiplier to -1, otherwise 1
+                df['Extra'] = np.where(df['Tipo Oferta'] == 'C', -1, 1)
+                df['Energía Compra/Venta'] = df['Energía Compra/Venta'] * df['Extra']
+                print(f"   Applied buy/sell multiplier")          
         
         elif mercado == 'continuo':
             # For continuo market, process Cantidad column
