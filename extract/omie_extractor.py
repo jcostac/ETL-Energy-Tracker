@@ -114,11 +114,12 @@ class OMIEExtractor:
 
                 #diario data is a dict with keys as months and values as the dataframes for a market
                 for month_data in diario_data.values():
-
-                    # month_data is a list of DataFrames, so we need to iterate through it
                     if isinstance(month_data, list):
                         for df in month_data:
                             if df is not None and not df.empty:
+                                # Standardize column names before processing
+                                df = self._standardize_column_names(df)
+                                
                                 # Add ID column for raw storage
                                 df['id_mercado'] = 1  # ID for daily market
                                 
@@ -135,6 +136,7 @@ class OMIEExtractor:
                         # Handle case where it's directly a DataFrame (fallback)
                         df = month_data
                         if df is not None and not df.empty:
+                            df = self._standardize_column_names(df)
                             df['id_mercado'] = 1
 
                             self.raw_file_utils.write_raw_csv(
@@ -194,9 +196,10 @@ class OMIEExtractor:
                     if isinstance(month_data, list):
                         for df in month_data:
                             if df is not None and not df.empty:
-
+                                # Standardize column names before processing
+                                df = self._standardize_column_names(df)
+                                
                                 # Add ID column for raw storage - conditional assignment
-                                # Default: session + 1 for all rows
                                 df['id_mercado'] = df['sesion'] + 1
                                 
                                 # Override for session 2 id mercado (rewrite based on intra sesion logic): check if delivery date matches
@@ -375,4 +378,39 @@ class OMIEExtractor:
                 "error": error_msg
             })
             return False
+
+    def _standardize_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardize OMIE column names to maintain consistency across different data formats.
+        From mid-March 2025, OMIE changed:
+        - 'Hora' -> 'Periodo' 
+        - 'Energía Compra/Venta' -> 'Potencia Compra/Venta'
+        
+        This method renames them back to the original format for consistency.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with potentially new column names
+            
+        Returns:
+            pd.DataFrame: DataFrame with standardized column names
+        """
+        if df is None or df.empty:
+            return df
+            
+        # Create a copy to avoid modifying the original
+        df_standardized = df.copy()
+        
+        # Standardize column names
+        column_mapping = {
+            'Periodo': 'Hora',  # Rename Periodo back to Hora
+            'Potencia Compra/Venta': 'Energía Compra/Venta'  # Rename Potencia back to Energía
+        }
+        
+        # Apply renaming only if columns exist
+        for old_name, new_name in column_mapping.items():
+            if old_name in df_standardized.columns:
+                df_standardized = df_standardized.rename(columns={old_name: new_name})
+                print(f"   Standardized column: '{old_name}' -> '{new_name}'")
+        
+        return df_standardized
 

@@ -69,37 +69,41 @@ class OMIEProcessor:
     def _add_granularity_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add granularity column based on the unique values in the 'Hora' column.
-        If max hora value > 25, assigns 'Quince minutos', otherwise 'Hora'.
+        Now that columns are standardized, we always check 'Hora' column.
         
         Args:
             df (pd.DataFrame): Input DataFrame with 'Hora' column
             
         Returns:
-            pd.DataFrame: DataFrame with added 'granularidad' column
+            pd.DataFrame: DataFrame with added 'granularity' column
         """
         print("\n⏱️ ADDING GRANULARITY COLUMN")
         print("-"*30)
         
         if 'Hora' in df.columns:
-            granularity = 'Hora'
-
-        elif "Periodo" in df.columns:
-            granularity = 'Quince minutos'
-            
-            # Add granularity column
-            df['granularity'] = granularity
-            
-            print(f"   Assigned granularity: {granularity}")
+            # Check if Hora contains H2Q4 format (15-minute intervals)
+            sample_hora = str(df['Hora'].iloc[0]) if not df.empty else None
+            if 'H' in sample_hora and 'Q' in sample_hora:
+                #if H2Q4 format, then 15-minute granularity
+                granularity = 'Quince minutos'
+            else:
+                #if not H2Q4 format, then hourly granularity
+                granularity = 'Hora'
         else:
-            raise Exception("'Hora' or 'Periodo' column not found, skipping granularity assignment")
+            raise Exception("'Hora' column not found, cannot determine granularity")
         
+        # Add granularity column
+        df['granularity'] = granularity
+        
+        print(f"   Assigned granularity: {granularity}")
         print("-"*30)
         return df
     
     def _process_and_filter_energy_column(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
         Process energy columns and apply filtering/multipliers based on market type.
-        Consolidates energy column cleaning, filtering, and buy/sell logic.
+        Now that column names are standardized in extract phase, we always expect 'Energía Compra/Venta'.
+        Division by 4 only occurs when we detect 15-minute granularity (H2Q4 format).
         
         Args:
             df (pd.DataFrame): Input DataFrame
@@ -128,26 +132,30 @@ class OMIEProcessor:
                 df = df[df['Ofertada (O)/Casada (C)'] == 'C']
                 print(f"   Filtered to matched units: {len(df)} rows")
             
-            # Process energy column
+            # Process energy column (now standardized to always be 'Energía Compra/Venta')
             if 'Energía Compra/Venta' in df.columns:
                 # Clean and convert to numeric
                 df['Energía Compra/Venta'] = clean_numeric_column(df['Energía Compra/Venta'])
+                
+                # Check if we need to convert from power to energy (15-minute granularity)
+                if 'granularity' in df.columns and df['granularity'].iloc[0] == 'Quince minutos':
+                    # Convert from power (per hour) to energy (per 15 minutes)
+                    df['Energía Compra/Venta'] = df['Energía Compra/Venta'] / 4
+                    print(f"   Converted from power to energy (÷4) for 15-minute granularity")
+                
                 df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
                 print(f"   Processed and renamed 'Energía Compra/Venta' to 'volumenes'")
-
-            if 'Potencia Compra/Venta' in df.columns:
-                df['Potencia Compra/Venta'] = clean_numeric_column(df['Potencia Compra/Venta'])
-                #convert to energy since we are given power per hour not per 15 minutes
-                df['Potencia Compra/Venta'] = df['Potencia Compra/Venta'] / 4 
-                df = df.rename(columns={'Potencia Compra/Venta': 'volumenes'})
-                print(f"   Processed and renamed 'Potencia Compra/Venta' to 'volumenes'")
+            else:
+                raise ValueError("'Energía Compra/Venta' column not found for diario/intra market")
                 
             # Apply buy/sell multiplier logic
-            if 'Tipo Oferta' in df.columns:
-                #if casada then set multiplier to -1, otherwise 1
+            if 'Tipo Oferta' in df.columns and 'volumenes' in df.columns:
+                # Create multiplier: Compra (C) = -1, Venta (V) = 1
                 df['Extra'] = np.where(df['Tipo Oferta'] == 'C', -1, 1)
-                df['Energía Compra/Venta'] = df['Energía Compra/Venta'] * df['Extra']
-                print(f"   Applied buy/sell multiplier")          
+                df['volumenes'] = df['volumenes'] * df['Extra']
+                print(f"   Applied buy/sell multiplier (C=-1, V=1)")
+                # Drop the temporary Extra column
+                df = df.drop(columns=['Extra'])
         
         elif mercado == 'continuo':
             # For continuo market, process Cantidad column
@@ -155,6 +163,8 @@ class OMIEProcessor:
                 df['Cantidad'] = clean_numeric_column(df['Cantidad'])
                 df = df.rename(columns={'Cantidad': 'volumenes'})
                 print(f"   Processed 'Cantidad' column for continuo market")
+            else:
+                raise ValueError("'Cantidad' column not found for continuo market")
         
         print(f"   Rows: {initial_rows} → {len(df)}")
         print("-"*30)
