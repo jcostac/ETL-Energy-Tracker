@@ -30,7 +30,7 @@ class I90Downloader:
     
     def __init__(self):
         """Initialize the I90 downloader with ESIOS API token"""
-        self.esios_token = os.getenv('ESIOS_API_KEY')
+        self.esios_token = os.getenv('ESIOS_TOKEN')
         self.config = I90Config()
         self.lista_errores = self.config.get_error_data()
         self.temporary_download_path = self.config.temporary_download_path
@@ -159,6 +159,9 @@ class I90Downloader:
         Returns:
             Tuple[str, str]: File names for the downloaded and extracted files
         """
+        # Ensure temporary download directory exists
+        os.makedirs(self.temporary_download_path, exist_ok=True)
+        
         # Construct API URL for the I90 file
         address = f"https://api.esios.ree.es/archives/34/download?date_type\u003ddatos\u0026end_date\u003d{day.date()}T23%3A59%3A59%2B00%3A00\u0026locale\u003des\u0026start_date\u003d{day.date()}T00%3A00%3A00%2B00%3A00"
         
@@ -254,6 +257,19 @@ class I90Downloader:
         df_concat = pd.concat(all_dfs)
         #drop all columns that are fully NaNs
         df_concat = df_concat.dropna(axis=1, how='all')
+        
+        # Drop rows where the value column (volumenes/precios) is NA or 0
+        if value_col_name in df_concat.columns:
+            # Drop rows with NA values in the volume/price column
+            df_concat = df_concat.dropna(subset=[value_col_name])
+            # Also drop rows with 0 values to further reduce overhead
+            df_concat = df_concat[df_concat[value_col_name] != 0]
+            print(f"✅ Filtered out NA and zero values. Remaining rows: {len(df_concat)}")
+        else:
+            # If no value column, just drop completely empty rows
+            df_concat = df_concat.dropna(how='all')
+        
+        # Only fill remaining NAs with 0 for other columns (not the main value column)
         df_concat = df_concat.fillna(0).infer_objects()
 
         # Explicitly format the 'fecha' column to ensure consistency in the output

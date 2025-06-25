@@ -20,7 +20,7 @@ class OMIEDownloader:
  
     def __init__(self):
         self.tracking_folder = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "data", "temporary")
+            os.path.join(os.path.dirname(__file__), "..", "data_lake", "temporary")
         )
         self.config = None
            
@@ -325,6 +325,7 @@ class OMIEDownloader:
         df = df.dropna(axis=0, how='all')
         df = df.dropna(axis=1, how='all')
         
+        # Process energy column
         if 'Energía Compra/Venta' in df.columns:
             # Replace commas with periods for decimal conversion
             df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.', regex=False)
@@ -334,37 +335,69 @@ class OMIEDownloader:
             
             # Convert to float, handling any remaining non-numeric values
             df['Energía Compra/Venta'] = pd.to_numeric(df['Energía Compra/Venta'])
+
+        # Process price column with same conversion logic as energy
+        if 'Precio Compra/Venta' in df.columns:
+            # Replace commas with periods for decimal conversion
+            df['Precio Compra/Venta'] = df['Precio Compra/Venta'].str.replace(',', '.', regex=False)
+            
+            # Remove periods that are used as thousands separators
+            df['Precio Compra/Venta'] = df['Precio Compra/Venta'].str.replace(r'(?<=\d)\.(?=\d{3})', '', regex=True)
+            
+            # Convert to float, handling any remaining non-numeric values
+            df['Precio Compra/Venta'] = pd.to_numeric(df['Precio Compra/Venta'])
  
         # Process date column
         if 'Fecha' in df.columns:
             df['Fecha'] = pd.to_datetime(df['Fecha'], format="%d/%m/%Y")
-
-             # Extract the date part directly
+            # Extract the date part directly
             df['Fecha'] = df['Fecha'].dt.date
-
  
-        # Add session column for Intradiario if filename provided
+        # Add session column and grouping dups for intra dataset
         if self.mercado == "intra":
             # Extract session from filename - handle .1 extension properly
             if file_name.endswith('.1'):
                 # For files ending with .1: curva_pibc_uof_2025010102.1
                 # Session is the last 2 digits before .1
                 session_str = file_name[-4:-2]
-
             else:
                 raise ValueError(f"Invalid filename format: {file_name}")
-
             
             if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
                 df["sesion"] = int(session_str)
                 df["sesion"] = df["sesion"].astype("Int64")
-                print(f"Added [sesion] column with value: {session_str}")
+                print(f"Added sesion column with value: {session_str}")
             else:
                 print(f"Session '{session_str}' not in valid session list")
 
+            # Check if there are duplicates for intra market
+            duplicate_count = df.duplicated().sum()
+            if duplicate_count > 0:
+                print(f"Found {duplicate_count} duplicate rows. Grouping and aggregating...")
+                
+                # Get all columns except energy and price for grouping
+                grouping_columns = [col for col in df.columns 
+                                  if col not in ['Energía Compra/Venta', 'Precio Compra/Venta']]
+                
+                # Create aggregation dictionary
+                agg_dict = {}
+                
+                # Sum energy values
+                if 'Energía Compra/Venta' in df.columns:
+                    agg_dict['Energía Compra/Venta'] = 'sum'
+                
+                # Average price values
+                if 'Precio Compra/Venta' in df.columns:
+                    agg_dict['Precio Compra/Venta'] = 'mean'
+                
+                # Group by all columns except energy and price, then aggregate
+                if agg_dict and grouping_columns:
+                    df = df.groupby(grouping_columns, as_index=False).agg(agg_dict)
+                    print(f"After grouping: {len(df)} rows remaining")
+            else:
+                print("No duplicates found in the dataframe")
  
         if self.mercado == "continuo":
-            
             pass
  
         return df

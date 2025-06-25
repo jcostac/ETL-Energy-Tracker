@@ -14,12 +14,14 @@ if str(PROJECT_ROOT) not in sys.path:
 from configs.i90_config import (
         I90Config, # Base might be useful too
         DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig,
-        CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
+        CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig,
+        IntraConfig
     )
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
 from utilidades.etl_date_utils import TimeUtils
 from utilidades.progress_utils import with_progress
+from utilidades.storage_file_utils import RawFileUtils
 
 
 class I90Processor:
@@ -33,6 +35,7 @@ class I90Processor:
         """
         self.date_utils = DateUtilsETL()
         self.data_validation_utils = DataValidationUtils()
+        self.raw_file_utils = RawFileUtils()
        
     # === FILTERING ===
     def _apply_market_filters_and_id(self, df: pd.DataFrame, market_config: I90Config) -> pd.DataFrame:
@@ -703,7 +706,258 @@ class I90Processor:
         df.index.name = 'id'
         return df
 
-    
+    # === INTRA DATA PROCESSING ===
+    def _process_cumulative_volumenes_intra(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+        """
+        Process intra data by calculating cumulative differences with diario data.
+        
+        For intra session data, volumes are aggregated and need to be "unwrapped":
+        - Session 1: actual_volume = intra_session_1 - diario_volume
+        - Session 2: actual_volume = intra_session_2 - intra_session_1
+        - Session 3: actual_volume = intra_session_3 - intra_session_2
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with intra data
+            dataset_type (str): Type of dataset being processed (always 'volumenes_i90' for intra)
+            
+        Returns:
+            pd.DataFrame: Processed DataFrame with calculated differences
+        """
+        if df.empty:
+            return df
+            
+        print("\n🔄 PROCESSING INTRA DATA - CUMULATIVE CALCULATIONS")
+        print("="*70)
+        
+        try:        
+             # Get the date by taking unique dates from datetime_utc and selecting the latest one
+            unique_dates = df['datetime_utc'].dt.date.unique()
+            target_date = max(unique_dates)  # Get the latest/last date
+            print(f"Target date for cumulative calculations: {target_date}")
+            target_year = target_date.year
+            target_month = target_date.month
+            
+            print(f"📅 Processing intra data for: {target_date}")
+            print(f"📊 Input data shape: {df.shape}")
+            print(f"📈 Sessions found: {sorted(df['id_mercado'].unique())}")
+            
+            # Load corresponding diario data
+            diario_df = self._load_diario_data_for_intra(target_year, target_month, target_date, dataset_type)
+            
+            if diario_df.empty:
+                print("⚠️  No diario data found. Returning original intra data without processing.")
+                return df
+                
+            # Split intra data by sessions (id_mercado) and store in a dictionary
+            #intra sessions start at id mercado 2, 3, 4, etc.
+            intra_dfs = {} #ie {2: df[df['id_mercado'] == 2], 3: df[df['id_mercado'] == 3], 4: df[df['id_mercado'] == 4]}
+
+            for session_id in sorted(df['id_mercado'].unique()):
+                session_data = df[df['id_mercado'] == session_id].copy()
+                intra_dfs[session_id] = session_data
+                print(f"📋 Session {session_id}: {len(session_data)} records")
+
+            
+            # Prepare diario data as baseline (session 0)
+            diario_processed = self._prepare_diario_baseline(diario_df, target_date)
+            
+            if diario_processed.empty:
+                print("⚠️  No processed diario data available. Cannot calculate cumulative differences.")
+                raise ValueError("No processed diario data available. Cannot calculate cumulative differences.")
+                
+            # Calculate cumulative differences
+            processed_sessions = []
+            previous_session_data = diario_processed  #start with diario data as previous session kinda like a session 0
+            
+            for session_id in sorted(intra_dfs.keys()): #ie session_id = 2, 3, 4
+                
+                current_session = intra_dfs[session_id]
+                
+                # Calculate difference: current_session - previous_session
+                session_with_differences = self._calculate_session_differences(
+                    current_session, previous_session_data, session_id
+                )
+                
+                if not session_with_differences.empty:
+                    processed_sessions.append(session_with_differences)
+                    # Update previous_session_data for next iteration
+                    previous_session_data = current_session
+                    print(f"✅ Session {session_id}: {len(session_with_differences)} records processed")
+                else:
+                    print(f"⚠️  Session {session_id}: No differences calculated")
+            
+            # Combine all processed sessions
+            if processed_sessions:
+                final_df = pd.concat(processed_sessions, ignore_index=True)
+                print(f"\n✅ INTRA PROCESSING COMPLETE")
+                print(f"Final shape: {final_df.shape}")
+                return final_df
+            else:
+                raise ValueError("❌ No sessions were successfully processed")
+                
+        except Exception as e:
+            raise ValueError(f"Error in intra data processing: {e}")
+
+    def _load_diario_data_for_intra(self, year: int, month: int, target_date, dataset_type: str) -> pd.DataFrame:
+        """
+        Load diario data for the same date as the intra data for baseline calculations.
+        
+        Args:
+            year (int): Year of the target date
+            month (int): Month of the target date  
+            target_date: Date object for the target date
+            dataset_type (str): Type of dataset ('volumenes_i90' or 'precios_i90')
+            
+        Returns:
+            pd.DataFrame: Diario data for the target date
+        """
+        print("="*70)
+        print(f"\n📂 Loading diario data for {target_date}")
+        
+        try:
+            # Read diario raw data for the same year/month
+            diario_raw = self.raw_file_utils.read_raw_file(year, month, dataset_type, 'diario')
+            
+            if diario_raw.empty:
+                print("❌ No diario raw data found")
+                return pd.DataFrame()
+            
+            # Filter for the specific target date
+            if 'fecha' in diario_raw.columns:
+                diario_raw['fecha'] = pd.to_datetime(diario_raw['fecha'])
+                diario_filtered = diario_raw[diario_raw['fecha'].dt.date == target_date].copy()
+
+                if diario_filtered.empty:
+                    raise ValueError(f"❌ No diario data found for date {target_date}")
+                
+            else:
+                raise ValueError("❌ 'fecha' column not found in diario data")
+            
+            
+            # Transform diario data using the same pipeline (but without intra processing)
+            diario_config = DiarioConfig()
+            
+            # Apply basic transformations (excluding intra processing)
+            diario_processed = self._apply_market_filters_and_id(diario_filtered, diario_config)
+            diario_processed = self._standardize_datetime(diario_processed, dataset_type)
+            diario_processed = self._select_and_finalize_columns(diario_processed, dataset_type)
+            
+            print(f"✅ Loaded diario data: {len(diario_processed)} records")
+            return diario_processed
+            
+        except Exception as e:
+            raise ValueError(f"Error loading diario data for intra processing: {e}")
+
+    def _prepare_diario_baseline(self, diario_df: pd.DataFrame, target_date) -> pd.DataFrame:
+        """
+        Prepare diario data as baseline for intra calculations.
+        
+        This method:
+        1. Filters diario data by tipo_transaccion = 'Mercado' (if column exists)
+        2. Ensures proper datetime and UP column structure
+        3. Aggregates by UP and datetime_utc to create baseline volumes
+        
+        Args:
+            diario_df (pd.DataFrame): Processed diario data
+            target_date: Target date for filtering
+            
+        Returns:
+            pd.DataFrame: Prepared baseline data with columns [datetime_utc, up, volumenes, id_mercado]
+        """
+        if diario_df.empty:
+            return pd.DataFrame()
+        print("="*70)
+        print(f"\n🔧 Preparing diario baseline for {target_date}")
+        
+        try:
+            baseline_df = diario_df.copy()
+            
+            # Filter by tipo_transaccion = 'Mercado' if the column exists
+            if 'tipo_transaccion' in baseline_df.columns:
+                print("📋 Filtering by tipo_transaccion = 'Mercado'")
+                baseline_df = baseline_df[baseline_df['tipo_transaccion'] == 'Mercado']
+                print(f"   Records after filter: {len(baseline_df)}")
+            
+            # Ensure required columns exist
+            required_cols = ['datetime_utc', 'up', 'volumenes']
+            missing_cols = [col for col in required_cols if col not in baseline_df.columns]
+            if missing_cols:
+                print(f"❌ Missing required columns: {missing_cols}")
+                raise ValueError(f"❌ Missing required columns: {missing_cols}")
+            
+            # Fill null/zero volumes
+            baseline_df = baseline_df.fillna(0)
+            
+            # Group by UP and datetime to aggregate volumes (in case of duplicates)
+            baseline_df = baseline_df.groupby(['datetime_utc', 'up']).agg({
+                'volumenes': 'sum',
+                'id_mercado': 'first'  # Keep the id_mercado (should be 1 for diario)
+            }).reset_index()
+            
+            # Set id_mercado to 1 for diario (baseline)
+            baseline_df['id_mercado'] = 1
+            
+            print(f"✅ Baseline prepared: {len(baseline_df)} records")
+            print(f"   UPs in baseline: {baseline_df['up'].nunique()}")
+            print(f"   Time range: {baseline_df['datetime_utc'].min()} to {baseline_df['datetime_utc'].max()}")
+
+            
+            return baseline_df
+            
+        except Exception as e:
+            raise ValueError(f"Error preparing diario baseline for intra processing: {e}")
+
+    def _calculate_session_differences(self, current_session: pd.DataFrame, 
+                                     previous_session: pd.DataFrame, 
+                                     session_id: int) -> pd.DataFrame:
+        """
+        Calculate volume differences between current intra session and previous session.
+        
+        Args:
+            current_session (pd.DataFrame): Current intra session data
+            previous_session (pd.DataFrame): Previous session data (diario or previous intra)
+            session_id (int): Current session ID
+            
+        Returns:
+            pd.DataFrame: DataFrame with calculated differences
+        """
+        try:
+            print("="*70)
+            print(f"\n🔧 Calculating differences for Session {session_id}")
+            print(f"   📊 Current session records: {len(current_session)}")
+            print(f"   📊 Previous session records: {len(previous_session)}")
+            
+            # Merge on UP and datetime_utc to align the data
+            merged = pd.merge(
+                current_session[['datetime_utc', 'up', 'volumenes']],
+                previous_session[['datetime_utc', 'up', 'volumenes']],
+                on=['datetime_utc', 'up'],
+                how='left',
+                suffixes=('_current', '_previous')
+            )
+            
+            # Fill missing previous values with 0 (in case UP exists in current but not in previous)
+            merged['volumenes_previous'] = merged['volumenes_previous'].fillna(0)
+            
+            # Calculate the difference: current - previous
+            merged['volumenes_diff'] = merged['volumenes_current'] - merged['volumenes_previous']
+
+            
+            # Rename the difference column back to 'volumenes'
+            session_result_df = merged.rename(columns={'volumenes_diff': 'volumenes'})
+
+            
+            # Keep only required columns
+            session_result_df = session_result_df[['datetime_utc', 'up', 'volumenes']] 
+            session_result_df['id_mercado'] = session_id
+            
+            print(f"   ✅ Differences calculated: {len(session_result_df)} non-zero programs")
+            
+            return session_result_df
+            
+        except Exception as e:
+            raise ValueError(f"Error calculating differences: {e}")
+
     # === MAIN PIPELINE ===
     def transform_volumenes_or_precios_i90(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
         """
@@ -733,6 +987,10 @@ class I90Processor:
             (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
             (self._validate_final_data, {"dataset_type": dataset_type}),
         ]
+
+        #Apply intra data processing if market_config is IntraConfig
+        if isinstance(market_config, IntraConfig):
+            pipeline.append((self._process_cumulative_volumenes_intra, {"dataset_type": "volumenes_i90"})) #volumnes_i90 always be the dataset type for intra
 
         try:
             df_processed = df.copy()
@@ -772,4 +1030,3 @@ class I90Processor:
             print(traceback.format_exc())
             print("="*80 + "\n")
             raise
- 

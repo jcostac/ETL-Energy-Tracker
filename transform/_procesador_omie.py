@@ -69,44 +69,41 @@ class OMIEProcessor:
     def _add_granularity_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add granularity column based on the unique values in the 'Hora' column.
-        If max hora value > 25, assigns 'Quince minutos', otherwise 'Hora'.
+        Now that columns are standardized, we always check 'Hora' column.
         
         Args:
             df (pd.DataFrame): Input DataFrame with 'Hora' column
             
         Returns:
-            pd.DataFrame: DataFrame with added 'granularidad' column
+            pd.DataFrame: DataFrame with added 'granularity' column
         """
         print("\n⏱️ ADDING GRANULARITY COLUMN")
         print("-"*30)
         
         if 'Hora' in df.columns:
-            # Get unique values from Hora column
-            unique_horas = df['Hora'].unique()
-            max_hora = max(unique_horas)
-            
-            # Determine granularity based on max hora value
-            if max_hora > 25:
+            # Check if Hora contains H2Q4 format (15-minute intervals)
+            sample_hora = str(df['Hora'].iloc[0]) if not df.empty else None
+            if 'H' in sample_hora and 'Q' in sample_hora:
+                #if H2Q4 format, then 15-minute granularity
                 granularity = 'Quince minutos'
             else:
+                #if not H2Q4 format, then hourly granularity
                 granularity = 'Hora'
-            
-            # Add granularity column
-            df['granularity'] = granularity
-            
-            print(f"   Unique hora values: {sorted(unique_horas)}")
-            print(f"   Max hora value: {max_hora}")
-            print(f"   Assigned granularity: {granularity}")
         else:
-            print("   ⚠️  'Hora' column not found, skipping granularity assignment")
+            raise Exception("'Hora' column not found, cannot determine granularity")
         
+        # Add granularity column
+        df['granularity'] = granularity
+        
+        print(f"   Assigned granularity: {granularity}")
         print("-"*30)
         return df
     
     def _process_and_filter_energy_column(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
         Process energy columns and apply filtering/multipliers based on market type.
-        Consolidates energy column cleaning, filtering, and buy/sell logic.
+        Now that column names are standardized in extract phase, we always expect 'Energía Compra/Venta'.
+        Division by 4 only occurs when we detect 15-minute granularity (H2Q4 format).
         
         Args:
             df (pd.DataFrame): Input DataFrame
@@ -135,21 +132,30 @@ class OMIEProcessor:
                 df = df[df['Ofertada (O)/Casada (C)'] == 'C']
                 print(f"   Filtered to matched units: {len(df)} rows")
             
-            # Process energy column
+            # Process energy column (now standardized to always be 'Energía Compra/Venta')
             if 'Energía Compra/Venta' in df.columns:
                 # Clean and convert to numeric
                 df['Energía Compra/Venta'] = clean_numeric_column(df['Energía Compra/Venta'])
                 
-                # Apply buy/sell multiplier logic
-                if 'Tipo Oferta' in df.columns:
-                    #if casada then set multiplier to -1, otherwise 1
-                    df['Extra'] = np.where(df['Tipo Oferta'] == 'C', -1, 1)
-                    df['Energía Compra/Venta'] = df['Energía Compra/Venta'] * df['Extra']
-                    print(f"   Applied buy/sell multiplier")
+                # Check if we need to convert from power to energy (15-minute granularity)
+                if 'granularity' in df.columns and df['granularity'].iloc[0] == 'Quince minutos':
+                    # Convert from power (per hour) to energy (per 15 minutes)
+                    df['Energía Compra/Venta'] = df['Energía Compra/Venta'] / 4
+                    print(f"   Converted from power to energy (÷4) for 15-minute granularity")
                 
-                # Rename to standard column name
                 df = df.rename(columns={'Energía Compra/Venta': 'volumenes'})
                 print(f"   Processed and renamed 'Energía Compra/Venta' to 'volumenes'")
+            else:
+                raise ValueError("'Energía Compra/Venta' column not found for diario/intra market")
+                
+            # Apply buy/sell multiplier logic
+            if 'Tipo Oferta' in df.columns and 'volumenes' in df.columns:
+                # Create multiplier: Compra (C) = -1, Venta (V) = 1
+                df['Extra'] = np.where(df['Tipo Oferta'] == 'C', -1, 1)
+                df['volumenes'] = df['volumenes'] * df['Extra']
+                print(f"   Applied buy/sell multiplier (C=-1, V=1)")
+                # Drop the temporary Extra column
+                df = df.drop(columns=['Extra'])
         
         elif mercado == 'continuo':
             # For continuo market, process Cantidad column
@@ -157,6 +163,8 @@ class OMIEProcessor:
                 df['Cantidad'] = clean_numeric_column(df['Cantidad'])
                 df = df.rename(columns={'Cantidad': 'volumenes'})
                 print(f"   Processed 'Cantidad' column for continuo market")
+            else:
+                raise ValueError("'Cantidad' column not found for continuo market")
         
         print(f"   Rows: {initial_rows} → {len(df)}")
         print("-"*30)
@@ -268,10 +276,29 @@ class OMIEProcessor:
             df['fecha_fichero'] = df['Fecha'].dt.strftime('%Y-%m-%d')
         
         elif mercado in ['diario', 'intra']:
-            # For diario and intra markets, keep Hora as 1-based integer for DST parsing
-            if 'Hora' in df.columns:
-                df['Hora'] = df['Hora'].astype(int)  # Keep 1-based
-                print(f"   Kept Hora as 1-based for {mercado} market DST parsing")
+
+            #if granularity is quince minutos, parse the Periodo column to create the Hora column
+            if df['granularity'].iloc[0] == 'Quince minutos':
+
+                # Expected format: HxQy where x is hour (1-24) and y is quarter (1-4)
+                periodo_regex = r'H(\d{1,2})Q(\d)'
+                
+                # Extract hour and quarter
+                extracted = df['Hora'].str.extract(periodo_regex)
+                extracted.columns = ['hour_str', 'quarter_str']
+                
+                # Convert to numeric
+                hour = pd.to_numeric(extracted['hour_str'])
+                quarter = pd.to_numeric(extracted['quarter_str'])
+                
+                # Calculate 15-minute interval index (1-based)
+                # (hour - 1) * 4 gives the start of the hour block-
+                # + quarter gives the specific interval, ex: H2Q1 becomes period 
+                df['Hora'] = (hour - 1) * 4 + quarter
+                
+                print(f"   Successfully created 'Hora' as 15-min interval index from 'Periodo'")
+            
+            df['Hora'] = df['Hora'].astype(int)  # Keep 1-based, conver to int
         
         print(f"   Standardized Fecha and Hora columns for {mercado} market")
         print("-"*30)

@@ -500,7 +500,7 @@ class I90PreciosExtractor(I90Extractor):
     def extract_precios_restricciones(self, day: datetime) -> None:
         self._extract_and_save_precios(day, 'restricciones', self.restricciones_downloader)
 
-    def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict):
+    def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict, mercados_lst: list[str] = None):
         """
         Extracts all precios data from I90 files for a given day.
         Returns market-specific status information.
@@ -522,7 +522,11 @@ class I90PreciosExtractor(I90Extractor):
         # Process each market and track individual success
         for market_name, extract_func in markets:
             print(f"\n--------- {market_name.capitalize()} ---------")
-            status_details = self._extract_with_status(market_name, extract_func, day, status_details)
+            # If mercados_lst is None, extract all markets; otherwise only extract if market is in the list
+            if mercados_lst is None or market_name in mercados_lst:
+                status_details = self._extract_with_status(market_name, extract_func, day, status_details)
+            else:
+                print(f"Skipping {market_name} - not in requested markets list")
             print("\n--------------------------------")
 
         # Overall success is true if failed markets is empty, else false

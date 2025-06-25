@@ -103,10 +103,14 @@ class TransformadorI90:
 
     def transform_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
                                          mercados_lst: Optional[List[str]] = None,
-                                         dataset_type: str = None,
-                                         transform_type: str = 'latest',) -> dict:
+                                         dataset_type: str = None) -> dict:
         """
-        Transforms data for specified markets and dataset types based on the transform_type.
+        Transforms data for specified markets and dataset types based on the date parameters.
+        Transform type is automatically inferred:
+        - If no dates provided: 'latest' (process most recent available data)
+        - If only fecha_inicio provided OR fecha_inicio == fecha_fin: 'single' (process one day)
+        - If fecha_inicio != fecha_fin: 'multiple' (process date range)
+        
         Returns: Dictionary containing:
             - 'data': Dictionary of processed dataframes for each market
             - 'status': Dictionary with:
@@ -117,6 +121,14 @@ class TransformadorI90:
                     - 'mode': The transform type used
                     - 'date_range': The date range processed
         """
+        # Auto-infer transform type based on date parameters
+        if fecha_inicio is None and fecha_fin is None:
+            transform_type = 'latest'
+        elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
+            transform_type = 'single'
+        elif fecha_inicio is not None and fecha_fin is not None and fecha_inicio != fecha_fin:
+            transform_type = 'multiple'
+            
         # Initialize status tracking
         status_details = {
             "markets_processed": [],
@@ -129,13 +141,7 @@ class TransformadorI90:
         results = {}
 
         try:
-            if transform_type not in self.transform_types:
-                raise ValueError(f"Invalid transform type: {transform_type}. Must be one of: {self.transform_types}")
-            if transform_type in ['single', 'multiple'] and not fecha_inicio:
-                raise ValueError(f"fecha_inicio is required for transform_type '{transform_type}'")
-            if transform_type == 'multiple' and not fecha_fin:
-                raise ValueError(f"fecha_fin is required for transform_type 'multiple'")
-
+            # Validate dataset_type
             if dataset_type is None:
                 raise ValueError(f"dataset_type must be provided. Must be one of {self.dataset_types}")
             else:
@@ -155,12 +161,14 @@ class TransformadorI90:
                 known_markets_for_type = self.i90_volumenes_markets if dataset_type == 'volumenes_i90' else self.i90_precios_markets
                 invalid_markets = [m for m in mercados_lst if m not in known_markets_for_type]
                 if invalid_markets:
-                    print(f"Warning: Market(s) {invalid_markets} are not associated with dataset type {dataset_type} or are unknown. Skipping them for this type.")
-                    print(f"Known markets for type {dataset_type}: {known_markets_for_type}")
+                    print(f"Warning: The following market(s)  are not associated with dataset type {dataset_type}. Skipping them.")
+                    print(f"    - Invalid markets: {', '.join(invalid_markets)}")
+                    print(f"    - Known markets for type {dataset_type} are: {', '.join(known_markets_for_type)}")
                 relevant_markets = [m for m in mercados_lst if m in known_markets_for_type]
 
             if not relevant_markets:
-                print(f"No relevant markets specified or configured for dataset type: {dataset_type}")
+                print(f"⚠️  No markets solicited for processing have data associated with dataset type:")
+                print(f"    - {dataset_type}")
                 return {"data": results, "status": {"success": False, "details": f"No relevant markets specified or configured for dataset type: {dataset_type}."}}
 
             for mercado in relevant_markets:
@@ -284,7 +292,7 @@ class TransformadorI90:
                     raw_df['fecha'] = pd.to_datetime(raw_df['fecha'])
                 except Exception as e:
                     print(f"Error converting 'fecha' in _process_df_based_on_transform_type: {e}. Returning empty DataFrame.")
-                    return pd.DataFrame()
+                    raise e
             
 
         # --- Filtering Logic ---

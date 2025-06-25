@@ -41,7 +41,6 @@ This directory contains scripts responsible for extracting data from the ESIOS A
 *   **API Credentials:** Create a `.env` file in the project root directory containing:
     ```dotenv
     ESIOS_TOKEN=your_esios_api_token_here
-    ESIOS_API_KEY=your_esios_api_key_for_i90_here
     ```
 *   **Market/File Settings:** Specific configurations (indicator IDs, sheet numbers, regulatory dates, error lists, paths) are managed within:
     *   `configs/esios_config.py`
