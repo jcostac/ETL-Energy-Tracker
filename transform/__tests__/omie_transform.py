@@ -29,7 +29,7 @@ def omie_transform_multiple_days():
     Test the transformation of the omie for multiple days for all markets
     """
     transformer = TransformadorOMIE()
-    result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-17", fecha_fin="2025-03-20")
+    result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-19", fecha_fin="2025-03-20")
     
     # Assert that the transformation was successful
     assert result["success"] == True, f"Multiple days transformation failed. Details: {result.get('details', {})}"

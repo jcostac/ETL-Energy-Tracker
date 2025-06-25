@@ -210,9 +210,9 @@ class RawFileUtils(StorageFileUtils):
                 if mercado != "continuo":
                     print("Dropping raw duplicates")
                     df = self.drop_raw_duplicates(df)
-                    # Create new file if it doesn't exist
-                    df.to_csv(full_file_path, index=False)
-                    print(f"Created new file: {filename}")
+                # Create new file if it doesn't exist
+                df.to_csv(full_file_path, index=False)
+                print(f"Created new file: {filename}")
 
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")

@@ -261,6 +261,7 @@ class OMIEExtractor:
                     fecha_fin_carga=day_str
                 )
 
+
                 for month_data in continuo_data.values():
                     if isinstance(month_data, list):
                         for df in month_data:
@@ -375,7 +376,7 @@ class OMIEExtractor:
         except Exception as e:
             status_details["markets_failed"].append({
                 "market": market_name,
-                "error": error_msg
+                "error": str(e)
             })
             return False
 

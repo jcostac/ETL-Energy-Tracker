@@ -278,15 +278,13 @@ class OMIEProcessor:
         elif mercado in ['diario', 'intra']:
 
             #if granularity is quince minutos, parse the Periodo column to create the Hora column
-            if df['granularity'] == 'Quince minutos':
-                if 'Periodo' in df.columns:
-                    print(f"   Found 'Periodo' column, data is in quince minutos granularity, parsing to create 'Hora' for {mercado} market")
+            if df['granularity'].iloc[0] == 'Quince minutos':
 
                 # Expected format: HxQy where x is hour (1-24) and y is quarter (1-4)
                 periodo_regex = r'H(\d{1,2})Q(\d)'
                 
                 # Extract hour and quarter
-                extracted = df['Periodo'].str.extract(periodo_regex)
+                extracted = df['Hora'].str.extract(periodo_regex)
                 extracted.columns = ['hour_str', 'quarter_str']
                 
                 # Convert to numeric
