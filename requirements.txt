@@ -13,7 +13,6 @@ openpyxl
 pandas
 pendulum
 pretty_errors
-psycopg2-binary
 pymysql
 pytest
 pyarrow
