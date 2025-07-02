@@ -8,11 +8,13 @@ import pretty_errors
 import pytz
 import hashlib
 import asyncio
+import os
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.db_utils import DatabaseUtils
+from utilidades.storage_file_utils import RawFileUtils
 from vinculacion.configs.vinculacion_config import VinculacionConfig
 from vinculacion._extract_transform_linking_data import VinculacionDataExtractor
 from utilidades.progress_utils import with_progress  
@@ -25,6 +27,7 @@ class UOFUPLinkingAlgorithm:
         self.data_extractor = VinculacionDataExtractor()
         self.db_utils = DatabaseUtils()
         self.database_name = self.config.DATABASE_NAME if not database_name else database_name #energy_tracker == default bbdd name
+        self.raw_file_utils = RawFileUtils()
     
     def _get_engine(self):
         try:
@@ -451,6 +454,49 @@ class UOFUPLinkingAlgorithm:
         
         return final_df
 
+    def _check_raw_data_exists_for_date(self, target_date: str, market: str, dataset_type: str, source: str) -> bool:
+        """
+        Checks if raw data for a specific date, market, and dataset type already exists.
+        """
+        try:
+            dt = datetime.strptime(target_date, '%Y-%m-%d')
+            year, month = dt.year, dt.month
+
+            if source == 'omie':
+                file_path = self.raw_file_utils.raw_path / market / str(year) / f"{month:02d}" / f"{dataset_type}.csv"
+            elif source == 'i90':
+                file_path = self.raw_file_utils.raw_path / market / str(year) / f"{month:02d}" / f"{dataset_type}.csv"
+            else:
+                return False
+
+            if not file_path.exists():
+                print(f"INFO: Raw file not found: {file_path}")
+                return False
+
+            if source == 'omie':
+                df = pd.read_csv(file_path)
+                if 'fecha' not in df.columns:
+                    return False
+                dates_in_file = pd.to_datetime(df['fecha']).dt.strftime('%Y-%m-%d')
+                if target_date in dates_in_file.values:
+                    return True
+                else:
+                    return False
+            
+            elif source == 'i90':
+                df = pd.read_csv(file_path)
+                if 'fecha' not in df.columns:
+                    return False
+                dates_in_file = pd.to_datetime(df['fecha']).dt.strftime('%Y-%m-%d')
+                if target_date in dates_in_file.values:
+                    return True
+                else:
+                    return False
+
+        except Exception as e:
+            print(f"ERROR: Could not check for existing raw data for {source.upper()} {market.upper()} on {target_date}: {e}")
+            return False
+
     ### MAIN METHOD TO LINK UOFs TO UPs FOR A GIVEN DATE ###
     async def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None) -> pd.DataFrame:
         """
@@ -480,8 +526,18 @@ class UOFUPLinkingAlgorithm:
                     print("❌ UPs to link not found in the active UPs list")
                     raise ValueError("UPs to link not found in the active UPs list")
                 
-            # Step 2: Extract and transform all data for target_date
-            self.data_extractor.extract_data_for_matching(target_date)
+            # Step 2: Check for data and extract if needed
+            omie_exists = self._check_raw_data_exists_for_date(target_date, 'diario', 'volumenes_omie', 'omie') and \
+                          self._check_raw_data_exists_for_date(target_date, 'intra', 'volumenes_omie', 'omie')
+            i90_exists = self._check_raw_data_exists_for_date(target_date, 'diario', 'volumenes_i90', 'i90') and \
+                         self._check_raw_data_exists_for_date(target_date, 'intra', 'volumenes_i90', 'i90')
+
+            if omie_exists and i90_exists:
+                print(f"✅ Raw data for {target_date} already exists. Skipping extraction.")
+            else:
+                print(f"ℹ️ Raw data for {target_date} not fully available. Starting extraction...")
+                self.data_extractor.extract_data_for_matching(target_date)
+
             all_data = self.data_extractor.transform_and_combine_data_for_linking(target_date)
 
 
@@ -526,8 +582,18 @@ class UOFUPLinkingAlgorithm:
                 
                 historical_date = (pd.to_datetime(target_date) - timedelta(days=1)).strftime('%Y-%m-%d')
                 
-                # Extract data for historical date
-                self.data_extractor.extract_data_for_matching(historical_date)
+                # Check for historical data and extract if needed
+                omie_hist_exists = self._check_raw_data_exists_for_date(historical_date, 'diario', 'volumenes_omie', 'omie') and \
+                                   self._check_raw_data_exists_for_date(historical_date, 'intra', 'volumenes_omie', 'omie')
+                i90_hist_exists = self._check_raw_data_exists_for_date(historical_date, 'diario', 'volumenes_i90', 'i90') and \
+                                  self._check_raw_data_exists_for_date(historical_date, 'intra', 'volumenes_i90', 'i90')
+
+                if omie_hist_exists and i90_hist_exists:
+                    print(f"✅ Raw historical data for {historical_date} already exists. Skipping extraction.")
+                else:
+                    print(f"ℹ️ Raw historical data for {historical_date} not fully available. Starting extraction...")
+                    self.data_extractor.extract_data_for_matching(historical_date)
+                
                 historic_data = self.data_extractor.transform_and_combine_data_for_linking(historical_date)
 
                 omie_hist = historic_data.get('omie_combined')
