@@ -95,7 +95,6 @@ class VinculacionDataExtractor:
         print("-"*40)
         i90_result = self.i90_transformer.transform_data_for_all_markets(
             mercados_lst= ['diario'], #only transfrom diario
-            transform_type='single',
             fecha_inicio=target_date,
             dataset_type='volumenes_i90'
         )
@@ -114,7 +113,6 @@ class VinculacionDataExtractor:
 
         omie_result = self.omie_transformer.transform_data_for_all_markets(
             mercados_lst= ['diario'], #only transfrom diario
-            transform_type='single',
             fecha_inicio=target_date,
         )
         
@@ -157,7 +155,6 @@ class VinculacionDataExtractor:
             i90_result = self.i90_transformer.transform_data_for_all_markets(
                 mercados_lst=['intra'],
                 dataset_type='volumenes_i90',
-                transform_type='single',
                 fecha_inicio=target_date,
             )
             
@@ -188,8 +185,7 @@ class VinculacionDataExtractor:
             print(f"🔄 Transforming OMIE intra data for {target_date}")
             omie_result = self.omie_transformer.transform_data_for_all_markets(
                 fecha_inicio=target_date,
-                mercados_lst=['intra'],
-                transform_type='single'
+                mercados_lst=['intra']
             )
             
             #if if omie result of transformation was a success and we have intra data in the result
