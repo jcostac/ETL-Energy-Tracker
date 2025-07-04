@@ -459,6 +459,7 @@ class UOFUPLinkingAlgorithm:
         Checks if raw data for a specific date, market, and dataset type already exists.
         """
         try:
+            
             dt = datetime.strptime(target_date, '%Y-%m-%d')
             year, month = dt.year, dt.month
 
@@ -467,6 +468,7 @@ class UOFUPLinkingAlgorithm:
             elif source == 'i90':
                 file_path = self.raw_file_utils.raw_path / market / str(year) / f"{month:02d}" / f"{dataset_type}.csv"
             else:
+
                 return False
 
             if not file_path.exists():
@@ -475,9 +477,9 @@ class UOFUPLinkingAlgorithm:
 
             if source == 'omie':
                 df = pd.read_csv(file_path)
-                if 'fecha' not in df.columns:
+                if 'Fecha' not in df.columns:
                     return False
-                dates_in_file = pd.to_datetime(df['fecha']).dt.strftime('%Y-%m-%d')
+                dates_in_file = pd.to_datetime(df['Fecha']).dt.strftime('%Y-%m-%d')
                 if target_date in dates_in_file.values:
                     return True
                 else:
@@ -491,6 +493,7 @@ class UOFUPLinkingAlgorithm:
                 if target_date in dates_in_file.values:
                     return True
                 else:
+                    
                     return False
 
         except Exception as e:
@@ -535,6 +538,7 @@ class UOFUPLinkingAlgorithm:
             if omie_exists and i90_exists:
                 print(f"✅ Raw data for {target_date} already exists. Skipping extraction.")
             else:
+                
                 print(f"ℹ️ Raw data for {target_date} not fully available. Starting extraction...")
                 self.data_extractor.extract_data_for_matching(target_date)
 
