@@ -26,7 +26,7 @@ class UOFDatabaseManager:
     @property
     def engine(self):
         if self._engine is None:
-            self._engine = DatabaseUtils.create_engine(self.bbdd_name)  
+            self._engine = DatabaseUtils.create_engine(self.bbdd_name)
         return self._engine
     
     @engine.setter
@@ -37,13 +37,13 @@ class UOFDatabaseManager:
         """Load UOFs from database"""
         try:
             print(f"Loading UOFs from database table: {self.uof_table_name}...")
+            engine = DatabaseUtils.create_engine(self.bbdd_name)
             db_df = DatabaseUtils.read_table(
-                engine=self.engine,
+                engine=engine,
                 table_name=self.uof_table_name
             )
-
+            engine.dispose()
             return db_df
-
         except Exception as e:
             print(f"Error loading UOFs from database: {e}")
             raise
@@ -72,13 +72,15 @@ class UOFDatabaseManager:
                     return True
                     
                 print(f"Adding {len(new_uofs_df)} new UOFs after filtering duplicates...")
+                engine = DatabaseUtils.create_engine(self.bbdd_name)
                 DatabaseUtils.write_table(
-                    self.engine, 
+                    engine, 
                     new_uofs_df, 
                     self.uof_table_name, 
                     if_exists='append', 
                     index=False
                 )
+                engine.dispose()
                 return True
                 
             except sqlalchemy.exc.IntegrityError as e:
@@ -102,12 +104,14 @@ class UOFDatabaseManager:
         if not obsolete_uofs_df.empty:
             try:
                 print(f"Marking {len(obsolete_uofs_df)} UOFs as obsolete...")
+                engine = DatabaseUtils.create_engine(self.bbdd_name)
                 DatabaseUtils.update_table(
-                    engine=self.engine,
+                    engine=engine,
                     df=obsolete_uofs_df,
                     table_name=self.uof_table_name,
                     key_columns=['UOF']
                 )
+                engine.dispose()
                 return True
             except sqlalchemy.exc.IntegrityError as e:
                 if "Duplicate entry" in str(e):
@@ -142,13 +146,15 @@ class UOFDatabaseManager:
             final_log_df = pd.DataFrame(final_log_entries)
             final_log_df = final_log_df.rename(columns={'UOF': 'UOF'})
 
+            engine = DatabaseUtils.create_engine(self.bbdd_name)
             DatabaseUtils.write_table(
-                self.engine, 
+                engine, 
                 final_log_df, 
                 self.change_log_table_name, 
                 if_exists='append', 
                 index=False
             )
+            engine.dispose()
 
             self._print_change_log_summary(final_log_df)
             return True

@@ -230,14 +230,13 @@ class ZRTracker:
             sqlalchemy.exc.SQLAlchemyError: If there is a database error
         """
         try:
-            # Set database name
             self.bbdd_name = "energy_tracker"
-            
+            engine = DatabaseUtils.create_engine(self.bbdd_name)
             db_df = DatabaseUtils.read_table(
-                engine=self.engine,
+                engine=engine,
                 table_name=self.table_name
             )
-            
+            engine.dispose()
             if db_df.empty:
                 print(f"No Zonas de Regulación found in database table (the table is empty)")
             else:
@@ -260,27 +259,19 @@ class ZRTracker:
             List[Dict]: List of changes made to i90 mappings
         """
         try:
-            # Set database name
             self.bbdd_name = "energy_tracker"
-            
-            # Get zones with missing i90_id
+            engine = DatabaseUtils.create_engine(self.bbdd_name)
             missing_i90_df = DatabaseUtils.read_table(
-                engine=self.engine,
+                engine=engine,
                 table_name=self.table_name,
                 where_clause="i90_id IS NULL AND obsoleta = FALSE"
             )
-            
             change_log = []
             current_date = datetime.now().strftime('%Y-%m-%d')
-            
             if not missing_i90_df.empty:
                 print(f"Found {len(missing_i90_df)} zone(s) with missing i90 IDs")
-                # Print the zones with missing i90 IDs
                 for _, row in missing_i90_df.iterrows():
                     print(f"  - Zone: {row['esios_id']} missing i90 ID")
-                
-                
-                # Create update dataframe
                 updates = []
                 for _, row in missing_i90_df.iterrows():
                     esios_id = row['esios_id']
@@ -289,8 +280,6 @@ class ZRTracker:
                             'esios_id': esios_id,
                             'i90_id': i90_mapping[esios_id]
                         })
-                        
-                        # Log the change
                         change_log.append({
                             'ZR': esios_id,
                             'field_changed': 'i90_id',
@@ -298,13 +287,11 @@ class ZRTracker:
                             'new_value': i90_mapping[esios_id],
                             'date_updated': current_date
                         })
-                
-                # Update the database if we have updates
                 if updates:
                     update_df = pd.DataFrame(updates)
                     try:
                         DatabaseUtils.update_table(
-                            engine=self.engine,
+                            engine=engine,
                             df=update_df,
                             table_name=self.table_name,
                             key_columns=['esios_id']
@@ -316,8 +303,7 @@ class ZRTracker:
                             print("⚠️ Continuing with next steps")
                         else:
                             raise
-                
-            # Print the changes in the change log
+            engine.dispose()
             if change_log:
                 print("\nChanges made to i90 mappings:")
                 for change in change_log:
@@ -325,9 +311,7 @@ class ZRTracker:
                     print(f"  - Zone: {change['ZR']}, {change['field_changed']} changed from {old_value} to {change['new_value']}")
             else:
                 print("No i90 mapping changes were made")
-            
             return change_log
-            
         except Exception as e:
             print(f"Error updating missing i90 mappings: {e}")
             raise
@@ -346,7 +330,6 @@ class ZRTracker:
             List[Dict]: Updated change log list
         """
         try:
-            # Set database name
             self.bbdd_name = "energy_tracker"
             
             current_date = datetime.now().strftime('%Y-%m-%d')
@@ -468,7 +451,6 @@ class ZRTracker:
             sqlalchemy.exc.SQLAlchemyError: If database operation fails
         """
         try:
-            # Set database name
             self.bbdd_name = "energy_tracker"
             
             if change_log:

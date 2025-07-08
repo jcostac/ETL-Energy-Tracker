@@ -10,9 +10,9 @@ import sys
 import os
 # Add the root directory to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-# Now you can import from config
-from config.db_config import DB_URL
+
 import pretty_errors
+from utilidades.db_utils import DatabaseUtils  # <-- Add this import
 
 class UPTracker:
     """
@@ -38,8 +38,7 @@ class UPTracker:
     @bbdd_name.setter
     def bbdd_name(self, bbdd_name):
         self._bbdd_name = bbdd_name
-        self._bbdd_url = DB_URL(self._bbdd_name)
-        self._engine = sqlalchemy.create_engine(self._bbdd_url)
+        self._engine = DatabaseUtils.create_engine(self._bbdd_name)
 
     @property
     def bbdd_url(self):
@@ -152,24 +151,15 @@ class UPTracker:
             sqlalchemy.exc.SQLAlchemyError: If there is a database error
         """
         try:
-            #set bbdd name, which sets the bbdd_url and engine with the setter methods
             self.bbdd_name = "energy_tracker"
-
-            query = sqlalchemy.text(f"SELECT * FROM {self.table_name}")
-
-            with self.engine.connect() as connection:
-                df = pd.read_sql(query, connection)
-                
+            engine = DatabaseUtils.create_engine(self.bbdd_name)
+            df = DatabaseUtils.read_table(engine, self.table_name)
+            engine.dispose()  # Clean up connection
             if df.empty:
                 print(f"Warning: No UPs found in database table {self.table_name}")
             else:
                 print(f"Successfully loaded {len(df)} UPs from database table {self.table_name}")
-                
             return df
-            
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            print(f"Database error when loading UPs: {e}")
-            raise
         except Exception as e:
             print(f"Unexpected error when loading UPs from database: {e}")
             raise
@@ -186,22 +176,14 @@ class UPTracker:
             ValueError: If the technology mapping table is empty
         """
         try:
-            #set bbdd name, which sets the bbdd_url and engine with the setter methods
             self.bbdd_name = "Optimize_Energy"
-
-            query = sqlalchemy.text("SELECT * FROM Tecnologias_generacion")
-            with self.engine.connect() as connection:
-                df = pd.read_sql(query, connection)
-                
+            engine = DatabaseUtils.create_engine(self.bbdd_name)
+            df = DatabaseUtils.read_table(engine, "Tecnologias_generacion")
+            engine.dispose()
             if df.empty:
                 raise ValueError("Technology mapping table is empty")
-                
             print(f"Successfully loaded {len(df)} technology mappings from database")
             return df
-            
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            print(f"Database error when loading technology mappings: {e}")
-            raise
         except Exception as e:
             print(f"Unexpected error when loading technology mappings: {e}")
             raise
@@ -217,20 +199,12 @@ class UPTracker:
             sqlalchemy.exc.SQLAlchemyError: If there is a database error
         """
         try:
-            #set bbdd name, which sets the bbdd_url and engine with the setter methods
             self.bbdd_name = "energy_tracker"
-
-            #load the UP_change_log table
-            query = sqlalchemy.text(f"SELECT * FROM {self.change_log_table_name}")
-            with self.engine.connect() as connection:
-                df = pd.read_sql(query, connection)
-                
+            engine = DatabaseUtils.create_engine(self.bbdd_name)
+            df = DatabaseUtils.read_table(engine, self.change_log_table_name)
+            engine.dispose()
             print(f"Successfully loaded {len(df)} change log entries from database")
             return df
-            
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            print(f"Database error when loading change log: {e}")
-            raise
         except Exception as e:
             print(f"Unexpected error when loading change log: {e}")
             raise
@@ -332,26 +306,18 @@ class UPTracker:
             sqlalchemy.exc.SQLAlchemyError: If there is a database error (except for IntegrityError with duplicate entry)
         """
         try:
-            #if there are new ups in the csv file, add them to the database
             if not new_ups_df.empty:
-                #set bbdd name, which sets the bbdd_url and engine with the setter methods
                 self.bbdd_name = "energy_tracker"
-
-                # Ensure we only include columns that exist in the database table
+                engine = DatabaseUtils.create_engine(self.bbdd_name)
                 columns_to_include = ['UP', 'potencia', 'tecnologia_id', 'zona_regulacion', 'obsoleta', "date_updated"]
-
                 new_ups_df = new_ups_df[columns_to_include]
                 new_ups_df['date_updated'] = pd.Timestamp.now().strftime('%Y-%m-%d')
-                
-                # Save to database
-                new_ups_df.to_sql(self.table_name, con=self.engine, if_exists='append', index=False)
-                
+                DatabaseUtils.write_table(engine, new_ups_df, self.table_name, if_exists='append', index=False)
+                engine.dispose()
                 print(f"Added new UPs in {self.table_name} in database table")
             else:
                 print("-No new UPs to add")
-            
             return True
-                
         except sqlalchemy.exc.IntegrityError as e:
             if "Duplicate entry" in str(e):
                 print(f"Skipping duplicate entry error: {e}")
@@ -359,9 +325,6 @@ class UPTracker:
             else:
                 print(f"Database integrity error when adding new UPs: {e}")
                 raise
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            print(f"Database error when adding new UPs: {e}")
-            raise
         except Exception as e:
             print(f"Unexpected error when adding new UPs: {e}")
             raise
@@ -378,25 +341,20 @@ class UPTracker:
         """
         try:
             if delta_obsolete_ups:
-                #set bbdd name, which sets the bbdd_url and engine with the setter methods
                 self.bbdd_name = "energy_tracker"
-
-                # Update obsoleta column and date_updated for obsolete UPs
+                engine = DatabaseUtils.create_engine(self.bbdd_name)
                 current_date = pd.Timestamp.now().strftime('%Y-%m-%d')
-                update_query = sqlalchemy.text(
-                    f"UPDATE {self.table_name} SET obsoleta = 1, date_updated = :date_updated WHERE UP IN :ups"
-                )
-                with self.engine.connect() as connection:
-                    connection.execute(update_query, {'ups': delta_obsolete_ups, 'date_updated': current_date})
-                    connection.commit()
-                    
+                update_df = pd.DataFrame({
+                    'UP': delta_obsolete_ups,
+                    'obsoleta': 1,
+                    'date_updated': current_date
+                })
+                DatabaseUtils.update_table(engine, update_df, self.table_name, key_columns=['UP'])
+                engine.dispose()
                 print(f"Marked UPs as obsolete in {self.table_name} database table")
             else:
                 print("-No obsolete UPs to mark")
                 
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            print(f"Database error when marking obsolete UPs: {e}")
-            raise
         except Exception as e:
             print(f"Unexpected error when marking obsolete UPs: {e}")
             raise
@@ -519,14 +477,11 @@ class UPTracker:
         """
         try:
             if change_log_entries:
-                #set bbdd name, which sets the bbdd_url and engine with the setter methods
                 self.bbdd_name = "energy_tracker"
-
-                # Convert list of dictionaries to DataFrame
+                engine = DatabaseUtils.create_engine(self.bbdd_name)
                 change_log_df = pd.DataFrame(change_log_entries)
-                
-                # Save to database
-                change_log_df.to_sql(self.change_log_table_name, con=self.engine, if_exists='append', index=False)
+                DatabaseUtils.write_table(engine, change_log_df, self.change_log_table_name, if_exists='append', index=False)
+                engine.dispose()
                 
                 # Group by UP to show summary
                 up_changes = {}
@@ -554,9 +509,6 @@ class UPTracker:
             else:
                 print("-No changes to log")
                 
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            print(f"Database error when saving change log: {e}")
-            raise
         except Exception as e:
             print(f"Unexpected error when saving change log: {e}")
             raise
@@ -572,58 +524,18 @@ class UPTracker:
             sqlalchemy.exc.SQLAlchemyError: If there is a database error
         """
         try:
-            #set bbdd name, which sets the bbdd_url and engine with the setter methods
             self.bbdd_name = "energy_tracker"
-
             current_date = pd.Timestamp.now().strftime('%Y-%m-%d')
-
             if not updated_ups_df.empty:
-                # Determine which table to use
-                
-                # Get list of UPs to update
-                ups_to_update = updated_ups_df['UP'].tolist()
-                
-                # Set UP as index for easier access to values
-                updated_ups_df.set_index('UP', inplace=True)
-                
-                # Update each UP in the database
-                with self.engine.connect() as connection:
-                    for up in ups_to_update:
-                        # Get the updated values for this UP
-                        row = updated_ups_df.loc[up]
-                        
-                        # Create and execute UPDATE query
-                        update_query = sqlalchemy.text(
-                            f"""UPDATE {self.table_name} 
-                               SET potencia = :potencia, 
-                                   zona_regulacion = :zona_regulacion,
-                                   date_updated = :date_updated
-                               WHERE UP = :up"""
-                        )
-                        
-                        connection.execute(update_query, {
-                            'potencia': row['potencia'],
-                            'zona_regulacion': row['zona_regulacion'],
-                            'up': up,
-                            'date_updated': current_date
-                        })
-                    
-                    # Commit all updates
-                    connection.commit()
-
+                engine = DatabaseUtils.create_engine(self.bbdd_name)
+                update_df = updated_ups_df.copy()
+                update_df['date_updated'] = current_date
+                DatabaseUtils.update_table(engine, update_df, self.table_name, key_columns=['UP'])
+                engine.dispose()
                 print(f"Successfully updated UPs in {self.table_name} database table")
-                # print(f"\n=== UPs Updated in {table_name} ===")
-                # print("\nList of updated UPs:")
-                # print("-" * 20)
-                # for i, up in enumerate(ups_to_update, 1):
-                #     print(f"{i:2d}. {up}")
-                # print("-" * 20 + "\n")
             else:
                 print("-No UPs to update")
                 
-        except sqlalchemy.exc.SQLAlchemyError as e:
-            print(f"Database error when updating UP details: {e}")
-            raise
         except Exception as e:
             print(f"Unexpected error when updating UP details: {e}")
             raise
