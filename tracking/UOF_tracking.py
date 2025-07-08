@@ -12,7 +12,7 @@ from typing import List, Dict, Tuple
 # Add the root directory to Python path to allow imports from utilidades and config
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', )))
 from utilidades.db_utils import DatabaseUtils
-from selenium_descarga_uofs_omie import download_uofs_from_omie 
+from descarga_uofs_omie import download_uofs_from_omie 
 import pretty_errors
 
 class UOFDatabaseManager:

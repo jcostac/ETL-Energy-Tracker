@@ -4,16 +4,17 @@ Script to download and track UPs and Zonas de Regulación (designed to be run as
 import os
 from datetime import datetime
 import logging
-from descarga_UP_list import descargador_UP_list
+from descarga_up_list import descargador_UP_list
 from UP_tracking import UPTracker
 from ZR_tracking import ZRTracker
 from descarga_uofs_omie import download_uofs_from_omie
 from UOF_tracking import UOFTracker
-import pymsteams
 import sys
 import importlib.util
 import pretty_errors
 import asyncio
+
+
 # Get the path to the config.py file
 root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 config_path = os.path.join(root_dir, 'config.py')
@@ -77,7 +78,7 @@ async def run_tracking():
         try:
             await descargador_UP_list(download_dir)
             await download_uofs_from_omie(download_dir)
-            #download_bsp_list(download_dir) WIP
+            #download_bsp_list(download_dir) WIP de momento no automatico
             
         except Exception as e:
             logger.error(f"Error downloading UP list: {str(e)}", exc_info=True)
@@ -139,24 +140,5 @@ async def run_tracking():
             os.remove(esios_csv_path)
             #os.remove(bsp_path)
             os.remove(uof_xlsx_path)
-        
-
-if __name__ == "__main__":
-
-    #Connection for warning messages
-    myTeamsMessage = pymsteams.connectorcard(pymsteams_connector)
-    myTeamsMessage.color("#339CFF")
-
-    try:
-        asyncio.run(run_tracking()) 
-        success_message = f"UP/ZR/UOF tracking job completed successfully on {datetime.now().strftime('%Y-%m-%d')}"
-        print(success_message)
-        #myTeamsMessage.text(success_message)
-        #myTeamsMessage.send()
-    except Exception as e:
-        error_message = f"Error in UP/ZR/UOF tracking job on {datetime.now().strftime('%Y-%m-%d')}: {str(e)}"
-        print(error_message)
-        myTeamsMessage.text(error_message)
-        myTeamsMessage.send()
 
 
