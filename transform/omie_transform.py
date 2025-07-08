@@ -34,7 +34,7 @@ class TransformadorOMIE:
         self.date_utils = DateUtilsETL()
 
         # Define dataset types and transformation modes
-        self.transform_types = ['latest', 'batch', 'single', 'multiple']
+        self.transform_types = ['latest', 'single', 'multiple']
 
 
         # OMIE market configuration
@@ -54,7 +54,7 @@ class TransformadorOMIE:
         
         Args:
             raw_df (pd.DataFrame): The dataframe to transform
-            transform_type (str): The type of transformation to perform ('latest', 'batch', 'single', 'multiple')
+            transform_type (str): The type of transformation to perform ('latest',   'single', 'multiple')
             fecha_inicio (str): The start date to process (required for single and multiple modes)
             fecha_fin (str): The end date to process (required for multiple transform_type)
             
@@ -116,12 +116,6 @@ class TransformadorOMIE:
                 filtered_df = raw_df[raw_df['Fecha'].dt.date == last_day]
                 print(f"📊 Records found after filtering: {len(filtered_df)}")
                 return filtered_df
-
-            elif transform_type == 'batch':
-                # Process the entire dataframe
-                unique_days = raw_df['Fecha'].dt.date.nunique()
-                print(f"📊 Processing entire dataset with {unique_days} unique days")
-                return raw_df
 
             elif transform_type == 'single':
                 # Process a single day
@@ -597,7 +591,7 @@ class TransformadorOMIE:
         return processed_df_final
 
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None,
-                                      mercados_lst: List[str] = None, transform_type: str = 'latest') -> Dict:
+                                      mercados_lst: List[str] = None) -> Dict:
         """
         A function that transforms data for specified markets and returns status along with results.
 
@@ -605,7 +599,8 @@ class TransformadorOMIE:
             fecha_inicio (str): Start date in YYYY-MM-DD format
             fecha_fin (str): End date in YYYY-MM-DD format
             mercados_lst (List[str]): List of market names to process
-            transform_type (str): Mode to process data ('single', 'multiple', 'batch', 'latest')
+            transform_type (str): Mode to process data ('single', 'multiple', 'latest')
+                                  If None, will be auto-detected based on date parameters
 
         Returns:
             Dict: Dictionary containing:
@@ -618,6 +613,15 @@ class TransformadorOMIE:
                         - 'transform_type': The transform transform_type used
                         - 'date_range': The date range processed
         """
+        # Auto-infer transform type based on date parameters
+        if fecha_inicio is None and fecha_fin is None:
+            transform_type = 'latest'
+        elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
+            transform_type = 'single'
+        elif fecha_inicio is not None and fecha_fin is not None and fecha_inicio != fecha_fin:
+            transform_type = 'multiple'
+
+     
         # Initialize status tracking
         status_details = {
             "markets_processed": [],
@@ -667,9 +671,8 @@ class TransformadorOMIE:
                     print(f"Dataset Type: volumenes_omie")
                     print("-"*60)
                     
-                    if transform_type == 'batch':
-                        market_result = self._process_batch_mode(mercado)
-                    elif transform_type == 'single':
+                    # Process each market based on the transform type
+                    if transform_type == 'single':
                         market_result = self._process_single_day(mercado, fecha_inicio)
                     elif transform_type == 'latest':
                         market_result = self._process_latest_day(mercado)
@@ -740,29 +743,3 @@ class TransformadorOMIE:
     def process_continuo_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
         """Transforms data for the 'continuo' market."""
         return self._transform_market_data(raw_df, 'continuo')
-
-def example_usage():
-    transformer = TransformadorOMIE()
-    
-    # Example: Transform latest data for all markets
-    result = transformer.transform_data_for_all_markets(transform_type='latest')
-
-    breakpoint()
-    
-    print("Transformation Results:")
-    print(f"Success: {result['status']['success']}")
-    print(f"Details: {result['status']['details']}")
-    
-    for market, data in result['data'].items():
-        if data is not None:
-            if isinstance(data, pd.DataFrame):
-                print(f"{market}: {len(data)} records")
-            elif isinstance(data, list):
-                print(f"{market}: {len(data)} batches")
-        else:
-            print(f"{market}: No data")
-    
-# Example usage and testing
-if __name__ == "__main__":
-   #example_usage()
-   pass

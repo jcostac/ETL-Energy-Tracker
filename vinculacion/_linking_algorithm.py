@@ -70,7 +70,7 @@ class UOFUPLinkingAlgorithm:
     def _prepare_volume_data(self, omie_data: pd.DataFrame, 
                           i90_data: pd.DataFrame, target_date: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Prepares volume data for comparison by standardizing structure and filtering by target date
+        Prepares volume data for comparison by standardizing structure and filtering by target date. 
         
         Args:
             omie_data: OMIE processed data
@@ -84,6 +84,7 @@ class UOFUPLinkingAlgorithm:
         print("-"*45)
 
         try:
+            target_dt = datetime.strptime(target_date, '%Y-%m-%d').date()
         
             # Prepare OMIE data (UOFs)
             omie_prepared = omie_data.copy()
@@ -93,7 +94,6 @@ class UOFUPLinkingAlgorithm:
                 
                 # Convert UTC datetime to local time, then extract date for filtering
                 madrid_tz = pytz.timezone('Europe/Madrid')
-                target_dt = pd.to_datetime(target_date).date()
                 
                 # Filter for target date using local time conversion
                 omie_local_dates = omie_prepared['datetime_utc'].dt.tz_convert(madrid_tz).dt.date
@@ -317,15 +317,21 @@ class UOFUPLinkingAlgorithm:
         exact_matches = list()
         ambiguous_matches = list()
         
+        # Create reverse mapping to count UPs per hash
+        hash_to_ups = {}
         for up, up_hash in up_hashes.items():
-            #if the hash is in the hash_to_uofs dict, we have a match
+            if up_hash not in hash_to_ups:
+                hash_to_ups[up_hash] = []   
+            hash_to_ups[up_hash].append(up)
+        
+        for up, up_hash in up_hashes.items():
+            # Check if this hash has a match in UOFs
             if up_hash in hash_to_uofs: 
-
-                # get the list of uofs that are stored in the hash key ex: {'hash1': ['UOF1', 'UOF2'], 'hash2': ['UOF3', 'UOF4']}
                 matching_uofs = hash_to_uofs[up_hash]
+                matching_ups = hash_to_ups[up_hash]
                 
-                #if there is only one uof, we have a perfect match
-                if len(matching_uofs) == 1:
+                # True 1:1 match requires BOTH conditions:
+                if len(matching_uofs) == 1 and len(matching_ups) == 1:
                     # Perfect 1:1 match
                     exact_matches.append({
                         'up': up,
@@ -333,7 +339,7 @@ class UOFUPLinkingAlgorithm:
                         "match_type": "exact_unique"
                     })
                 else:
-                    # Ambiguous match - one UP hash matches multiple UOF hashes
+                    # Ambiguous - multiple UOFs OR multiple UPs with same hash
                     for uof in matching_uofs:
                         ambiguous_matches.append({
                             'up': up,
@@ -389,7 +395,7 @@ class UOFUPLinkingAlgorithm:
         
         return name_resolved_df, remaining_ambiguous_df
     
-    def _resolve_uof_conflicts(self, matches_df: pd.DataFrame) -> pd.DataFrame:
+    def _resolve_uof_conflicts(self, matches_df: pd.DataFrame) -> Tuple[pd.DataFrame, list]:
         """
         Resolves conflicts where the same UOF is matched to multiple UPs
         
@@ -397,10 +403,10 @@ class UOFUPLinkingAlgorithm:
             matches_df: DataFrame with potential UOF conflicts
             
         Returns:
-            pd.DataFrame: Matches with UOF conflicts resolved
+            Tuple of (clean_matches_df, conflicted_ups)
         """
         if matches_df.empty:
-            return matches_df
+            return matches_df, []
         
         print(f"\n🔍 CHECKING FOR UOF CONFLICTS")
         print("-"*40)
@@ -411,7 +417,7 @@ class UOFUPLinkingAlgorithm:
         
         if not conflicted_uofs:
             print("✅ No UOF conflicts detected")
-            return matches_df
+            return matches_df, []
         
         print(f"⚠️  Found {len(conflicted_uofs)} UOFs with conflicts:")
         for uof in conflicted_uofs:
@@ -445,7 +451,8 @@ class UOFUPLinkingAlgorithm:
             return pd.DataFrame(columns=['up', 'uof'])
         
         # Keep only the essential columns and remove duplicates
-        final_df = matches_df[['up', 'uof']].drop_duplicates().reset_index(drop=True)
+        final_df = matches_df[['up', 'uof']]
+        final_df['date_updated'] = datetime.now().strftime('%Y-%m-%d')
         
         print(f"📊 Final matches summary:")
         print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
@@ -554,7 +561,8 @@ class UOFUPLinkingAlgorithm:
 
             # Step 3: Prepare volume data (timezone conversion, date filtering, grouping, rounding)
             omie_prepared, i90_prepared = self._prepare_volume_data(omie_combined, i90_combined, target_date)
-            
+
+
             # Filter for active UPs only
             i90_prepared_active = i90_prepared[i90_prepared['up'].isin(active_ups['up'])]
             print(f"🔍 UPs after filtering: {len(i90_prepared['up'].unique())} -> {len(i90_prepared_active['up'].unique())}")
@@ -643,11 +651,11 @@ class UOFUPLinkingAlgorithm:
             
             # Resolve UOF conflicts (should be minimal now due to exclusion logic)
             if not final_resolved_matches.empty:
-                final_resolved_matches, _ = self._resolve_uof_conflicts(final_resolved_matches)
+                final_resolved_matches, conflicted_ups = self._resolve_uof_conflicts(final_resolved_matches)
 
             # Create final links
             final_matches_df = self._create_final_matches_df(final_resolved_matches)
-            
+
             print(f"\n🎉 LINKING PROCESS COMPLETE")
             print(f"Final result: {len(final_matches_df)} UOF-UP links created")
             print("="*60)
