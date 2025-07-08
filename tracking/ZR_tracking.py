@@ -10,7 +10,7 @@ import sys
 import os
 # Add the root directory to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utilidades.db_utils import DatabaseUtils
+from utilidades.db_utils import DatabaseUtils, DB_URL
 import pretty_errors
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
@@ -20,8 +20,7 @@ import re  # Import regular expressions module
 import requests
 import zipfile
 from datetime import timedelta
-# Now you can import from config
-from config.db_config import DB_URL
+
 
 
 
