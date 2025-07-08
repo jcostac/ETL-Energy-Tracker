@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from tracking.ZR_tracking import ZRTracker
 from tracking.descarga_up_list import descargador_UP_list
 from tracking.descarga_bsp_esios import download_bsp_list  # You'll need to implement this
-from tracking.tracking_helpers import check_required_files, get_latest_file_by_pattern, setup_tracking_directories
+from dags.tracking.tracking_helpers import check_required_files, get_latest_file_by_pattern, setup_tracking_directories
 from dags.helpers.email_triggers import dag_failure_email, task_failure_email
 from dags.helpers.pipeline_status_helpers import update_pipeline_stage_status
 

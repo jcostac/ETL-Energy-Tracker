@@ -79,7 +79,7 @@ def setup_tracking_directories() -> str:
         str: Path to the download directory
     """
     download_dir = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), '..', '..', 'downloads', 'tracking'
+        os.path.dirname(__file__), '..', '..', 'data_lake', 'tracking'
     ))
     
     if not os.path.exists(download_dir):

@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 # Import necessary modules
 from tracking.UOF_tracking import UOFTracker
 from tracking.descarga_uofs_omie import download_uofs_from_omie
-from tracking.tracking_helpers import check_required_files, get_latest_file_by_pattern, setup_tracking_directories
+from dags.tracking.tracking_helpers import check_required_files, get_latest_file_by_pattern, setup_tracking_directories
 from dags.helpers.email_triggers import dag_failure_email, task_failure_email
 from dags.helpers.pipeline_status_helpers import update_pipeline_stage_status
 
