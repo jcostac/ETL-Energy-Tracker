@@ -51,7 +51,7 @@ class UPChangeMonitor:
             db_new_links = pd.DataFrame({
                 'UP': all_matches_df['up'].str.upper(),
                 'UOF': all_matches_df['uof'].str.upper(),
-                'date_updated': pd.to_datetime(target_date).date()
+                'date_updated': all_matches_df['date_updated']
             })
             self.db_utils.write_table(self.engine, db_new_links, self.config.UP_UOF_VINCULACION_TABLE, if_exists='append')
             print(f"✅ Successfully inserted {len(db_new_links)} new links.")
@@ -141,7 +141,7 @@ class UPChangeMonitor:
             'new_value': changes_to_apply['uof_new'],
             'date_updated': datetime.now().date()
         })
-        self.db_utils.write_table(self.engine, change_log_df, self.config.VINCULACION_CHANGE_LOG_TABLE, if_exists='append')
+        self.db_utils.update_table(self.engine, change_log_df, self.config.VINCULACION_CHANGE_LOG_TABLE, key_columns=['UP'])
         print(f"   Logged {len(change_log_df)} changes to `{self.config.VINCULACION_CHANGE_LOG_TABLE}`.")
 
         update_df = changes_to_apply[['up', 'uof_new']].rename(columns={'uof_new': 'UOF', 'up': 'UP'})

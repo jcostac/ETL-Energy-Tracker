@@ -452,6 +452,7 @@ class UOFUPLinkingAlgorithm:
         
         # Keep only the essential columns and remove duplicates
         final_df = matches_df[['up', 'uof']]
+        final_df['date_updated'] = datetime.now().date()
 
         print(f"📊 Final matches summary:")
         print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
@@ -671,6 +672,7 @@ class UOFUPLinkingAlgorithm:
             results['message'] = f"Successfully created {len(final_matches_df)} UOF-UP links for target date {target_date}."
 
             if save_to_db: #save to db if True
+                print(f"Saving links to database...")
                 self._save_links_to_database(final_matches_df)
             
             return results
@@ -688,6 +690,7 @@ class UOFUPLinkingAlgorithm:
             links_df: DataFrame with the links to save
         """
         try:
+
             engine = self.db_utils.create_engine(self.config.DATABASE_NAME)
             self.db_utils.write_table(engine, links_df, self.config.UP_UOF_VINCULACION_TABLE, if_exists='append')
 

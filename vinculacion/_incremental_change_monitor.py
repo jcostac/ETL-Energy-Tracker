@@ -143,7 +143,7 @@ class IncrementalChangeMonitor:
                     db_new_links = pd.DataFrame({
                         'UP': new_links['up'].str.upper(),
                         'UOF': new_links['uof'].str.upper(),
-                        'date_updated': pd.to_datetime(target_date).date()
+                        'date_updated': new_links['date_updated']
                     })
                     
                     print(f"✅ Created {len(db_new_links)} new links for specific UPs")

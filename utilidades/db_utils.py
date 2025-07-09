@@ -89,7 +89,7 @@ class DatabaseUtils:
             index (bool): Whether to write DataFrame index, default is False
         """
         try:
-            df.to_sql(table_name, engine, if_exists=if_exists, index=index)
+            df.to_sql(table_name, engine, if_exists=if_exists, index=index, method='multi')
         except Exception as e:
             raise ValueError(f"Error writing to table {table_name}: {str(e)}")
 

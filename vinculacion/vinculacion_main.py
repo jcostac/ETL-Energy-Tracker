@@ -60,7 +60,7 @@ class VinculacionOrchestrator:
                 db_links = pd.DataFrame({
                     'UP': links_df['up'].str.upper(),
                     'UOF': links_df['uof'].str.upper(),
-                    'date_updated': datetime.now().date()
+                    'date_updated': links_df['date_updated']
                 })
                 
                 print(f"\n📋 SAMPLE LINKS (First 10):")
