@@ -208,6 +208,19 @@ class UPChangeMonitor:
         self.db_utils.write_table(self.engine, db_new_links, self.config.UP_UOF_VINCULACION_TABLE, if_exists='append')
         print(f"   Successfully inserted {len(db_new_links)} new links.")
 
+    def _check_if_already_updated_today(self) -> bool:
+        """Checks if the UP-UOF vinculacion table was already updated today."""
+        latest_dates_df = self.db_utils.read_table(
+            self.engine,
+            self.config.UP_UOF_VINCULACION_TABLE,
+            columns=['date_updated']
+        )
+        last_update_date = pd.to_datetime(latest_dates_df['date_updated']).max().date()
+        today = datetime.now().date()
+        if last_update_date == today:
+            return True
+        return False
+    
     async def monitor_existing_links(self) -> Dict:
         """Monitors existing UP-UOF links for changes, updates the database, and logs changes."""
         print("\n🔍 STARTING EXISTING LINK MONITORING")
@@ -224,6 +237,15 @@ class UPChangeMonitor:
         }
 
         try:
+            if self._check_if_already_updated_today():
+                print(f"⏩ Skipping monitoring: UP-UOF vinculacion table already updated today ({datetime.now().date()}).")
+                results['success'] = True
+                results['message'] = f"Table already updated today ({datetime.now().date()}); skipping."
+                return results
+        except Exception as e:
+            print(f"⚠️ Could not check last update date: {e}")
+
+        try:
             current_links_df = self._get_current_links()
 
             if current_links_df.empty: #if the table is empty, we run the initial linking and return
@@ -231,6 +253,7 @@ class UPChangeMonitor:
                 results['success'] = True
                 results['message'] = "Initial linking run completed."
                 return results
+            
 
             
             new_matches_df = await self._get_new_matches(target_date) #get the full linking round for the target date

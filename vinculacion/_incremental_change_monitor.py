@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional, Union
 from sqlalchemy import text
 import pandas as pd
 from pathlib import Path
@@ -35,17 +35,22 @@ class IncrementalChangeMonitor:
             print("-"*50)
             
             try:
-                query = f"""
-                SELECT DISTINCT UP
-                FROM {self.config.UP_CHANGE_LOG_TABLE}
-                WHERE field_changed = 'habilitada'
-                AND CAST(date_updated AS DATE) = CAST(? AS DATE)
-                AND new_value = '1'
-                """
+                where_clause = "field_changed = :field AND CAST(date_updated AS DATE) = CAST(:check_date AS DATE) AND new_value = :new_val"
+                params = {
+                    "field": "habilitada",
+                    "check_date": check_date,
+                    "new_value": "1"
+                }
                 
-                with engine.connect() as conn:
-                    result = conn.execute(text(query), (check_date,))
-                    enabled_ups = [row[0] for row in result.fetchall()]
+                ups_df = self.db_utils.read_table(
+                    engine,
+                    self.config.UP_CHANGE_LOG_TABLE,
+                    columns=['DISTINCT UP'],
+                    where_clause=where_clause,
+                    params=params
+                )
+                
+                enabled_ups = ups_df['UP'].tolist() if not ups_df.empty else []
                     
                 if enabled_ups:
                     print(f"✅ Found {len(enabled_ups)} UPs enabled on {check_date}:")
@@ -79,21 +84,18 @@ class IncrementalChangeMonitor:
             print("-"*50)
             
             try:
-                # Create placeholders for the IN clause
-                placeholders = ', '.join(['?' for _ in ups_to_check])
+                where_clause = "UP IN :ups_list AND date_updated = :target_date"
+                params = {"ups_list": tuple(ups_to_check), "target_date": target_date}
                 
-                query = f"""
-                SELECT DISTINCT UP
-                FROM {self.config.UP_UOF_VINCULACION_TABLE}
-                WHERE UP IN ({placeholders})
-                AND date_updated = ?
-                """
+                linked_ups_df = self.db_utils.read_table(
+                    engine,
+                    self.config.UP_UOF_VINCULACION_TABLE,
+                    columns=['DISTINCT UP'],
+                    where_clause=where_clause,
+                    params=params
+                )
                 
-                params = ups_to_check + [target_date]
-                
-                with engine.connect() as conn:
-                    result = conn.execute(text(query), params)
-                    already_linked_ups = [row[0] for row in result.fetchall()]
+                already_linked_ups = linked_ups_df['UP'].tolist() if not linked_ups_df.empty else []
                     
                 # Find UPs that are not yet linked
                 unlinked_ups = [up for up in ups_to_check if up not in already_linked_ups]

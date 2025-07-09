@@ -47,7 +47,7 @@ class VinculacionOrchestrator:
         
         try:
             # Perform linking
-            results = await self.linking_algorithm.link_uofs_to_ups(target_date = "2025-03-08", save_to_db = True)
+            results = await self.linking_algorithm.link_uofs_to_ups(target_date, save_to_db = True)
             
             if results['success']:
                 links_df = results['links_df']

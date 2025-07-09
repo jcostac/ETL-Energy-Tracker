@@ -46,14 +46,15 @@ class DatabaseUtils:
             raise ConnectionError(f"Failed to connect to database {database_name}: {str(e)}")
     
     @staticmethod
-    def read_table(engine: object, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None) -> pd.DataFrame:
+    def read_table(engine: object, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None, params: Optional[Union[dict, tuple]] = None) -> pd.DataFrame:
         """Read data from a table into a DataFrame
         
         Args:
             engine: SQLAlchemy engine
             table_name (str): Name of the table to read ie 'prices'
             columns (List[str], optional): Specific columns to read ie ['column1', 'column2']
-            where_clause (str, optional): SQL WHERE clause ie "column1 = 'value1'" or "column1 in ('value1', 'value2')"
+            where_clause (str, optional): SQL WHERE clause with placeholders, e.g., "column1 = :value1"
+            params (Union[dict, tuple], optional): Dictionary or tuple of parameters to bind to the query.
             
         Returns:
             pd.DataFrame: Table data
@@ -70,7 +71,7 @@ class DatabaseUtils:
             
             # Execute the query and convert to DataFrame
             with engine.connect() as conn:
-                result = conn.execute(query)
+                result = conn.execute(query, params or {})
                 df = pd.DataFrame(result.fetchall(), columns=result.keys())
                 return df
             

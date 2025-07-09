@@ -45,11 +45,10 @@ async def full_linking_test(initial_linking: bool = False):
     if initial_linking:
         await orchestrator.perform_full_linking()
 
-    breakpoint()
-    
     # === STEP 1: MONITOR EXISTING LINKS FOR CHANGES ===
     # This should run first to detect any de-linking or changes before adding new ones.
     await orchestrator.perform_existing_links_monitoring()
+    breakpoint()
 
     # === STEP 2: INCREMENTAL CHECK FOR NEWLY ENABLED UPs ===
     # This checks for UPs that became active 93 days ago and links them if they aren't already.
@@ -63,4 +62,6 @@ if __name__ == "__main__":
 
     # asyncio.run(linking_algorithm_test())   
     # asyncio.run(change_monitor_test())
-    asyncio.run(full_linking_test(initial_linking=True)) 
+    asyncio.run(full_linking_test(initial_linking=False)) 
+
+    
