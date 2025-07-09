@@ -358,17 +358,19 @@ class OMIEDownloader:
             # Extract session from filename - handle .1 extension properly
             if file_name.endswith('.1'):
                 # For files ending with .1: curva_pibc_uof_2025010102.1
-                # Session is the last 2 digits before .1
-                session_str = file_name[-4:-2]
+                # Session is the last digit before .1
+                #sometimes the OMIE retards upload files with a "1" instead of a "01" hence its safe to take only the digit before the "."
+                session_str = file_name[-3:-2]
             else:
                 raise ValueError(f"Invalid filename format: {file_name}")
             
-            if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
+            if session_str in ['1', '2', '3', '4', "5", "6", "7"]:
                 df["sesion"] = int(session_str)
                 df["sesion"] = df["sesion"].astype("Int64")
                 print(f"Added sesion column with value: {session_str}")
             else:
                 print(f"Session '{session_str}' not in valid session list")
+                raise ValueError(f"Session '{session_str}' not in valid session list (fichero mal nominado)")
 
             # Check if there are duplicates for intra market
             duplicate_count = df.duplicated().sum()

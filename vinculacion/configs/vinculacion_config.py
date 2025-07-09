@@ -18,6 +18,7 @@ class VinculacionConfig:
         self.UP_LISTADO_TABLE = "up_listado"
         self.UP_CHANGE_LOG_TABLE = "up_change_log"
         self.UP_UOF_VINCULACION_TABLE = "up_uof_vinculacion"  # Target table
+        self.VINCULACION_CHANGE_LOG_TABLE = "vinculacion_change_log"
         
         # Dataset types
         self.OMIE_DATASET_TYPE = "volumenes_omie"

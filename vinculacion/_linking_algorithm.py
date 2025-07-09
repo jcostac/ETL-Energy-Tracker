@@ -452,7 +452,6 @@ class UOFUPLinkingAlgorithm:
         
         # Keep only the essential columns and remove duplicates
         final_df = matches_df[['up', 'uof']]
-        final_df['date_updated'] = datetime.now().strftime('%Y-%m-%d')
         
         print(f"📊 Final matches summary:")
         print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
@@ -508,7 +507,7 @@ class UOFUPLinkingAlgorithm:
             return False
 
     ### MAIN METHOD TO LINK UOFs TO UPs FOR A GIVEN DATE ###
-    async def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None) -> pd.DataFrame:
+    async def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None) -> Dict:
         """
         Main method to link UOFs to UPs for a given date using a two-round matching process.
         
@@ -516,11 +515,18 @@ class UOFUPLinkingAlgorithm:
             target_date: Target date for linking (YYYY-MM-DD)
             ups_to_link: List of UPs to link (optional), if not provided, all active UPs will be linked
         Returns:
-            pd.DataFrame: Final links with columns [up, uof]
+            Dict: Results of the linking process, including success status, a message, and the resulting dataframe.
         """
         print(f"\n🚀 STARTING UOF-UP LINKING PROCESS")
         print(f"Target Date: {target_date}")
         print("="*60)
+        
+        results = {
+            'target_date': target_date,
+            'links_df': pd.DataFrame(columns=['up', 'uof']),
+            'success': False,
+            'message': ''
+        }
         
         try:
             # Step 1: Get all active UPs if ups_to_link is not provided
@@ -660,11 +666,16 @@ class UOFUPLinkingAlgorithm:
             print(f"Final result: {len(final_matches_df)} UOF-UP links created")
             print("="*60)
             
-            return final_matches_df
+            results['links_df'] = final_matches_df
+            results['success'] = True
+            results['message'] = f"Successfully created {len(final_matches_df)} UOF-UP links for target date {target_date}."
+            
+            return results
             
         except Exception as e:
+            results['message'] = f"Error in linking process: {e}"
             print(f"❌ Error in linking process: {e}")
-            return pd.DataFrame(columns=['up', 'uof'])
+            return results
 
    
 async def example_usage():
@@ -673,8 +684,15 @@ async def example_usage():
     # Get the target date
     target_date = algorithm.config.get_linking_target_date()
     ups_to_link = None  # If None, all active UPs will be linked
-    links_df = await algorithm.link_uofs_to_ups("2025-03-08", ups_to_link=ups_to_link)
-    print(links_df)
+    results = await algorithm.link_uofs_to_ups(target_date = target_date, ups_to_link=ups_to_link)
+    
+    if results['success']:
+        links_df = results['links_df']
+        print(links_df)
+        links_df.to_csv('links_df.csv', index=False)
+    else:
+        print(f"Linking process failed: {results['message']}")
+
 
 if __name__ == "__main__":
     asyncio.run(example_usage())
