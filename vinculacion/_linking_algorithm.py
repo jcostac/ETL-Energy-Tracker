@@ -452,7 +452,7 @@ class UOFUPLinkingAlgorithm:
         
         # Keep only the essential columns and remove duplicates
         final_df = matches_df[['up', 'uof']]
-        final_df['date_updated'] = datetime.now().date()
+        final_df['date_updated'] =  datetime.now().date().strftime('%Y-%m-%d')
 
         print(f"📊 Final matches summary:")
         print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
