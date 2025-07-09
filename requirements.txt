@@ -12,6 +12,7 @@ numpy
 openpyxl
 pandas
 pendulum
+playwright
 pretty_errors
 pymysql
 pytest
