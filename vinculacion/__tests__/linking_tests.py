@@ -3,7 +3,7 @@ import os
 import asyncio
 
 # Add the project root to the Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(project_root)
 
 from vinculacion.vinculacion_main import VinculacionOrchestrator
@@ -60,7 +60,7 @@ async def full_linking_test(initial_linking: bool = False):
     print("="*100)
 
 if __name__ == "__main__":
-    
+
     # asyncio.run(linking_algorithm_test())   
     # asyncio.run(change_monitor_test())
     asyncio.run(full_linking_test(initial_linking=True)) 

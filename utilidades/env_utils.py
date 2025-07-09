@@ -8,7 +8,9 @@ class EnvUtils:
 
     def check_dev_env(self):
         """
-        Check if the environment is development or production.
+        Check if all variables needed are present in the environment.
+        If not, raise an error.
+        If all variables are present, return True.
         """
         dev = os.getenv('DEV') == 'True'
         prod = os.getenv('PROD') == 'True'

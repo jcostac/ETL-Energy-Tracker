@@ -30,6 +30,7 @@ class OMIEExtractor:
         self.intra_downloader = IntraOMIEDownloader()
         self.continuo_downloader = ContinuoOMIEDownloader()
         self.diario_downloader = DiarioOMIEDownloader()
+        
         # Initialize utils
         self.raw_file_utils = RawFileUtils()
         self.env_utils = EnvUtils()

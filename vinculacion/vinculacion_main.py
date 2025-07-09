@@ -46,7 +46,7 @@ class VinculacionOrchestrator:
         
         try:
             # Perform linking
-            results = await self.linking_algorithm.link_uofs_to_ups(target_date)
+            results = await self.linking_algorithm.link_uofs_to_ups(target_date = "2025-03-08")
             
             if results['success']:
                 links_df = results['links_df']
@@ -59,7 +59,7 @@ class VinculacionOrchestrator:
                 db_links = pd.DataFrame({
                     'UP': links_df['up'].str.upper(),
                     'UOF': links_df['uof'].str.upper(),
-                    'date_updated': links_df['date_updated']
+                    'date_updated': datetime.now().date()
                 })
                 
                 print(f"\n📋 SAMPLE LINKS (First 10):")

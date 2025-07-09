@@ -20,6 +20,7 @@ from configs.storage_config import DB_URL
 
 class DatabaseUtils:
     """Utility class for database operations. Operations include read, write and update."""
+    _engines = {} #cache for engines to avoid creating new ones
 
     @staticmethod
     def create_engine(database_name: str):
@@ -31,11 +32,15 @@ class DatabaseUtils:
         Returns:
             Engine: SQLAlchemy engine object
         """
+        if database_name in DatabaseUtils._engines:
+            return DatabaseUtils._engines[database_name]
+        
         try:
             engine = create_engine(DB_URL(database_name))
             # Test connection
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
+            DatabaseUtils._engines[database_name] = engine
             return engine
         except Exception as e:
             raise ConnectionError(f"Failed to connect to database {database_name}: {str(e)}")
