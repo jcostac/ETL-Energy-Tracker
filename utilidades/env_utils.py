@@ -37,9 +37,8 @@ class EnvUtils:
             raise ValueError("ESIOS_TOKEN is not set in the environment.")
         
         print("Environment variables checked successfully.")
-        self._env_checked = True
+        EnvUtils._env_checked = True
 
 if __name__ == "__main__":
     env_utils = EnvUtils()
-    print(env_utils.check_env())
     

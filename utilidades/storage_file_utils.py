@@ -44,7 +44,7 @@ class StorageFileUtils:
         self.processed_file_extension = 'parquet'
 
         #set the base path for data storage
-        self.base_path = Path(os.getenv('DATA_LAKE_BASE_PATH'))
+        self.base_path = Path(os.getenv('DATA_LAKE_PATH'))
 
 
     @staticmethod

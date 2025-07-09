@@ -452,7 +452,7 @@ class UOFUPLinkingAlgorithm:
         
         # Keep only the essential columns and remove duplicates
         final_df = matches_df[['up', 'uof']]
-        
+
         print(f"📊 Final matches summary:")
         print(f"   - Total unique UP-UOF pairs: {len(final_df)}")
         print(f"   - Unique UPs matched: {final_df['up'].nunique()}")
@@ -507,7 +507,7 @@ class UOFUPLinkingAlgorithm:
             return False
 
     ### MAIN METHOD TO LINK UOFs TO UPs FOR A GIVEN DATE ###
-    async def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None) -> Dict:
+    async def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None, save_to_db: bool = False) -> Dict:
         """
         Main method to link UOFs to UPs for a given date using a two-round matching process.
         
@@ -669,6 +669,9 @@ class UOFUPLinkingAlgorithm:
             results['links_df'] = final_matches_df
             results['success'] = True
             results['message'] = f"Successfully created {len(final_matches_df)} UOF-UP links for target date {target_date}."
+
+            if save_to_db: #save to db if True
+                self._save_links_to_database(final_matches_df)
             
             return results
             
@@ -676,27 +679,25 @@ class UOFUPLinkingAlgorithm:
             results['message'] = f"Error in linking process: {e}"
             print(f"❌ Error in linking process: {e}")
             return results
+        
+    def _save_links_to_database(self, links_df: pd.DataFrame):
+        """
+        Saves the links DataFrame to the database.
 
-   
-async def example_usage():
-    # Initialize the algorithm
-    algorithm = UOFUPLinkingAlgorithm()
-    # Get the target date
-    target_date = algorithm.config.get_linking_target_date()
-    ups_to_link = None  # If None, all active UPs will be linked
-    results = await algorithm.link_uofs_to_ups(target_date = target_date, ups_to_link=ups_to_link)
-    
-    if results['success']:
-        links_df = results['links_df']
-        print(links_df)
-        links_df.to_csv('links_df.csv', index=False)
-    else:
-        print(f"Linking process failed: {results['message']}")
+        Args:
+            links_df: DataFrame with the links to save
+        """
+        try:
+            engine = self.db_utils.create_engine(self.config.DATABASE_NAME)
+            self.db_utils.write_table(engine, links_df, self.config.UP_UOF_VINCULACION_TABLE, if_exists='append')
 
-
-if __name__ == "__main__":
-    asyncio.run(example_usage())
-
+        except Exception as e:
+            print(f"❌ Error saving links to database: {e}")
+            raise e
+        
+        finally:
+            if engine:
+                engine.dispose()
 
 
 

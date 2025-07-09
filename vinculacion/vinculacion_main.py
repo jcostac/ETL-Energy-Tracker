@@ -18,17 +18,18 @@ from vinculacion.configs.vinculacion_config import VinculacionConfig
 class VinculacionOrchestrator:
     """Main orchestrator for the vinculacion module"""
     
-    def __init__(self, database_name: str = "energy_tracker"):
-        self.database_name = database_name
+    def __init__(self):
+        
         self.config = VinculacionConfig()
         self.linking_algorithm = UOFUPLinkingAlgorithm()
         self.change_monitor = UPChangeMonitor()
         self.incremental_monitor = IncrementalChangeMonitor()
         self.db_utils = DatabaseUtils()
+
         
-    def _create_engine(self):
+    def _create_engine(self, database_name: str):
         """Create database engine"""
-        return self.db_utils.create_engine(self.database_name)
+        return self.db_utils.create_engine(database_name)
         
     async def perform_full_linking(self) -> pd.DataFrame:
         """
@@ -46,7 +47,7 @@ class VinculacionOrchestrator:
         
         try:
             # Perform linking
-            results = await self.linking_algorithm.link_uofs_to_ups(target_date = "2025-03-08")
+            results = await self.linking_algorithm.link_uofs_to_ups(target_date = "2025-03-08", save_to_db = True)
             
             if results['success']:
                 links_df = results['links_df']
@@ -65,9 +66,6 @@ class VinculacionOrchestrator:
                 print(f"\n📋 SAMPLE LINKS (First 10):")
                 print(db_links.head(10).to_string(index=False))
 
-                #save the links to the database
-                self.db_utils.write_table(self.engine, db_links, self.config.UP_UOF_VINCULACION_TABLE, if_exists='append')
-                
                 return db_links
             
             else:
@@ -92,7 +90,7 @@ class VinculacionOrchestrator:
         print("="*80)
         
         try:
-            engine = self._create_engine()
+            engine = self._create_engine(database_name = self.config.DATABASE_NAME)
             
             # Run daily check for UPs enabled 93 days ago
             results = await self.incremental_monitor.run_incremental_check(engine, check_date)

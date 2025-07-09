@@ -17,7 +17,7 @@ async def linking_algorithm_test():
     algorithm = UOFUPLinkingAlgorithm()
     # Get the target date
     target_date = algorithm.config.get_linking_target_date()
-    ups_to_link = None  # If None, all active UPs will be linked
+    ups_to_link = ["ZABU", "TERE"]  # If None, all active UPs will be linked
     results = await algorithm.link_uofs_to_ups(target_date = target_date, ups_to_link=ups_to_link)
     
     if results['success']:
