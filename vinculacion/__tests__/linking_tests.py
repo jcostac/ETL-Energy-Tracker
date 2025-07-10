@@ -8,7 +8,7 @@ sys.path.append(project_root)
 
 from vinculacion.vinculacion_main import VinculacionOrchestrator
 from vinculacion._linking_algorithm import UOFUPLinkingAlgorithm
-from vinculacion._linking_change_monitor import UPChangeMonitor
+from vinculacion._vinculacion_monitoring import UPChangeMonitor
 
 
 async def linking_algorithm_test():
@@ -47,13 +47,12 @@ async def full_linking_test(initial_linking: bool = False):
 
     # === STEP 1: MONITOR EXISTING LINKS FOR CHANGES ===
     # This should run first to detect any de-linking or changes before adding new ones.
-    await orchestrator.perform_existing_links_monitoring()
-    breakpoint()
+    await orchestrator.perform_vinculacion_monitoring()
 
     # === STEP 2: INCREMENTAL CHECK FOR NEWLY ENABLED UPs ===
     # This checks for UPs that became active 93 days ago and links them if they aren't already.
-    await orchestrator.perform_new_ups_linking()
-    breakpoint()
+    #await orchestrator.perform_new_ups_linking()
+    #breakpoint()
 
     print("\n" + "="*100)
     print("🏁 VINCULACION PROCESS COMPLETE")

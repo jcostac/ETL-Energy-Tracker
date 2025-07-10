@@ -11,7 +11,7 @@ sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.db_utils import DatabaseUtils
 from vinculacion._linking_algorithm import UOFUPLinkingAlgorithm
-from vinculacion._linking_change_monitor import UPChangeMonitor
+from vinculacion._vinculacion_monitoring import UPChangeMonitor
 from vinculacion.configs.vinculacion_config import VinculacionConfig
 
 class VinculacionOrchestrator:
@@ -115,7 +115,7 @@ class VinculacionOrchestrator:
                 'new_links_created': pd.DataFrame(columns=['UP', 'UOF', 'date_updated'])
             }
         
-    async def perform_existing_links_monitoring(self) -> Dict:
+    async def perform_vinculacion_monitoring(self) -> Dict:
         """
         Perform monitoring of existing UP-UOF links
         
