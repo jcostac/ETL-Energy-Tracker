@@ -7,6 +7,8 @@ import os
 import pretty_errors
 from pathlib import Path
 import sys
+from collections import defaultdict
+
 # Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -159,7 +161,6 @@ class OMIEDownloader:
  
                             # Read the CSV data
                             df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
-                            breakpoint()
  
                             # Process the dataframe
                             df = self._process_df(df, file)
@@ -185,15 +186,6 @@ class OMIEDownloader:
         else:
             raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
    
-    def _parse_intra_list(self, intras: list) -> list:
-        """
-        Check if the intras are valid. If they pass an int convert to str ie 1-> "1"
-        """
-        if intras is None:
-            return None
-        intras = [str(intra) for intra in intras]
-        return intras
-    
     ####// MAIN DOWNLOADER METHOD //####
     def descarga_omie_datos(self, fecha_inicio_carga: str, fecha_fin_carga: str, intras: list = None) -> dict:
         """
@@ -274,6 +266,7 @@ class OMIEDownloader:
                        
                         # If there are files to be read from the zip, process them
                         if filtered_files:
+                            filtered_files = self._check_latest_file(filtered_files, zip_ref)
                             #create a list at the year_month key to store the processed dataframes
                             monthly_data_dct[year_month] = []
                            
@@ -314,6 +307,20 @@ class OMIEDownloader:
        
         return monthly_data_dct
    
+    def _parse_intra_list(self, intras: list) -> list:
+        """
+        Check if the intras are valid. If they pass an int convert to str ie 1-> "1"
+        """
+        if intras is None:
+            return None
+        else:
+            if intras not in [1, 2, 3, 4, 5, 6, 7]:
+                raise ValueError(f"Invalid intras list: {intras}. Intras must be 1, 2, 3, 4, 5, 6 or 7")
+            
+        intras = [str(intra) for intra in intras]
+
+        return intras
+    
     def _process_df(self, df: pd.DataFrame, file_name: str = None) -> pd.DataFrame:
         """
         Process the OMIE dataframe to standardize column names and data types.
@@ -520,6 +527,48 @@ class OMIEDownloader:
            
         except ValueError as e:
             raise e
+
+    def _check_latest_file(self, files: list, zip_ref: zipfile.ZipFile = None) -> list:
+        """
+        Check if the files are the latest version of the file.
+        For intra-day market, it filters for the latest version of a file for each session.
+        It groups files by date and session, then picks the one with the latest
+        modification time from the zip archive.
+        For other markets, it returns the files as is.
+
+        Args:
+            files (list): List of files to check
+            zip_ref (zipfile.ZipFile): Zip file reference
+
+        Returns:
+            list: List of latest files
+        """
+        breakpoint()
+        if self.mercado != "intra" or zip_ref is None:
+            return files
+
+        # Group files by a sesion key 
+        # curva_pibc_uof_2025010102.1 -> key would be 2
+        grouped_files = defaultdict(list)
+        for f in files:
+            # The part after the last '_' is like 'YYYYMMDDSS.version' or 'YYYYMMDDSS'
+            key = f.split('_')[-1].split('.')[0][-1]
+            grouped_files[key].append(f)
+
+        latest_files_list = []
+        for key, file_group in grouped_files.items():
+            if len(file_group) > 1:
+                # Find the latest file in the group based on modification time in the zip
+                latest_file = max(file_group, key=lambda x: zip_ref.getinfo(x).date_time)
+                latest_files_list.append(latest_file)
+            else:
+                # If only one file, it's the latest by default
+                latest_files_list.append(file_group[0])
+
+        if len(latest_files_list) < len(files):
+            print(f"Filtered out {len(files) - len(latest_files_list)} older version file(s) for intraday market.")
+
+        return latest_files_list
         
 class DiarioOMIEDownloader(OMIEDownloader):
     """
