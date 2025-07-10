@@ -543,7 +543,6 @@ class OMIEDownloader:
         Returns:
             list: List of latest files
         """
-        breakpoint()
         if self.mercado != "intra" or zip_ref is None:
             return files
 

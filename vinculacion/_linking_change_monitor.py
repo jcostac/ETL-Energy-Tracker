@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Tuple
 import sys
 from pathlib import Path
 from sqlalchemy import text, create_engine
+from sqlalchemy.exc import IntegrityError
 import asyncio
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -116,51 +117,60 @@ class UPChangeMonitor:
             obsolete_invalid_ups_df: The data frame with the changes in UP where UP is obsolete hence it does not appear in matching 
         """
         uof_changes_df = all_changes_df[all_changes_df['uof_new'] != 'unknown']
-        missing_vinculaciones_df = all_changes_df[all_changes_df['uof_new'] == 'unknown']['up'].tolist()
-        if not missing_vinculaciones_df:
+        missing_vinculaciones_df = all_changes_df[all_changes_df['uof_new'] == 'unknown']
+        missing_vinculaciones_list = missing_vinculaciones_df['up'].tolist()
+        if not missing_vinculaciones_list:
             return all_changes_df
         
 
-        print(f"   Verifying {len(missing_vinculaciones_df)} unlinked UPs for validity...")
-        placeholders = ', '.join([f"'{up}'" for up in missing_vinculaciones_df])
+        print(f"   Checking {len(missing_vinculaciones_list)} already matched UPs that were not found in current matching...")
+        placeholders = ', '.join([f"'{up}'" for up in missing_vinculaciones_list])
         where_clause = f"UP IN ({placeholders})"
         
         listado_ups = self.db_utils.read_table(self.engine, self.config.UP_LISTADO_TABLE, columns=['UP', 'obsoleta'], where_clause=where_clause)
         valid_ups = listado_ups[listado_ups['obsoleta'] == 0]['UP'].tolist()
-        invalid_ups = set(missing_vinculaciones_df) - set(valid_ups)
+        invalid_ups = set(missing_vinculaciones_list) - set(valid_ups)
         
         if invalid_ups:
             #change "unknown" field to None in the all_changes_df
             all_changes_df.loc[all_changes_df['up'].isin(list(invalid_ups)), 'uof_new'] = None
-            print(f"   - Found {len(invalid_ups)} obsolete/invalid UPs. They will be ignored.")
+            print(f"   - Found {len(invalid_ups)} obsolete/invalid UPs. Their UOF status will be set to None.")
 
 
-        obsolete_invalid_ups_df = all_changes_df[all_changes_df['up'].isin(list(invalid_ups))]
-        unknown_changes_df = all_changes_df[~all_changes_df['up'].isin(list(invalid_ups))]
+        obsolete_invalid_ups_df = missing_vinculaciones_df[missing_vinculaciones_df['up'].isin(list(invalid_ups))]
+        unknown_changes_df = missing_vinculaciones_df[~missing_vinculaciones_df['up'].isin(list(invalid_ups))]
 
-        print(f"   Found {len(uof_changes_df)} changes in UOF, {len(unknown_changes_df)} unknown changes and {len(obsolete_invalid_ups_df)} obsolete/invalid UPs.")
+        print(f"   Found {len(uof_changes_df)} changes in UOF, {len(unknown_changes_df)} missing UPs that were previously matched are missing from current matching and {len(obsolete_invalid_ups_df)} obsolete/invalid UPs.")
              
         
         return unknown_changes_df, obsolete_invalid_ups_df, uof_changes_df
 
     def _log_and_update_changes(self, uof_changes_df: pd.DataFrame, unknown_changes_df: pd.DataFrame, obsolete_invalid_ups_df: pd.DataFrame) -> None:
         """Logs changes and updates the main linking table."""
-        if unknown_changes_df.empty and obsolete_invalid_ups_df.empty:
+        if unknown_changes_df.empty and obsolete_invalid_ups_df.empty and uof_changes_df.empty:
             return
             
-        print(f"\n4. Found {len(unknown_changes_df)} unknown changes, {len(obsolete_invalid_ups_df)} obsolete/invalid UPs and {len(uof_changes_df)} changes in UOF to apply.")
+        print(f"\n4. Logging changes and updating the main linking table...")
         
-        if uof_changes_df:
-            change_log_df = pd.DataFrame({
+        change_log_dfs = []
+        
+        if not uof_changes_df.empty:
+            uof_change_log_df = pd.DataFrame({
                 'UP': uof_changes_df['up'],
                 'field_changed': 'UOF',
                 'old_value': uof_changes_df['uof_old'],
                 'new_value': uof_changes_df['uof_new'],
                 'date_updated': datetime.now().date()
             })
+        
+            #print the changes in a nice format
+            print(f" UP-UOF changes: ")
+            for index, row in uof_change_log_df.iterrows():
+                print(f"   {row['UP']}: {row['old_value']} -> {row['new_value']}")
+            change_log_dfs.append(uof_change_log_df)
 
-        if obsolete_invalid_ups_df:
-            change_log_df = pd.DataFrame({
+        if not obsolete_invalid_ups_df.empty:
+            obsolete_change_log_df = pd.DataFrame({
                 'UP': obsolete_invalid_ups_df['up'],
                 'field_changed': 'obsoleta',
                 'old_value': obsolete_invalid_ups_df['uof_old'],
@@ -168,26 +178,34 @@ class UPChangeMonitor:
                 'date_updated': datetime.now().date()
             })
 
-        if unknown_changes_df: #this type of changes would mean that there is something wrong with the matching algorithm
-            change_log_df = pd.DataFrame({
+            #print the changes in a nice format
+            print(f" Obsolete/invalid UPs: ")
+            for index, row in obsolete_change_log_df.iterrows():
+                print(f"   {row['UP']}: {row['old_value']} -> {row['new_value']}")
+            change_log_dfs.append(obsolete_change_log_df)
+
+        if not unknown_changes_df.empty: #this type of changes would mean that there is something wrong with the matching algorithm
+            unknown_change_log_df = pd.DataFrame({
                 'UP': unknown_changes_df['up'],
                 'field_changed': 'UOF',
                 'old_value': unknown_changes_df['uof_old'],
                 'new_value': 'unknown',
                 'date_updated': datetime.now().date()
             })
+            #change_log_dfs.append(unknown_change_log_df)
+            #we will not log these changes, only recorded for purposes of debugging
 
-        self.db_utils.update_table(self.engine, change_log_df, self.config.VINCULACION_CHANGE_LOG_TABLE, key_columns=['UP'])
-        print(f"   Logged {len(change_log_df)} changes to `{self.config.VINCULACION_CHANGE_LOG_TABLE}`.")
-
+        # Combine all change logs
+        if change_log_dfs:
+            change_log_df = pd.concat(change_log_dfs, ignore_index=True)
+            print(f"   Logging {len(change_log_dfs)} changes to `{self.config.VINCULACION_CHANGE_LOG_TABLE}`.")
+        
         #update the main UP-UOF linking table  
-        all_changes_df = pd.concat([uof_changes_df, unknown_changes_df, obsolete_invalid_ups_df])
-        update_df = all_changes_df[['up', 'uof_new']].rename(columns={'uof_new': 'UOF', 'up': 'UP'})
-        update_df['date_updated'] = datetime.now().date()
+        all_changes_df = pd.concat([uof_changes_df, obsolete_invalid_ups_df])
+        up_uof_to_update_df = all_changes_df[['up', 'uof_new']].rename(columns={'uof_new': 'UOF', 'up': 'UP'})
+        up_uof_to_update_df['date_updated'] = datetime.now().date()
 
-        print("Updating main UP-UOF linking table...")
-        self.db_utils.update_table(self.engine, update_df, self.config.UP_UOF_VINCULACION_TABLE, key_columns=['UP'])
-        print(f"   Updated {len(all_changes_df)} records in `{self.config.UP_UOF_VINCULACION_TABLE}`.")
+        return change_log_df, up_uof_to_update_df
 
     def _add_new_links(self, new_links_df: pd.DataFrame, target_date: str) -> None:
         """Adds newly identified links to the database.
@@ -205,8 +223,9 @@ class UPChangeMonitor:
             'UOF': new_links_df['uof_new'].str.upper(),
             'date_updated': pd.to_datetime(target_date).date()
         })
-        self.db_utils.write_table(self.engine, db_new_links, self.config.UP_UOF_VINCULACION_TABLE, if_exists='append')
-        print(f"   Successfully inserted {len(db_new_links)} new links.")
+
+        return db_new_links
+        
 
     def _check_if_already_updated_today(self) -> bool:
         """Checks if the UP-UOF vinculacion table was already updated today."""
@@ -221,6 +240,40 @@ class UPChangeMonitor:
             return True
         return False
     
+    def _write_operations_to_db(self, change_log_df: pd.DataFrame, up_uof_to_update_df: pd.DataFrame, db_new_links: pd.DataFrame) -> None:
+        """Writes operations to the database."""
+        try:
+            if not change_log_df.empty:
+                self.db_utils.update_table(self.engine, change_log_df, self.config.VINCULACION_CHANGE_LOG_TABLE, key_columns=['UP'])
+                print(f"   Logged {len(change_log_df)} changes to `{self.config.VINCULACION_CHANGE_LOG_TABLE}`.")
+
+            if not up_uof_to_update_df.empty:
+                self.db_utils.update_table(self.engine, up_uof_to_update_df, self.config.UP_UOF_VINCULACION_TABLE, key_columns=['UP'])
+                print(f"   Updated {len(up_uof_to_update_df)} records in `{self.config.UP_UOF_VINCULACION_TABLE}`.")
+
+            if not db_new_links.empty:
+                self.db_utils.write_table(self.engine, db_new_links, self.config.UP_UOF_VINCULACION_TABLE, if_exists='append')
+                print(f"   Successfully inserted {len(db_new_links)} new links.")
+
+        except IntegrityError as e:
+            print(f"⚠️ Warning: Encountered duplicate entries when inserting new links: {e}")
+            print("   Identifying which of the new links are duplicates...")
+            
+            existing_links = self.db_utils.read_table(self.engine, self.config.UP_UOF_VINCULACION_TABLE, columns=['UP', 'UOF'])
+            
+            # Use a merge to find the rows in db_new_links that are already in existing_links
+            duplicate_rows = pd.merge(db_new_links, existing_links, on=['UP', 'UOF'], how='inner')
+            
+            if not duplicate_rows.empty:
+                print("   The following entries are duplicates and were not inserted:")
+                print(duplicate_rows.to_string())
+
+            raise Exception("Duplicate entries found in the database. Please check the logs for more details.")
+
+        except Exception as e:
+            print(f"❌ Error writing operations to database: {e}")
+            raise e
+
     async def monitor_existing_links(self) -> Dict:
         """Monitors existing UP-UOF links for changes, updates the database, and logs changes."""
         print("\n🔍 STARTING EXISTING LINK MONITORING")
@@ -262,6 +315,8 @@ class UPChangeMonitor:
                 print(f"⚠️ {results['message']}")
                 return results
             
+            
+            
             #compare the current links with the new matches to find changes and new links
             all_changes_df, new_links_df = self._find_changes(current_links_df, new_matches_df)
             
@@ -269,16 +324,22 @@ class UPChangeMonitor:
             if not all_changes_df.empty:
                 #we might have UPs that are now unlinked and obsolete, so we filter them out
                 unknown_changes_df, obsolete_invalid_ups_df, uof_changes_df = self._filter_valid_unlinked_ups(all_changes_df)
-                self._log_and_update_changes(uof_changes_df, unknown_changes_df, obsolete_invalid_ups_df) #log the changes to the change log table
-                results['changes_found'] = all_changes_df
+                change_log_df, up_uof_to_update_df = self._log_and_update_changes(uof_changes_df, unknown_changes_df, obsolete_invalid_ups_df) #log the changes to the change log table
+                results['changes_found'] = pd.concat([up_uof_to_update_df, change_log_df], ignore_index=True)
 
             else: #if changes df is empty
                 print("\n✅ No changes detected in existing UP-UOF links.")
 
             #add new up-uof links to the db (if any)
             if not new_links_df.empty:
-                self._add_new_links(new_links_df, target_date)
-                results['new_links_found'] = new_links_df
+                db_new_links = self._add_new_links(new_links_df, target_date)
+                results['new_links_found'] = db_new_links
+
+            
+            #write operations in database (ups-uof linkings that changed, obsolete ups and new up-uof links)
+            self._write_operations_to_db(change_log_df, up_uof_to_update_df, db_new_links)
+
+            
             
             results['success'] = True
             num_changes = len(results['changes_found'])

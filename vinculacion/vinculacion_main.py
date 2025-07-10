@@ -12,7 +12,6 @@ sys.path.append(str(PROJECT_ROOT))
 from utilidades.db_utils import DatabaseUtils
 from vinculacion._linking_algorithm import UOFUPLinkingAlgorithm
 from vinculacion._linking_change_monitor import UPChangeMonitor
-from vinculacion._incremental_change_monitor import IncrementalChangeMonitor
 from vinculacion.configs.vinculacion_config import VinculacionConfig
 
 class VinculacionOrchestrator:
@@ -23,7 +22,6 @@ class VinculacionOrchestrator:
         self.config = VinculacionConfig()
         self.linking_algorithm = UOFUPLinkingAlgorithm()
         self.change_monitor = UPChangeMonitor()
-        self.incremental_monitor = IncrementalChangeMonitor()
         self.db_utils = DatabaseUtils()
 
         
@@ -78,11 +76,12 @@ class VinculacionOrchestrator:
             
     async def perform_new_ups_linking(self) -> Dict:
         """
-        Perform incremental linking for UPs that were enabled at least 93 days ago
+        Only matches UPs.
         
         Returns:
             Dict: Results of incremental linking
         """
+        return #TODO: Implement incremental linking
         check_date = self.config.get_linking_target_date() #93 days back from today|    
         
         print(f"\n🔄 STARTING INCREMENTAL UOF-UP LINKING")
@@ -93,7 +92,7 @@ class VinculacionOrchestrator:
             engine = self._create_engine(database_name = self.config.DATABASE_NAME)
             
             # Run daily check for UPs enabled 93 days ago
-            results = await self.incremental_monitor.run_incremental_check(engine, check_date)
+            results = await self.change_monitor.run_incremental_check(engine, check_date)
             
             if results['success']:
                 print(f"\n📊 INCREMENTAL LINKING RESULTS")

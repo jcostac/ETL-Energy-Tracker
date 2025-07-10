@@ -108,6 +108,8 @@ class UOFUPLinkingAlgorithm:
                 #assure id_mercado column is integer
                 omie_prepared['id_mercado'] = omie_prepared['id_mercado'].astype(int)
 
+                # Standardize volumenes dtype to float64
+                omie_prepared['volumenes'] = omie_prepared['volumenes'].astype(np.float64).round(2)
                 
                 #group by uof and hour, then sum volumenes
                 omie_prepared = omie_prepared.groupby(['uof', 'hour', 'id_mercado'])['volumenes'].sum().reset_index()
@@ -138,6 +140,8 @@ class UOFUPLinkingAlgorithm:
                     (i90_prepared['volumenes'].notna())
                 ]
 
+                # Standardize volumenes dtype to float64
+                i90_prepared['volumenes'] = i90_prepared['volumenes'].astype(np.float64).round(2)
 
                 #group by up and hour, then sum volumenes
                 i90_prepared = i90_prepared.groupby(['up', 'hour', 'id_mercado'])['volumenes'].sum().reset_index()
