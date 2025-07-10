@@ -317,7 +317,7 @@ class I90VolumenesExtractor(I90Extractor):
     def _extract_and_save_volumenes(self, day: datetime, mercado: str, downloader) -> None:
         """Helper method to extract and save volumenes data for a given market."""
         try:
-            dev, prod = self.env_utils.check_dev_env()
+    
 
             # 1. Call the specific downloader's get_i90_volumenes
             df_volumenes = downloader.get_i90_volumenes(
@@ -333,23 +333,13 @@ class I90VolumenesExtractor(I90Extractor):
 
                 # Use appropriate saving method based on dev flag
                 # Sticking to write_raw_csv for consistency with recent changes
-
-                if dev and not prod:
-                    status = "DEVELOPMENT "
-                    self.raw_file_utils.write_raw_csv(
-                        year=year, month=month, df=df_volumenes,
-                        dataset_type=dataset_type,
-                        mercado=mercado
-                    )
-                else:
-                    status = "PRODUCTION "
-                    self.raw_file_utils.write_raw_parquet(
-                        year=year, month=month, df=df_volumenes,
-                        dataset_type=dataset_type,
-                        mercado=mercado
-                    )
-
-                print(f"Successfully processed and saved {status}{mercado} volumenes for {day.date()}")
+                self.raw_file_utils.write_raw_csv(
+                    year=year, month=month, df=df_volumenes,
+                    dataset_type=dataset_type,
+                    mercado=mercado
+                )
+            
+                print(f"Successfully processed and saved {mercado} volumenes for {day.date()}")
 
             else:
                 print(f"No {mercado} volumenes data found or extracted for {day.date()} from {self.latest_i90_excel_file_name}")
@@ -429,8 +419,6 @@ class I90PreciosExtractor(I90Extractor):
     def _extract_and_save_precios(self, day: datetime, mercado: str, downloader) -> None:
         """Helper method to extract and save precios data for a given market."""
         try:
-            dev, prod = self.env_utils.check_dev_env()
-
             # 1. Call the specific downloader's get_i90_precios
             df_precios = downloader.get_i90_precios(
                 excel_file_name=self.latest_i90_excel_file_name,
@@ -445,22 +433,14 @@ class I90PreciosExtractor(I90Extractor):
 
                 # Use appropriate saving method based on dev flag
                 # Assuming write_raw_csv for consistency, adjust if needed (e.g., parquet)
-                if dev and not prod:
-                    status = "DEVELOPMENT "
-                    self.raw_file_utils.write_raw_csv(
-                        year=year, month=month, df=df_precios,
-                        dataset_type=dataset_type,
-                        mercado=mercado
-                    )
-                else:
-                    status = "PRODUCTION "
-                    self.raw_file_utils.write_raw_parquet(
-                        year=year, month=month, df=df_precios,
-                        dataset_type=dataset_type,
-                        mercado=mercado
-                    )
+               
+                self.raw_file_utils.write_raw_csv(
+                    year=year, month=month, df=df_precios,
+                    dataset_type=dataset_type,
+                    mercado=mercado
+                )
                     
-                print(f"Successfully processed and saved {status}{mercado} precios for {day.date()}")
+                print(f"Successfully processed and saved {mercado} precios for {day.date()}")
 
             else:
                 print(f"No {mercado} precios data found or extracted for {day.date()} from {self.latest_i90_excel_file_name}")
@@ -543,3 +523,5 @@ def example_usage():
 
 if __name__ == "__main__":
     example_usage()
+
+    

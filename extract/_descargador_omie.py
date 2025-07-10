@@ -187,11 +187,11 @@ class OMIEDownloader:
    
     def _parse_intra_list(self, intras: list) -> list:
         """
-        Check if the intras are valid.If they pass an int convert to str ie 1-> "01"
+        Check if the intras are valid. If they pass an int convert to str ie 1-> "1"
         """
         if intras is None:
             return None
-        intras = [str(intra).zfill(2) for intra in intras]
+        intras = [str(intra) for intra in intras]
         return intras
     
     ####// MAIN DOWNLOADER METHOD //####
@@ -202,7 +202,7 @@ class OMIEDownloader:
         Args:
             fecha_inicio (str): Start date in format YYYY-MM-DD
             fecha_fin (str): End date in format YYYY-MM-DD
-            intras (list): List of intras to download, default None is all available intras
+            intras (list): List of intras to download, default None is all available intras, in format 1, 2, etc
         Returns:
             dict: Dictionary with monthly data containing files for the specified days with format {year_month: [dataframes]}
         """
@@ -252,8 +252,9 @@ class OMIEDownloader:
                             if intras is not None:
                                 #check intras are valid
                                 parsed_intras = self._parse_intra_list(intras)
+
                                 #if intras is not None, filter files to process by intras
-                                if file[-6:-4] not in parsed_intras:
+                                if file.split('.')[0][-1:] not in parsed_intras:
                                     print(f"Skipping {file} because it is not the intras list provided for download")
                                     continue
                             try:
@@ -268,7 +269,8 @@ class OMIEDownloader:
  
                             except ValueError:
                                 # If date parsing fails, skip this file
-                                continue
+                                print(f"Error parsing date from {file}")
+                                raise e
                        
                         # If there are files to be read from the zip, process them
                         if filtered_files:
@@ -277,6 +279,7 @@ class OMIEDownloader:
                            
                             # Process the filtered files
                             for file in filtered_files:
+                                print(f"Processing {file}")
                                 with zip_ref.open(file) as f:
                                     # Read the CSV data
                                     df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1', skip_blank_lines=True)
@@ -290,7 +293,7 @@ class OMIEDownloader:
                            
                             print(f"Processed {len(filtered_files)} files for {year_month}")
                             return monthly_data_dct
-               
+ 
                         else:
                             print(f"No matching files found in {filename} for the date range")
 
@@ -360,11 +363,11 @@ class OMIEDownloader:
                 # For files ending with .1: curva_pibc_uof_2025010102.1
                 # Session is the last digit before .1
                 #sometimes the OMIE retards upload files with a "1" instead of a "01" hence its safe to take only the digit before the "."
-                session_str = file_name[-3:-2]
+                session_str = file_name.split('.')[0][-1:]
             else:
                 raise ValueError(f"Invalid filename format: {file_name}")
             
-            if session_str in ['1', '2', '3', '4', "5", "6", "7"]:
+            if session_str in ['1', '2', '3', '4', '5', '6', '7']:
                 df["sesion"] = int(session_str)
                 df["sesion"] = df["sesion"].astype("Int64")
                 print(f"Added sesion column with value: {session_str}")
@@ -502,7 +505,7 @@ class OMIEDownloader:
                 if '.' in date_str:
                     date_str = date_str.split('.')[0]  # Remove the .1 part first
                 
-                if len(date_str) == 10:  # YYYYMMDDXX format
+                if len(date_str) >= 8:  # Handles YYYYMMDD, YYYYMMDDX, and YYYYMMDDXX formats
                     date_str = date_str[:8]  # Take only YYYYMMDD
                 else:
                     raise ValueError(f"Error extracting date from filename: {filename}")

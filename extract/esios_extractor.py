@@ -32,7 +32,6 @@ class ESIOSPreciosExtractor:
 
         #initialize env utils
         env_utils = EnvUtils()
-        self.dev, self.prod = env_utils.check_dev_env()
 
         # Set the maximum download window (in days)
         self.download_window = 93  # ESIOS API typically limits requests to 3 months

@@ -53,6 +53,7 @@ async def full_linking_test(initial_linking: bool = False):
     # === STEP 2: INCREMENTAL CHECK FOR NEWLY ENABLED UPs ===
     # This checks for UPs that became active 93 days ago and links them if they aren't already.
     await orchestrator.perform_new_ups_linking()
+    breakpoint()
 
     print("\n" + "="*100)
     print("🏁 VINCULACION PROCESS COMPLETE")
@@ -64,4 +65,3 @@ if __name__ == "__main__":
     # asyncio.run(change_monitor_test())
     asyncio.run(full_linking_test(initial_linking=False)) 
 
-    
