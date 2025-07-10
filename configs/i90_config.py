@@ -4,16 +4,19 @@ import pandas as pd
 import sys
 import os
 from sqlalchemy import text
+from dotenv import load_dotenv
+from pathlib import Path
 
-# Add the project root to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_root)
 
 from utilidades.db_utils import DatabaseUtils
-from configs.storage_config import DATA_LAKE_BASE_PATH
-import os
 
 class I90Config:
     def __init__(self):
+
+        load_dotenv()
 
         self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date
 
@@ -21,7 +24,8 @@ class I90Config:
 
         self.id_mercado_map, self.precios_sheet, self.volumenes_sheet, self.sentido_map = self.get_id_mercado_sheet_mapping()
 
-        self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temporary')
+        self.temporary_download_path = Path(os.getenv('DATA_LAKE_PATH')) / 'temporary'
+      
 
     @property
     def bbdd_engine(self):
@@ -726,6 +730,8 @@ def print_config_info():
             filter_list = config_instance.get_redespacho_filter(mid)
             filter_str = ', '.join(filter_list) if filter_list else 'None'
             print(f"{mid:<6} {sentido:<10} {filter_str}")
+
+        print(f"Temporary download path: {config_instance.temporary_download_path}")
 
             
 if __name__ == "__main__":

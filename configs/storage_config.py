@@ -8,13 +8,6 @@ import os
 result = load_dotenv()
 #print(f"Loaded .env file: {result}")  # Should print True if .env was found and loaded
 
-#Data lake base path
-DATA_LAKE_BASE_PATH_DEV= os.getenv('DATA_LAKE_BASE_PATH_DEV')
-DATA_LAKE_BASE_PATH_PROD = os.getenv('DATA_LAKE_BASE_PATH_PROD')
-
-# Add a default value in case ENV is None
-DATA_LAKE_BASE_PATH = DATA_LAKE_BASE_PATH_DEV if os.getenv('DEV') == 'True' else DATA_LAKE_BASE_PATH_PROD
-
 #mySQL DB connection url function using lambda
 DB_URL = lambda database: f"mysql+pymysql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{database}"
 

@@ -16,11 +16,13 @@ import sys
 import os
 from deprecated import deprecated
 import re
+from dotenv import load_dotenv
+
 # Get the absolute path to the scripts directory
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
 
-from configs.storage_config import DATA_LAKE_BASE_PATH, VALID_DATASET_TYPES
+from configs.storage_config import VALID_DATASET_TYPES
 from utilidades.env_utils import EnvUtils
 
 class StorageFileUtils:
@@ -36,9 +38,11 @@ class StorageFileUtils:
         Args:
             None
         """
+        #load .env file
+        load_dotenv()
 
         #check that all variables needed are present in the environment
-        EnvUtils() #this will raise an error if any env variable is missing
+        EnvUtils()
 
         self.raw_file_extension = 'csv'
         self.processed_file_extension = 'parquet'
