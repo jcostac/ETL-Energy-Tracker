@@ -6,15 +6,18 @@ from pathlib import Path
 import pretty_errors
 from datetime import datetime
 from deprecated import deprecated
+from dotenv import load_dotenv
+
 # Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
+
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
 from configs.esios_config import ESIOSConfig, IntraConfig, TerciariaConfig, SecundariaConfig, RRConfig
 from utilidades.storage_file_utils import RawFileUtils
 # Get the processed folder path
-from configs.storage_config import DATA_LAKE_BASE_PATH
+
 
 
 class ParquetReader:
@@ -22,9 +25,10 @@ class ParquetReader:
     Clase para leer datos de la base de datos o de un fichero parquet.
     """
     def __init__(self):
+        load_dotenv()
         self.duckdb_engine = "implementar"
         self.esios_config = ESIOSConfig()
-        self.processed_path = Path(DATA_LAKE_BASE_PATH) / "processed"
+        self.processed_path = Path(os.getenv('DATA_LAKE_PATH')) / "processed"
         self.valid_mercados = self.get_valid_mercados()
         
 

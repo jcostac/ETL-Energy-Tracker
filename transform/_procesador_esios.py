@@ -223,7 +223,7 @@ class ESIOSProcessor:
         # Convert hourly data if present
         if not df_hourly.empty:
             print("\n🔄 Converting hourly to 15-min...")
-            df_hourly_converted = DateUtilsETL.convert_hourly_to_15min(df_hourly)
+            df_hourly_converted = DateUtilsETL.convert_hourly_to_15min(df_hourly, "precios")
             print(f"✅ Conversion complete: {len(df_hourly)} → {len(df_hourly_converted)}")
             
             # Combine data

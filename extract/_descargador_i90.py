@@ -15,7 +15,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from utilidades.db_utils import DatabaseUtils
-from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntradiarioConfig
+from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntraConfig
 
 class I90Downloader:
     """
@@ -30,7 +30,7 @@ class I90Downloader:
     
     def __init__(self):
         """Initialize the I90 downloader with ESIOS API token"""
-        self.esios_token = os.getenv('ESIOS_API_KEY')
+        self.esios_token = os.getenv('ESIOS_TOKEN')
         self.config = I90Config()
         self.lista_errores = self.config.get_error_data()
         self.temporary_download_path = self.config.temporary_download_path
@@ -159,6 +159,9 @@ class I90Downloader:
         Returns:
             Tuple[str, str]: File names for the downloaded and extracted files
         """
+        # Ensure temporary download directory exists
+        os.makedirs(self.temporary_download_path, exist_ok=True)
+        
         # Construct API URL for the I90 file
         address = f"https://api.esios.ree.es/archives/34/download?date_type\u003ddatos\u0026end_date\u003d{day.date()}T23%3A59%3A59%2B00%3A00\u0026locale\u003des\u0026start_date\u003d{day.date()}T00%3A00%3A00%2B00%3A00"
         
@@ -252,6 +255,21 @@ class I90Downloader:
 
         #concat and turn NaNs into 0s
         df_concat = pd.concat(all_dfs)
+        #drop all columns that are fully NaNs
+        df_concat = df_concat.dropna(axis=1, how='all')
+        
+        # Drop rows where the value column (volumenes/precios) is NA or 0
+        if value_col_name in df_concat.columns:
+            # Drop rows with NA values in the volume/price column
+            df_concat = df_concat.dropna(subset=[value_col_name])
+            # Also drop rows with 0 values to further reduce overhead
+            df_concat = df_concat[df_concat[value_col_name] != 0]
+            print(f"✅ Filtered out NA and zero values. Remaining rows: {len(df_concat)}")
+        else:
+            # If no value column, just drop completely empty rows
+            df_concat = df_concat.dropna(how='all')
+        
+        # Only fill remaining NAs with 0 for other columns (not the main value column)
         df_concat = df_concat.fillna(0).infer_objects()
 
         # Explicitly format the 'fecha' column to ensure consistency in the output
@@ -450,7 +468,8 @@ class IntradiarioDL(I90Downloader):
             fecha (datetime, optional): Date for market configuration. If None, uses current date.
         """
         super().__init__()
-        self.config = IntradiarioConfig(fecha=fecha) #fecha is passed to the config to determine which sheet to use for the corresponding intra markets
+        #fecha is passed to the IntraConfig to determine which sheets to use for the corresponding intra markets  (all sheets before intra reduciton or sheets for the corresponding intra markets after intra reduction)
+        self.config = IntraConfig(fecha=fecha) 
         self.precios_sheets = self.config.precios_sheets #not used for intra i90
         self.volumenes_sheets = self.config.volumenes_sheets  
 
@@ -458,8 +477,17 @@ class IntradiarioDL(I90Downloader):
         """
         Get intradiario volume data for a specific day.
         """
-        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
-        return df_volumenes
+        all_dfs = []
+        for sheet in self.volumenes_sheets:
+            df_sheet = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=[sheet], precios_sheets=None)
+            if not df_sheet.empty:
+                df_sheet['sheet_i90_volumenes'] = sheet
+                all_dfs.append(df_sheet)
+
+        if not all_dfs:
+            return pd.DataFrame()
+
+        return pd.concat(all_dfs, ignore_index=True)
     
     
 class SecundariaDL(I90Downloader):

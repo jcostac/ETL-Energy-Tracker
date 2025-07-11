@@ -1,26 +1,25 @@
-pandas
-pyarrow
-deprecated
-sqlalchemy==1.4.54 #this version is compatible with airflow 3.0.0, specially flask-appbuilder 4.5.3  whichrequires SQLAlchemy<1.5
-pretty_errors
-pytz
-pymysql
-pendulum
-pytest
-tqdm
-numpy
-requests
-psycopg2-binary
-python-dotenv
+apache-airflow[celery]==2.10.5 --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.5/constraints-3.9.txt"
+apache-airflow-providers-common-sql
+apache-airflow-providers-fab
+apache-airflow-providers-http
+apache-airflow-providers-mysql
 boto3
-xlrd
-openpyxl
+deprecated
 duckdb
 google-generativeai
-apache-airflow[celery]==2.10.5 --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.5/constraints-3.9.txt"
-apache-airflow-providers-http
-apache-airflow-providers-fab
 graphviz
-apache-airflow-providers-common-sql
-apache-airflow-providers-mysql
-
+numpy
+openpyxl
+pandas
+pendulum
+playwright
+pretty_errors
+pymysql
+pytest
+pyarrow
+python-dotenv
+pytz
+requests
+sqlalchemy==1.4.54 #this version is compatible with airflow 3.0.0, specially flask-appbuilder 4.5.3  whichrequires SQLAlchemy<1.5
+tqdm
+xlrd

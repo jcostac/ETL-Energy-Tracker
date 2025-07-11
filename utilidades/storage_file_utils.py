@@ -16,54 +16,40 @@ import sys
 import os
 from deprecated import deprecated
 import re
+from dotenv import load_dotenv
+
 # Get the absolute path to the scripts directory
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(SCRIPTS_DIR))
 
-from configs.storage_config import DATA_LAKE_BASE_PATH, VALID_DATASET_TYPES
+from configs.storage_config import VALID_DATASET_TYPES
 from utilidades.env_utils import EnvUtils
 
 class StorageFileUtils:
     """
     Utility class for processing and saving parquet files.
     """
-    def __init__(self, dev: bool = True) -> None:
+    def __init__(self) -> None:
         """
         Initializes the ParquetUtils class and sets the base path.
 
-        Sets 
-
-        Args:
-            dev (bool): Flag to determine if dev or prod environment.
-        """
-
-        #check if dev or prod environment
-        env_utils = EnvUtils()
-        self.dev, self.prod = env_utils.check_dev_env() 
-
-        self.base_path = self.set_base_path(dev)
-
-    def set_base_path(self, dev: bool = True) -> Path:
-        """
         Sets the base path for data storage.
 
         Args:
-            dev (bool - flag): Flag to determine if dev or prod environment.
-
-        Returns:
-            Path: The base path for data storage.
+            None
         """
-        if dev == False:
-            #get prod base path from env
-            base_path = os.getenv('DATA_LAKE_BASE_PATH_PROD')
-        else:
-            base_path = Path(DATA_LAKE_BASE_PATH)
+        #load .env file
+        load_dotenv()
 
-        # Check if the base path exists
-        if not base_path.exists():
-            raise FileNotFoundError(f"The base path {base_path} does not exist.")
-        
-        return base_path
+        #check that all variables needed are present in the environment
+        EnvUtils()
+
+        self.raw_file_extension = 'csv'
+        self.processed_file_extension = 'parquet'
+
+        #set the base path for data storage
+        self.base_path = Path(os.getenv('DATA_LAKE_PATH'))
+
 
     @staticmethod
     def create_directory_structure(path: str, mercado: str, year: int, month: int, day = None) -> Path:
@@ -115,8 +101,8 @@ class RawFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving raw csv files.
     """
-    def __init__(self, dev: bool = True) -> None:
-        super().__init__(dev)
+    def __init__(self) -> None:
+        super().__init__()
         self.raw_path = self.base_path / 'raw'
 
     @staticmethod
@@ -134,16 +120,18 @@ class RawFileUtils(StorageFileUtils):
          # First remove exact duplicates across all columns
         df_before = len(df)
         duplicates = df[df.duplicated(keep=False)]  # Get all duplicates
-        df = df.drop_duplicates(keep='last')  
-        exact_dups = df_before - len(df)
+        df_without_duplicates = df.drop_duplicates(keep='last')  
+        exact_dups = df_before - len(df_without_duplicates)
         
         if exact_dups > 0:
             print(f"Removed {exact_dups} exact duplicate rows")
             print("Actual duplicates:")
             print(duplicates.head(10))
             print(duplicates.tail(10))
-
-        return df
+        else:
+            print("No duplicates found")
+        
+        return df_without_duplicates
 
     #@deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
     def write_raw_csv(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
@@ -172,6 +160,7 @@ class RawFileUtils(StorageFileUtils):
             filename = f"{dataset_type}.csv"
             full_file_path = file_path / filename
             
+            #if file exists, read it and concatenate with new data
             if full_file_path.exists():
                 try:
                     # Read existing CSV file
@@ -191,21 +180,24 @@ class RawFileUtils(StorageFileUtils):
                     # Save back to CSV without any type conversions
                     combined_df.to_csv(full_file_path, index=False)
                     print(f"Successfully updated existing file: {filename}")
-                    
+
                 except pd.errors.EmptyDataError:
                     # Handle case where existing file is empty
                     df.to_csv(full_file_path, index=False)
                     print(f"Replaced empty file with new data: {filename}")
-                    
+
                 except Exception as e:
                     print(f"Error reading existing file {filename}: {str(e)}")
-                    raise
+                    raise 
                     
-            else:
+            else: #if file does not exist, create it by saving directly onto filepath
+                if mercado != "continuo":
+                    print("Dropping raw duplicates")
+                    df = self.drop_raw_duplicates(df)
                 # Create new file if it doesn't exist
                 df.to_csv(full_file_path, index=False)
                 print(f"Created new file: {filename}")
-                
+
         except Exception as e:
             print(f"Error processing file {filename}: {str(e)}")
             raise
@@ -386,18 +378,11 @@ class RawFileUtils(StorageFileUtils):
             -This method is used to read raw files that are processed on a daily basis. (Fucntionality reads latest file)
         """
 
-        if self.dev and not self.prod:
-            file_extension = 'csv'
-        else:
-            file_extension = 'parquet'
     
-        file_path = os.path.join(self.raw_path, mercado, f"{year}", f"{month:02d}", f"{dataset_type}.{file_extension}")
+        file_path = os.path.join(self.raw_path, mercado, f"{year}", f"{month:02d}", f"{dataset_type}.{self.raw_file_extension}")
 
         try:
-            if file_extension == 'csv':
-                return pd.read_csv(file_path)
-            else:
-                return pd.read_parquet(file_path)
+            return pd.read_csv(file_path)
             
         except Exception as e:
             print(f"Error reading file {file_path}: {e}")
@@ -450,22 +435,17 @@ class RawFileUtils(StorageFileUtils):
         """
         Get a list of raw files for a given market, year, and month.
         """
-        file_path = self.raw_path / mercado / str(year) / str(month)
+        file_path = self.raw_path / mercado / str(year) / f"{month:02d}"
 
-        if self.dev and not self.prod:
-            file_extension = 'csv'
-        else:
-            file_extension = 'parquet'
-
-        return list(file_path.glob(f"*.{file_extension}"))
+        return list(file_path.glob(f"*.{self.raw_file_extension}"))
     
 
 class ProcessedFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving processed parquet files.
     """
-    def __init__(self, dev: bool = True) -> None:
-        super().__init__(dev)
+    def __init__(self) -> None:
+        super().__init__()
         self.processed_path = self.base_path / 'processed'
         self.row_group_size = 122880 # Example: 128k rows per group
 

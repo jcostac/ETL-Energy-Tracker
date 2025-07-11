@@ -6,6 +6,7 @@ from typing import Optional, List, Dict
 import numpy as np
 import sys
 import os
+from tqdm import tqdm
 
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
@@ -29,6 +30,7 @@ class OMIEExtractor:
         self.intra_downloader = IntraOMIEDownloader()
         self.continuo_downloader = ContinuoOMIEDownloader()
         self.diario_downloader = DiarioOMIEDownloader()
+        
         # Initialize utils
         self.raw_file_utils = RawFileUtils()
         self.env_utils = EnvUtils()
@@ -55,6 +57,7 @@ class OMIEExtractor:
 
             # If start date > end date, raise error
             if fecha_inicio_carga_dt > fecha_fin_carga_dt:
+                print(f"Wrong input dates: {fecha_inicio_carga} > {fecha_fin_carga}")
                 raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
             
             print(f"Descargando datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
@@ -89,7 +92,7 @@ class OMIEExtractor:
             Exception: If there is an error during the extraction process
         """
         # Validate input dates
-        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
 
         # Convert to datetime objects
         fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
@@ -97,7 +100,7 @@ class OMIEExtractor:
 
         print(f"Processing market: diario")
         # Download data for each day in the range
-        for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
+        for day in tqdm(pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt), desc="Extracting diario data"):
             # Extract year and month from date
             year = day.year
             month = day.month
@@ -112,11 +115,12 @@ class OMIEExtractor:
 
                 #diario data is a dict with keys as months and values as the dataframes for a market
                 for month_data in diario_data.values():
-
-                    # month_data is a list of DataFrames, so we need to iterate through it
                     if isinstance(month_data, list):
                         for df in month_data:
                             if df is not None and not df.empty:
+                                # Standardize column names before processing
+                                df = self._standardize_column_names(df)
+                                
                                 # Add ID column for raw storage
                                 df['id_mercado'] = 1  # ID for daily market
                                 
@@ -125,7 +129,7 @@ class OMIEExtractor:
                                     dataset_type='volumenes_omie',
                                     mercado='diario'
                                 )
-                            
+
                                 print(f"✅ Successfully saved raw diario data for {day_str}")
                             else:
                                 print(f" ⚠️ No diario data found for {day_str}. Nothing was saved to raw folder.")
@@ -133,7 +137,9 @@ class OMIEExtractor:
                         # Handle case where it's directly a DataFrame (fallback)
                         df = month_data
                         if df is not None and not df.empty:
+                            df = self._standardize_column_names(df)
                             df['id_mercado'] = 1
+
                             self.raw_file_utils.write_raw_csv(
                                 year=year, month=month, df=df,
                                 dataset_type='volumenes_omie',
@@ -144,8 +150,8 @@ class OMIEExtractor:
             except Exception as e:
                 error_msg = f"Error downloading diario data for {day_str}: {e}"
                 print(f"  ❌ {error_msg}")
-                raise Exception(error_msg)
-
+                raise e
+            
     def extract_omie_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
                           intra_lst: Optional[List[int]] = None) -> None:
         """
@@ -163,17 +169,17 @@ class OMIEExtractor:
         Note:
             After 2024-06-13, only Intra 1-3 are available due to regulatory changes
         """
-      
+    
         # Validate input dates
-        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
-
+        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        
         # Convert to datetime objects
         fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
         fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
 
         print(f"Processing market: intra")
         # Download data for each day in the range
-        for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
+        for day in tqdm(pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt), desc="Extracting intra data"):
             # Extract year and month from date
             year = day.year
             month = day.month
@@ -191,32 +197,35 @@ class OMIEExtractor:
                     if isinstance(month_data, list):
                         for df in month_data:
                             if df is not None and not df.empty:
-
+                                # Standardize column names before processing
+                                df = self._standardize_column_names(df)
+                                
                                 # Add ID column for raw storage - conditional assignment
-                                # Default: session + 1 for all rows
                                 df['id_mercado'] = df['sesion'] + 1
                                 
                                 # Override for session 2 id mercado (rewrite based on intra sesion logic): check if delivery date matches
                                 session_2_mask = df['sesion'] == 2
 
-                               # For rows where sesion == 2: id_mercado = 3 if the date matches the current day, otherwise (d-1) id_mercado = 8
+                               # For rows where sesion == 2 (id_mercado = 3) if the date matches the current day, otherwise (d-1) (id_mercado = 8)
                                 df.loc[session_2_mask, 'id_mercado'] = np.where(
-                                    df.loc[session_2_mask, 'Fecha'] == day, 3, 8
+                                    df.loc[session_2_mask, 'Fecha'] == day.date(), 3, 8
                                 )
 
-
+                                
                                 self.raw_file_utils.write_raw_csv(
                                         year=year, month=month, df=df,
                                         dataset_type='volumenes_omie',
                                         mercado='intra'
                                     )
-                            
+                                                        
                                 print(f"✅ Successfully saved raw intra data for {day_str}")
                             else:
                                 print(f" ⚠️ No intra data found for {day_str}. Nothing was saved to raw folder.")
 
             except Exception as e:
-                print(f"  ❌ Error downloading intra data for {day_str}: {e}")
+                error_msg = f"Error downloading intra data for {day_str}: {e}"
+                print(f"  ❌ {error_msg}")
+                raise e 
 
     def extract_omie_continuo(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
@@ -231,7 +240,8 @@ class OMIEExtractor:
             None
         """
         # Validate input dates
-        fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        
 
         # Convert to datetime objects
         fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
@@ -239,7 +249,7 @@ class OMIEExtractor:
 
         print(f"Processing market: continuo")
         # Download data for each day in the range
-        for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
+        for day in tqdm(pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt), desc="Extracting continuo data"):
             # Extract year and month from date
             year = day.year
             month = day.month
@@ -251,6 +261,7 @@ class OMIEExtractor:
                     fecha_inicio_carga=day_str,
                     fecha_fin_carga=day_str
                 )
+
 
                 for month_data in continuo_data.values():
                     if isinstance(month_data, list):
@@ -270,8 +281,9 @@ class OMIEExtractor:
 
             except Exception as e:
                 print(f"  ❌ Error downloading continuo data for {day_str}: {e}")
+                raise e
 
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> Dict:
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None , mercados_lst: Optional[List[str]] = None) -> Dict:
         """
         Extract data for all relevant markets from OMIE for a given date range.
         Uses the environment setting (DEV/PROD) for file saving format.
@@ -279,6 +291,9 @@ class OMIEExtractor:
         Returns:
             Dict: Dictionary containing success status and details of the extraction process
         """
+        # Validate input dates BEFORE starting any extraction
+        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        
         if (fecha_fin_carga is None and fecha_inicio_carga is None) or fecha_fin_carga == fecha_inicio_carga:
             date_range_str = f"Single day download for latest available day"
         else:
@@ -290,25 +305,33 @@ class OMIEExtractor:
             "markets_failed": [],
             "date_range": date_range_str
         }
+
+        if mercados_lst is None:
+            mercados_lst = ['diario', 'intra', 'continuo']
         
+        market_successes = []
         try:
             # Track success for each market
-            print("\n--------- Diario ---------")
-            success_diario = self._extract_with_status("diario", self.extract_omie_diario, 
-                                                     fecha_inicio_carga, fecha_fin_carga, status_details)
-        
-            print("\n--------- Intra ---------")
-            success_intra = self._extract_with_status("intra", self.extract_omie_intra, 
-                                                    fecha_inicio_carga, fecha_fin_carga, status_details)
-            
-            print("\n--------- Continuo ---------")
-            success_continuo = self._extract_with_status("continuo", self.extract_omie_continuo, 
+            if 'diario' in mercados_lst:
+                print("\n--------- Diario ---------")
+                success_diario = self._extract_with_status("diario", self.extract_omie_diario, 
+                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
+                market_successes.append(success_diario)
+            if 'intra' in mercados_lst:
+                print("\n--------- Intra ---------")
+                success_intra = self._extract_with_status("intra", self.extract_omie_intra, 
+                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
+                market_successes.append(success_intra)
+            if 'continuo' in mercados_lst:
+                print("\n--------- Continuo ---------")
+                success_continuo = self._extract_with_status("continuo", self.extract_omie_continuo, 
                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
-            
+                market_successes.append(success_continuo)
             print("\n--------------------------------")
             
+            
             # Overall success only if all markets succeeded
-            overall_success = (success_diario and success_intra and success_continuo)
+            overall_success = all(market_successes)
             
         except Exception as e:
             overall_success = False
@@ -335,9 +358,22 @@ class OMIEExtractor:
             bool: True if extraction was successful, False otherwise
         """
         try:
-            extract_function(fecha_inicio_carga, fecha_fin_carga)
-            status_details["markets_downloaded"].append(market_name)
-            return True
+            if extract_function == self.extract_omie_diario or extract_function == self.extract_omie_intra:
+                error_msg = extract_function(fecha_inicio_carga, fecha_fin_carga)
+
+                if error_msg: #for diario and intra market bc we dont raise an error for these markets but rather return a df and an error msg
+                    raise Exception(error_msg)
+            
+                status_details["markets_downloaded"].append(market_name)
+                return True
+        
+
+            else: #for continuo market, since we dont return a df or an error msg, we just raise an error
+                extract_function(fecha_inicio_carga, fecha_fin_carga)
+            
+                status_details["markets_downloaded"].append(market_name)
+                return True
+            
         except Exception as e:
             status_details["markets_failed"].append({
                 "market": market_name,
@@ -345,14 +381,38 @@ class OMIEExtractor:
             })
             return False
 
-def example_usage():
-    omie_extractor = OMIEExtractor()
-    #omie_extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-04", fecha_fin_carga="2025-01-04")
-    omie_extractor.extract_omie_intra(fecha_inicio_carga="2024-06-10", fecha_fin_carga="2024-06-11")
-    #omie_extractor.extract_omie_continuo(fecha_inicio_carga="2025-01-05", fecha_fin_carga="2025-01-05")
-
-
-if __name__ == "__main__":
-    example_usage()
-
+    def _standardize_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardize OMIE column names to maintain consistency across different data formats.
+        From mid-March 2025, OMIE changed:
+        - 'Hora' -> 'Periodo' 
+        - 'Energía Compra/Venta' -> 'Potencia Compra/Venta'
+        
+        This method renames them back to the original format for consistency.
+        
+        Args:
+            df (pd.DataFrame): Input DataFrame with potentially new column names
+            
+        Returns:
+            pd.DataFrame: DataFrame with standardized column names
+        """
+        if df is None or df.empty:
+            return df
+            
+        # Create a copy to avoid modifying the original
+        df_standardized = df.copy()
+        
+        # Standardize column names
+        column_mapping = {
+            'Periodo': 'Hora',  # Rename Periodo back to Hora
+            'Potencia Compra/Venta': 'Energía Compra/Venta'  # Rename Potencia back to Energía
+        }
+        
+        # Apply renaming only if columns exist
+        for old_name, new_name in column_mapping.items():
+            if old_name in df_standardized.columns:
+                df_standardized = df_standardized.rename(columns={old_name: new_name})
+                print(f"   Standardized column: '{old_name}' -> '{new_name}'")
+        
+        return df_standardized
 

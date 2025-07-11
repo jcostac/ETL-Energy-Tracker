@@ -8,6 +8,7 @@ from typing import Optional, Union
 from pathlib import Path
 import pandas as pd
 import sys
+from dotenv import load_dotenv
 
 # Get the absolute path to the scripts directory
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
@@ -17,8 +18,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 # Corrected import path assuming utilidades is at the project root
 from utilidades.storage_file_utils import ProcessedFileUtils
-# Import DATA_LAKE_BASE_PATH if needed for default base path
-from configs.storage_config import DATA_LAKE_BASE_PATH
 
 
 class LocalDataLakeLoader():
@@ -34,12 +33,8 @@ class LocalDataLakeLoader():
         """
         Initializes the LocalDataLakeLoader. For saving processed data locally.
 
-        Args:
-            base_path (Optional[Union[str, Path]]): The base path for the data lake.
-                                                    If None, uses DATA_LAKE_BASE_PATH from config.
-                                                    Defaults to None.
-        """
-        super().__init__()
+       """
+        load_dotenv()
         # ProcessedFileUtils constructor handles setting the correct base path (raw/processed)
         self.file_utils = ProcessedFileUtils()
 

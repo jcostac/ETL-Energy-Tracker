@@ -585,7 +585,7 @@ class DateUtilsETL:
         return df_naive
     
     @staticmethod
-    def convert_hourly_to_15min(df: pd.DataFrame) -> pd.DataFrame:
+    def convert_hourly_to_15min(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
         Converts hourly data to 15-minute data using vectorized operations.
         Assumes input DataFrame has hourly frequency and 'datetime_utc' column.
@@ -612,7 +612,14 @@ class DateUtilsETL:
         
         # Convert offsets to Timedelta and add to the datetime
         expanded_df['datetime_utc'] = expanded_df['datetime_utc'] + pd.to_timedelta(minute_offsets, unit='m')
-        
+
+        if dataset_type and "volumenes" in dataset_type:
+            print("Converting volumenes to 15-minute data by dividing each replicated row by 4")
+            expanded_df['volumenes'] = expanded_df['volumenes'] / 4
+
+        else:
+            print("Converting precios to 15-minute data by replicating values 4 times")
+
         return expanded_df
 
     @staticmethod

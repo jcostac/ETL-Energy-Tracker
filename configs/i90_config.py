@@ -4,16 +4,19 @@ import pandas as pd
 import sys
 import os
 from sqlalchemy import text
+from dotenv import load_dotenv
+from pathlib import Path
 
-# Add the project root to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_root)
 
 from utilidades.db_utils import DatabaseUtils
-from configs.storage_config import DATA_LAKE_BASE_PATH
-import os
 
 class I90Config:
     def __init__(self):
+
+        load_dotenv()
 
         self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date
 
@@ -21,7 +24,8 @@ class I90Config:
 
         self.id_mercado_map, self.precios_sheet, self.volumenes_sheet, self.sentido_map = self.get_id_mercado_sheet_mapping()
 
-        self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temporary')
+        self.temporary_download_path = Path(os.getenv('DATA_LAKE_PATH')) / 'temporary'
+      
 
     @property
     def bbdd_engine(self):
@@ -283,6 +287,44 @@ class I90Config:
 
         return volumenes_sheets, precios_sheets, sheets_of_interest
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Class method to check if this config class has volumenes sheets.
+        Default implementation tries to instantiate the class.
+        Subclasses that require parameters should override this method.
+        """
+        try:
+            # Default behavior: try to instantiate and check
+            instance = cls()
+            return hasattr(instance, 'volumenes_sheets') and instance.volumenes_sheets and any(instance.volumenes_sheets)
+        except TypeError:
+            # If instantiation fails due to missing parameters, return False
+            # Subclasses should override this method to provide the correct answer
+            return False
+        except Exception:
+            # Any other error during instantiation
+            return False
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Class method to check if this config class has precios sheets.
+        Default implementation tries to instantiate the class.
+        Subclasses that require parameters should override this method.
+        """
+        try:
+            # Default behavior: try to instantiate and check
+            instance = cls()
+            return hasattr(instance, 'precios_sheets') and instance.precios_sheets and any(instance.precios_sheets)
+        except TypeError:
+            # If instantiation fails due to missing parameters, return False
+            # Subclasses should override this method to provide the correct answer
+            return False
+        except Exception:
+            # Any other error during instantiation
+            return False
+
 class DiarioConfig(I90Config):
     def __init__(self):
         super().__init__()
@@ -298,10 +340,18 @@ class DiarioConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
-class IntradiarioConfig(I90Config):
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # No price extraction implemented
+
+class IntraConfig(I90Config):
     def __init__(self, fecha):
         """
-        Initialize the intradiario downloader with date-based market selection.
+        Initialize the intra downloader with date-based market selection.
         
         Args:
             fecha (datetime, optional): The date for which to configure markets.
@@ -314,7 +364,7 @@ class IntradiarioConfig(I90Config):
         
         # Use provided date or current date
         if fecha is None:
-            raise ValueError("Fecha is required for IntradiarioConfig")
+            raise ValueError("Fecha is required for IntraConfig")
         
         # Get individual IDs for each Intra market (Intra 1 through Intra 7)
         self.intra_1_id: str = self.id_mercado_map["Intra 1"]  # ID: 2
@@ -346,6 +396,14 @@ class IntradiarioConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # No price extraction implemented
+
 class SecundariaConfig(I90Config):
     """
     Config for secundaria market data
@@ -369,6 +427,14 @@ class SecundariaConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # Commented out in extractor - prices from API
+
 class TerciariaConfig(I90Config):
     """
     Config for terciaria market data
@@ -387,6 +453,14 @@ class TerciariaConfig(I90Config):
         self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # Commented out in extractor - prices from API
 
 class RRConfig(I90Config):
     def __init__(self):
@@ -408,6 +482,14 @@ class RRConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for RR sheets ('06') in the provided snippet
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # Commented out in extractor - prices from API
 
 class CurtailmentConfig(I90Config):
     def __init__(self):
@@ -449,6 +531,14 @@ class CurtailmentConfig(I90Config):
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # No price extraction implemented
+
 class P48Config(I90Config):
     def __init__(self):
         """
@@ -468,6 +558,14 @@ class P48Config(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for P48 sheets ('12') in the provided snippet
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # No price extraction implemented
 
 class IndisponibilidadesConfig(I90Config):
     def __init__(self):
@@ -489,6 +587,14 @@ class IndisponibilidadesConfig(I90Config):
 
         # Define Redespacho filter for volumenes sheet ('08')
         self.redespacho_filter_volumenes: List[str] = ["Indisponibilidad"]
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return False  # Commented out in extractor - prices from API
 
 class RestriccionesConfig(I90Config):
     def __init__(self):
@@ -549,6 +655,14 @@ class RestriccionesConfig(I90Config):
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        return True  # ONLY market with active price extraction
+
 def print_config_info():
     # --- Base I90Config Info ---
     print("\n=== BASE I90CONFIG INFORMATION ===")
@@ -571,7 +685,13 @@ def print_config_info():
 
     # --- Test Specific Configs ---
     # Get all subclasses of I90Config
-    configs_to_test = {cls.__name__: cls() for cls in I90Config.__subclasses__()}
+    configs_to_test = {}
+    for cls in I90Config.__subclasses__():
+        if cls.__name__ == 'IntraConfig':
+            # IntraConfig requires a fecha parameter - use a date before 2024-06
+            configs_to_test[cls.__name__] = cls(fecha=datetime(2024, 5, 1))
+        else:
+            configs_to_test[cls.__name__] = cls()
 
     print("\n\n=== SPECIFIC CONFIG CLASSES ===")
     for config_name, config_instance in configs_to_test.items():
@@ -610,6 +730,8 @@ def print_config_info():
             filter_list = config_instance.get_redespacho_filter(mid)
             filter_str = ', '.join(filter_list) if filter_list else 'None'
             print(f"{mid:<6} {sentido:<10} {filter_str}")
+
+        print(f"Temporary download path: {config_instance.temporary_download_path}")
 
             
 if __name__ == "__main__":

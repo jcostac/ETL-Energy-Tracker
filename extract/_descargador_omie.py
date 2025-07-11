@@ -7,6 +7,8 @@ import os
 import pretty_errors
 from pathlib import Path
 import sys
+from collections import defaultdict
+
 # Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -20,7 +22,7 @@ class OMIEDownloader:
  
     def __init__(self):
         self.tracking_folder = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "data", "temporary")
+            os.path.join(os.path.dirname(__file__), "..", "data_lake", "temporary")
         )
         self.config = None
            
@@ -65,7 +67,7 @@ class OMIEDownloader:
                         with zip_ref.open(file) as f:
  
                             # Read the CSV data
-                            df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
+                            df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1', skip_blank_lines=True)
  
                             # Process the dataframe
                             df = self._process_df(df, file)
@@ -184,15 +186,7 @@ class OMIEDownloader:
         else:
             raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
    
-    def _check_intras(self, intras: list) -> list:
-        """
-        Check if the intras are valid.If they pass an int convert to str ie 1-> "01"
-        """
-        if intras is None:
-            return None
-        intras = [str(intra).zfill(2) for intra in intras]
-        return intras
-    
+    ####// MAIN DOWNLOADER METHOD //####
     def descarga_omie_datos(self, fecha_inicio_carga: str, fecha_fin_carga: str, intras: list = None) -> dict:
         """
         Descarga los datos diarios de OMIE para un rango de fechas.
@@ -200,7 +194,7 @@ class OMIEDownloader:
         Args:
             fecha_inicio (str): Start date in format YYYY-MM-DD
             fecha_fin (str): End date in format YYYY-MM-DD
-            intras (list): List of intras to download, default None is all available intras
+            intras (list): List of intras to download, default None is all available intras, in format 1, 2, etc
         Returns:
             dict: Dictionary with monthly data containing files for the specified days with format {year_month: [dataframes]}
         """
@@ -230,7 +224,7 @@ class OMIEDownloader:
             # Construct the full URL for the file
             url = f"{self.base_url}{filename}"
            
-            print(f"Downloading {filename} for {year_month}...")
+            print(f"\nDownloading {filename} for {year_month}...")
             response = requests.get(url)
            
             if response.status_code == 200:
@@ -249,9 +243,10 @@ class OMIEDownloader:
                             #filter by intras we want to donwload if needed
                             if intras is not None:
                                 #check intras are valid
-                                intras = self._check_intras(intras)
+                                parsed_intras = self._parse_intra_list(intras)
+
                                 #if intras is not None, filter files to process by intras
-                                if file[-6:-4] not in intras:
+                                if file.split('.')[0][-1:] not in parsed_intras:
                                     print(f"Skipping {file} because it is not the intras list provided for download")
                                     continue
                             try:
@@ -266,19 +261,23 @@ class OMIEDownloader:
  
                             except ValueError:
                                 # If date parsing fails, skip this file
-                                continue
+                                print(f"Error parsing date from {file}")
+                                raise e
                        
                         # If there are files to be read from the zip, process them
                         if filtered_files:
+                            filtered_files = self._check_latest_file(filtered_files, zip_ref)
                             #create a list at the year_month key to store the processed dataframes
                             monthly_data_dct[year_month] = []
                            
                             # Process the filtered files
                             for file in filtered_files:
+                                print(f"Processing {file}")
                                 with zip_ref.open(file) as f:
                                     # Read the CSV data
-                                    df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1')
-                                   
+                                    df = pd.read_csv(f, sep=";", skiprows=2, encoding='latin-1', skip_blank_lines=True)
+
+
                                     # Process the dataframe
                                     processed_df = self._process_df(df, file)
                                    
@@ -287,7 +286,7 @@ class OMIEDownloader:
                            
                             print(f"Processed {len(filtered_files)} files for {year_month}")
                             return monthly_data_dct
-               
+ 
                         else:
                             print(f"No matching files found in {filename} for the date range")
 
@@ -308,6 +307,20 @@ class OMIEDownloader:
        
         return monthly_data_dct
    
+    def _parse_intra_list(self, intras: list) -> list:
+        """
+        Check if the intras are valid. If they pass an int convert to str ie 1-> "1"
+        """
+        if intras is None:
+            return None
+        else:
+            if intras not in [1, 2, 3, 4, 5, 6, 7]:
+                raise ValueError(f"Invalid intras list: {intras}. Intras must be 1, 2, 3, 4, 5, 6 or 7")
+            
+        intras = [str(intra) for intra in intras]
+
+        return intras
+    
     def _process_df(self, df: pd.DataFrame, file_name: str = None) -> pd.DataFrame:
         """
         Process the OMIE dataframe to standardize column names and data types.
@@ -318,42 +331,86 @@ class OMIEDownloader:
         Returns:
             pd.DataFrame: Processed dataframe with standardized columns
         """
+        # Drop any completely empty rows and columns
+        df = df.dropna(axis=0, how='all')
+        df = df.dropna(axis=1, how='all')
+        
         # Process energy column
         if 'Energía Compra/Venta' in df.columns:
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace('.', '')
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.')
-            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].astype(float)
+            # Replace commas with periods for decimal conversion
+            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(',', '.', regex=False)
+            
+            # Remove periods that are used as thousands separators
+            df['Energía Compra/Venta'] = df['Energía Compra/Venta'].str.replace(r'(?<=\d)\.(?=\d{3})', '', regex=True)
+            
+            # Convert to float, handling any remaining non-numeric values
+            df['Energía Compra/Venta'] = pd.to_numeric(df['Energía Compra/Venta'])
+
+        # Process price column with same conversion logic as energy
+        if 'Precio Compra/Venta' in df.columns:
+            # Replace commas with periods for decimal conversion
+            df['Precio Compra/Venta'] = df['Precio Compra/Venta'].str.replace(',', '.', regex=False)
+            
+            # Remove periods that are used as thousands separators
+            df['Precio Compra/Venta'] = df['Precio Compra/Venta'].str.replace(r'(?<=\d)\.(?=\d{3})', '', regex=True)
+            
+            # Convert to float, handling any remaining non-numeric values
+            df['Precio Compra/Venta'] = pd.to_numeric(df['Precio Compra/Venta'])
  
         # Process date column
         if 'Fecha' in df.columns:
             df['Fecha'] = pd.to_datetime(df['Fecha'], format="%d/%m/%Y")
+            # Extract the date part directly
+            df['Fecha'] = df['Fecha'].dt.date
  
-        # Add session column for Intradiario if filename provided
+        # Add session column and grouping dups for intra dataset
         if self.mercado == "intra":
             # Extract session from filename - handle .1 extension properly
             if file_name.endswith('.1'):
                 # For files ending with .1: curva_pibc_uof_2025010102.1
-                # Session is the last 2 digits before .1
-                session_str = file_name[-4:-2]
-
+                # Session is the last digit before .1
+                #sometimes the OMIE retards upload files with a "1" instead of a "01" hence its safe to take only the digit before the "."
+                session_str = file_name.split('.')[0][-1:]
             else:
                 raise ValueError(f"Invalid filename format: {file_name}")
-
             
-            if session_str in ['01', '02', '03', '04', "05", "06", "07"]:
+            if session_str in ['1', '2', '3', '4', '5', '6', '7']:
                 df["sesion"] = int(session_str)
                 df["sesion"] = df["sesion"].astype("Int64")
-                print(f"Added [sesion] column with value: {session_str}")
+                print(f"Added sesion column with value: {session_str}")
             else:
                 print(f"Session '{session_str}' not in valid session list")
+                raise ValueError(f"Session '{session_str}' not in valid session list (fichero mal nominado)")
 
+            # Check if there are duplicates for intra market
+            duplicate_count = df.duplicated().sum()
+            if duplicate_count > 0:
+                print(f"Found {duplicate_count} duplicate rows. Grouping and aggregating...")
+                
+                # Get all columns except energy and price for grouping
+                grouping_columns = [col for col in df.columns 
+                                  if col not in ['Energía Compra/Venta', 'Precio Compra/Venta']]
+                
+                # Create aggregation dictionary
+                agg_dict = {}
+                
+                # Sum energy values
+                if 'Energía Compra/Venta' in df.columns:
+                    agg_dict['Energía Compra/Venta'] = 'sum'
+                
+                # Average price values
+                if 'Precio Compra/Venta' in df.columns:
+                    agg_dict['Precio Compra/Venta'] = 'mean'
+                
+                # Group by all columns except energy and price, then aggregate
+                if agg_dict and grouping_columns:
+                    df = df.groupby(grouping_columns, as_index=False).agg(agg_dict)
+                    print(f"After grouping: {len(df)} rows remaining")
+            else:
+                print("No duplicates found in the dataframe")
  
         if self.mercado == "continuo":
-            
             pass
- 
-        # Drop any completely empty columns
-        df = df.dropna(axis=1, how='all')
  
         return df
    
@@ -455,7 +512,7 @@ class OMIEDownloader:
                 if '.' in date_str:
                     date_str = date_str.split('.')[0]  # Remove the .1 part first
                 
-                if len(date_str) == 10:  # YYYYMMDDXX format
+                if len(date_str) >= 8:  # Handles YYYYMMDD, YYYYMMDDX, and YYYYMMDDXX formats
                     date_str = date_str[:8]  # Take only YYYYMMDD
                 else:
                     raise ValueError(f"Error extracting date from filename: {filename}")
@@ -470,6 +527,47 @@ class OMIEDownloader:
            
         except ValueError as e:
             raise e
+
+    def _check_latest_file(self, files: list, zip_ref: zipfile.ZipFile = None) -> list:
+        """
+        Check if the files are the latest version of the file.
+        For intra-day market, it filters for the latest version of a file for each session.
+        It groups files by date and session, then picks the one with the latest
+        modification time from the zip archive.
+        For other markets, it returns the files as is.
+
+        Args:
+            files (list): List of files to check
+            zip_ref (zipfile.ZipFile): Zip file reference
+
+        Returns:
+            list: List of latest files
+        """
+        if self.mercado != "intra" or zip_ref is None:
+            return files
+
+        # Group files by a sesion key 
+        # curva_pibc_uof_2025010102.1 -> key would be 2
+        grouped_files = defaultdict(list)
+        for f in files:
+            # The part after the last '_' is like 'YYYYMMDDSS.version' or 'YYYYMMDDSS'
+            key = f.split('_')[-1].split('.')[0][-1]
+            grouped_files[key].append(f)
+
+        latest_files_list = []
+        for key, file_group in grouped_files.items():
+            if len(file_group) > 1:
+                # Find the latest file in the group based on modification time in the zip
+                latest_file = max(file_group, key=lambda x: zip_ref.getinfo(x).date_time)
+                latest_files_list.append(latest_file)
+            else:
+                # If only one file, it's the latest by default
+                latest_files_list.append(file_group[0])
+
+        if len(latest_files_list) < len(files):
+            print(f"Filtered out {len(files) - len(latest_files_list)} older version file(s) for intraday market.")
+
+        return latest_files_list
         
 class DiarioOMIEDownloader(OMIEDownloader):
     """
@@ -512,9 +610,9 @@ if __name__ == "__main__":
     #diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01") 
 
     intradiario = IntraOMIEDownloader()
-    intradiario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01")
+    intradiario.descarga_omie_datos(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
 
     continuo = ContinuoOMIEDownloader()
-    continuo.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01")
+    continuo.descarga_omie_datos(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
     #intradiario.descarga_datos_omie_latest_day()
     #intradiario.descarga_datos_omie_mensuales()

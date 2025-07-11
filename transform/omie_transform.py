@@ -34,17 +34,12 @@ class TransformadorOMIE:
         self.date_utils = DateUtilsETL()
 
         # Define dataset types and transformation modes
-        self.transform_types = ['latest', 'batch', 'single', 'multiple']
+        self.transform_types = ['latest', 'single', 'multiple']
+
 
         # OMIE market configuration
         self.omie_markets = ['diario', 'intra', 'continuo']
         
-        # All markets use the same dataset type
-        self.market_dataset_map = {
-            'diario': 'volumenes_omie',
-            'intra': 'volumenes_omie', 
-            'continuo': 'volumenes_omie'  # Changed from volumenes_mic to volumenes_omie
-        }
 
         # Map market names to config classes
         self.market_config_map = {
@@ -53,24 +48,24 @@ class TransformadorOMIE:
             'continuo': IntraContinuoConfig
         }
 
-    def _filter_data_by_mode(self, raw_df: pd.DataFrame, mode: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:
+    def _filter_data_by_mode(self, raw_df: pd.DataFrame, transform_type: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:
         """
         Transform the dataframe based on the transform type.
         
         Args:
             raw_df (pd.DataFrame): The dataframe to transform
-            mode (str): The type of transformation to perform ('latest', 'batch', 'single', 'multiple')
+            transform_type (str): The type of transformation to perform ('latest',   'single', 'multiple')
             fecha_inicio (str): The start date to process (required for single and multiple modes)
-            fecha_fin (str): The end date to process (required for multiple mode)
+            fecha_fin (str): The end date to process (required for multiple transform_type)
             
         Returns:
             pd.DataFrame: The filtered dataframe
         """
         # Validate inputs
-        if mode == 'multiple' and (fecha_inicio is None or fecha_fin is None):
-            raise ValueError("fecha_inicio and fecha_fin must be provided for multiple mode")
-        if mode == 'single' and fecha_inicio is None:
-            raise ValueError("fecha_inicio must be provided for single mode")
+        if transform_type == 'multiple' and (fecha_inicio is None or fecha_fin is None):
+            raise ValueError("fecha_inicio and fecha_fin must be provided for multiple transform_type")
+        if transform_type == 'single' and fecha_inicio is None:
+            raise ValueError("fecha_inicio must be provided for single transform_type")
 
         if raw_df.empty:
             print("⚠️  Input DataFrame is empty, returning empty DataFrame.")
@@ -83,9 +78,22 @@ class TransformadorOMIE:
 
         # Ensure Fecha column is properly converted to datetime
         if not pd.api.types.is_datetime64_any_dtype(raw_df['Fecha']):
-            raw_df['Fecha'] = pd.to_datetime(raw_df['Fecha'], format="mixed")
+            # Store original values before conversion
+            original_dates = raw_df['Fecha'].copy()
 
-         
+            # Convert with coerce - problematic dates become NaT
+            raw_df['Fecha'] = pd.to_datetime(raw_df['Fecha'], errors='coerce')
+
+            # Find which dates failed to convert
+            failed_mask = raw_df['Fecha'].isna()
+            failed_dates = original_dates[failed_mask]
+
+            # Check for any NaT values that were created
+            nat_count = raw_df['Fecha'].isna().sum()
+            if nat_count > 0:
+                print(f"⚠️ Found {nat_count} invalid dates converted to NaT")
+                print(f"\n Failed dates: {failed_dates.head()}")
+
         # Remove rows with NaT (Not a Time) values in Fecha column that will casue errors in the filtering process by datetime
         initial_count = len(raw_df)
         raw_df = raw_df.dropna(subset=['Fecha'])
@@ -98,10 +106,10 @@ class TransformadorOMIE:
             print("❌ No valid dates found after cleaning. Cannot apply date filtering.")
             return pd.DataFrame()
 
-        print(f"ℹ️  Processing in {mode.upper()} mode")
+        print(f"ℹ️  Processing in {transform_type.upper()} transform_type")
 
         try:
-            if mode == 'latest':
+            if transform_type == 'latest':
                 # Process only the last day in the dataframe
                 last_day = raw_df['Fecha'].dt.date.max()
                 print(f"📅 Latest day in data: {last_day}")
@@ -109,13 +117,7 @@ class TransformadorOMIE:
                 print(f"📊 Records found after filtering: {len(filtered_df)}")
                 return filtered_df
 
-            elif mode == 'batch':
-                # Process the entire dataframe
-                unique_days = raw_df['Fecha'].dt.date.nunique()
-                print(f"📊 Processing entire dataset with {unique_days} unique days")
-                return raw_df
-
-            elif mode == 'single':
+            elif transform_type == 'single':
                 # Process a single day
                 target_date = pd.to_datetime(fecha_inicio).date()
                 print(f"📅 Single day selected: {target_date}")
@@ -123,7 +125,7 @@ class TransformadorOMIE:
                 print(f"📊 Records found: {len(filtered_df)}")
                 return filtered_df
 
-            elif mode == 'multiple':
+            elif transform_type == 'multiple':
                 # Process a range of days
                 target_fecha_inicio = pd.to_datetime(fecha_inicio).date()
                 target_fecha_fin = pd.to_datetime(fecha_fin).date()
@@ -137,10 +139,10 @@ class TransformadorOMIE:
                 return filtered_df
             
             else:
-                raise ValueError(f"Invalid transform type: {mode}")
+                raise ValueError(f"Invalid transform type: {transform_type}")
 
         except Exception as e:
-            print(f"❌ Error during date filtering ({mode} mode): {e}")
+            print(f"❌ Error during date filtering ({transform_type} transform_type): {e}")
             return pd.DataFrame()
 
     def _transform_market_data(self, raw_df: pd.DataFrame, mercado: str) -> Optional[pd.DataFrame]:
@@ -209,64 +211,6 @@ class TransformadorOMIE:
             print("="*80 + "\n")
             return None
 
-    def _process_batch_mode(self, mercado: str) -> List[Optional[pd.DataFrame]]:
-        """
-        Processes all historical data for a given market and returns a list of processed dataframes.
-        
-        Args:
-            mercado (str): Market name
-            
-        Returns:
-            List[Optional[pd.DataFrame]]: List of processed DataFrames (or None for failed months)
-        """
-        print("\n" + "="*80)
-        print(f"🔄 STARTING BATCH TRANSFORM")
-        print(f"Market: {mercado.upper()}")
-        print("="*80 + "\n")
-
-        years = self.raw_file_utils.get_raw_folder_list(mercado)
-        processed_dfs = []
-
-        for year in years:
-            months = self.raw_file_utils.get_raw_folder_list(mercado, year)
-
-            print(f"\n📅 Processing Year: {year}")
-            print("-"*50)
-
-            for month in months:
-                processed_df_month = None
-                try:
-                    print(f"📌 Processing {year}-{month:02d}...")
-                    raw_df = self.raw_file_utils.read_raw_file(year, month, "volumenes_omie", mercado)
-
-                    if raw_df.empty:
-                        print(f"⚠️  Empty raw file for {year}-{month:02d}. Skipping.")
-                        continue
-
-                    print(f"   Raw records found: {len(raw_df)}")
-                    filtered_df = self._filter_data_by_mode(raw_df, 'batch')
-                    processed_df_month = self._transform_market_data(filtered_df, mercado)
-
-                    if processed_df_month is not None and not processed_df_month.empty:
-                        print(f"✅ Successfully transformed {year}-{month:02d}. Records: {len(processed_df_month)}")
-                    elif processed_df_month is None:
-                        print(f"❌ Transformation failed for {year}-{month:02d}.")
-                    else:
-                        print(f"⚠️  Transformation resulted in empty DataFrame for {year}-{month:02d}.")
-
-                except FileNotFoundError:
-                    print(f"❌ Raw file not found for {year}-{month:02d}. Skipping.")
-                except Exception as e:
-                    print(f"❌ Error processing {year}-{month:02d}: {e}")
-                finally:
-                    processed_dfs.append(processed_df_month)
-
-            print("-"*50)
-
-        print(f"\n✅ BATCH TRANSFORM COMPLETE for {mercado.upper()}")
-        print("="*80 + "\n")
-        return processed_dfs
-
     def _process_single_day(self, mercado: str, date: str) -> Optional[pd.DataFrame]:
         """
         Processes data for a single specified day and returns the processed DataFrame.
@@ -327,7 +271,7 @@ class TransformadorOMIE:
             print(f"   Records found: {len(raw_df)}")
 
             print("\n2. Filtering for target date...")
-            filtered_df = self._filter_data_by_mode(raw_df, mode='single', fecha_inicio=date)
+            filtered_df = self._filter_data_by_mode(raw_df, transform_type='single', fecha_inicio=date)
 
             if filtered_df.empty:
                 print("\n❌ NO DATA FOUND FOR TARGET DATE")
@@ -647,15 +591,16 @@ class TransformadorOMIE:
         return processed_df_final
 
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None,
-                                      mercados: List[str] = None, mode: str = 'latest') -> Dict:
+                                      mercados_lst: List[str] = None) -> Dict:
         """
         A function that transforms data for specified markets and returns status along with results.
 
         Args:
             fecha_inicio (str): Start date in YYYY-MM-DD format
             fecha_fin (str): End date in YYYY-MM-DD format
-            mercados (List[str]): List of market names to process
-            mode (str): Mode to process data ('single', 'multiple', 'batch', 'latest')
+            mercados_lst (List[str]): List of market names to process
+            transform_type (str): Mode to process data ('single', 'multiple', 'latest')
+                                  If None, will be auto-detected based on date parameters
 
         Returns:
             Dict: Dictionary containing:
@@ -665,14 +610,23 @@ class TransformadorOMIE:
                     - 'details': Dictionary with:
                         - 'markets_processed': List of markets that were processed
                         - 'markets_failed': List of markets that failed to process
-                        - 'mode': The transform mode used
+                        - 'transform_type': The transform transform_type used
                         - 'date_range': The date range processed
         """
+        # Auto-infer transform type based on date parameters
+        if fecha_inicio is None and fecha_fin is None:
+            transform_type = 'latest'
+        elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
+            transform_type = 'single'
+        elif fecha_inicio is not None and fecha_fin is not None and fecha_inicio != fecha_fin:
+            transform_type = 'multiple'
+
+     
         # Initialize status tracking
         status_details = {
             "markets_processed": [],
             "markets_failed": [],
-            "mode": mode,
+            "transform_type": transform_type,
             "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
         }
         
@@ -681,49 +635,48 @@ class TransformadorOMIE:
         
         # Validate inputs
         try:
-            if mode not in self.transform_types:
-                raise ValueError(f"Invalid transform type: {mode}. Must be one of: {self.transform_types}")
+            if transform_type not in self.transform_types:
+                raise ValueError(f"Invalid transform type: {transform_type}. Must be one of: {self.transform_types}")
                 
             # Add validation for required parameters
-            if mode == 'single' and not fecha_inicio:
-                raise ValueError("fecha_inicio must be provided for single mode")
-            if mode == 'multiple' and (not fecha_inicio or not fecha_fin):
-                raise ValueError("Both fecha_inicio and fecha_fin must be provided for multiple mode")
+            if transform_type == 'single' and not fecha_inicio:
+                raise ValueError("fecha_inicio must be provided for single transform_type")
+            if transform_type == 'multiple' and (not fecha_inicio or not fecha_fin):
+                raise ValueError("Both fecha_inicio and fecha_fin must be provided for multiple transform_type")
             
             # Get list of all markets to process
-            if mercados is None:
-                mercados = self.omie_markets
-            elif isinstance(mercados, str):  # Allow single market string
-                mercados = [mercados]
+            if mercados_lst is None:
+                mercados_lst = self.omie_markets
+            elif isinstance(mercados_lst, str):  # Allow single market string
+                mercados_lst = [mercados_lst]
                 
             # Validate markets
-            invalid_markets = [m for m in mercados if m not in self.omie_markets]
+            invalid_markets = [m for m in mercados_lst if m not in self.omie_markets]
             if invalid_markets:
                 raise ValueError(f"Invalid markets: {invalid_markets}. Must be one of: {self.omie_markets}")
                 
             print("\n" + "="*80)
             print(f"🚀 STARTING OMIE TRANSFORMATION PIPELINE")
-            print(f"Mode: {mode.upper()}")
-            print(f"Markets: {', '.join(mercados)}")
+            print(f"Mode: {transform_type.upper()}")
+            print(f"Markets: {', '.join(mercados_lst)}")
             if fecha_inicio:
                 print(f"Date Range: {fecha_inicio}" + (f" to {fecha_fin}" if fecha_fin else ""))
             print("="*80)
                 
             # Process each market and track status
-            for mercado in mercados:
+            for mercado in mercados_lst:
                 market_result = None
                 try:
                     print(f"\n🏭 PROCESSING MARKET: {mercado.upper()}")
                     print(f"Dataset Type: volumenes_omie")
                     print("-"*60)
                     
-                    if mode == 'batch':
-                        market_result = self._process_batch_mode(mercado)
-                    elif mode == 'single':
+                    # Process each market based on the transform type
+                    if transform_type == 'single':
                         market_result = self._process_single_day(mercado, fecha_inicio)
-                    elif mode == 'latest':
+                    elif transform_type == 'latest':
                         market_result = self._process_latest_day(mercado)
-                    elif mode == 'multiple':
+                    elif transform_type == 'multiple':
                         market_result = self._process_date_range(mercado, fecha_inicio, fecha_fin)
                     
                     # Check if transformation was successful
@@ -759,8 +712,10 @@ class TransformadorOMIE:
             print("\n" + "="*80)
             print(f"🏁 OMIE TRANSFORMATION PIPELINE COMPLETE")
             print(f"✅ Successful: {len(status_details['markets_processed'])}")
-            print(f"❌ Failed: {len(status_details['markets_failed'])}")
-            print("="*80 + "\n")
+
+            if not overall_success:
+                print(f"❌ Failed: {len(status_details['markets_failed'])}")
+                print("="*80 + "\n")
                 
         except Exception as e:
             overall_success = False
@@ -788,26 +743,3 @@ class TransformadorOMIE:
     def process_continuo_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
         """Transforms data for the 'continuo' market."""
         return self._transform_market_data(raw_df, 'continuo')
-
-def example_usage():
-    transformer = TransformadorOMIE()
-    
-    # Example: Transform latest data for all markets
-    result = transformer.transform_data_for_all_markets(mode='latest')
-    
-    print("Transformation Results:")
-    print(f"Success: {result['status']['success']}")
-    print(f"Details: {result['status']['details']}")
-    
-    for market, data in result['data'].items():
-        if data is not None:
-            if isinstance(data, pd.DataFrame):
-                print(f"{market}: {len(data)} records")
-            elif isinstance(data, list):
-                print(f"{market}: {len(data)} batches")
-        else:
-            print(f"{market}: No data")
-    
-# Example usage and testing
-if __name__ == "__main__":
-   example_usage()

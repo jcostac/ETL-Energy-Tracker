@@ -20,6 +20,7 @@ from configs.storage_config import DB_URL
 
 class DatabaseUtils:
     """Utility class for database operations. Operations include read, write and update."""
+    _engines = {} #cache for engines to avoid creating new ones
 
     @staticmethod
     def create_engine(database_name: str):
@@ -31,23 +32,29 @@ class DatabaseUtils:
         Returns:
             Engine: SQLAlchemy engine object
         """
+        if database_name in DatabaseUtils._engines:
+            return DatabaseUtils._engines[database_name]
+        
         try:
             engine = create_engine(DB_URL(database_name))
             # Test connection
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
+            DatabaseUtils._engines[database_name] = engine
             return engine
         except Exception as e:
             raise ConnectionError(f"Failed to connect to database {database_name}: {str(e)}")
-
-    def read_table(engine: object, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None) -> pd.DataFrame:
+    
+    @staticmethod
+    def read_table(engine: object, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None, params: Optional[Union[dict, tuple]] = None) -> pd.DataFrame:
         """Read data from a table into a DataFrame
         
         Args:
             engine: SQLAlchemy engine
             table_name (str): Name of the table to read ie 'prices'
             columns (List[str], optional): Specific columns to read ie ['column1', 'column2']
-            where_clause (str, optional): SQL WHERE clause ie "column1 = 'value1'" or "column1 in ('value1', 'value2')"
+            where_clause (str, optional): SQL WHERE clause with placeholders, e.g., "column1 = :value1"
+            params (Union[dict, tuple], optional): Dictionary or tuple of parameters to bind to the query.
             
         Returns:
             pd.DataFrame: Table data
@@ -64,8 +71,8 @@ class DatabaseUtils:
             
             # Execute the query and convert to DataFrame
             with engine.connect() as conn:
-                result = conn.execute(query)
-                df = pd.DataFrame(result.fetchall())
+                result = conn.execute(query, params or {})
+                df = pd.DataFrame(result.fetchall(), columns=result.keys())
                 return df
             
         except Exception as e:
@@ -74,7 +81,8 @@ class DatabaseUtils:
     @staticmethod
     def write_table(engine: object, df: pd.DataFrame, table_name: str, 
                     if_exists: str = 'append', index: bool = False) -> None:
-        """Write DataFrame to database table, this method is used to write data to a table. 
+        """Write DataFrame to database table using batch insertion
+        
         Args:
             engine: SQLAlchemy engine
             df (pd.DataFrame): Data to write
@@ -83,14 +91,37 @@ class DatabaseUtils:
             index (bool): Whether to write DataFrame index, default is False
         """
         try:
-            df.to_sql(table_name, engine, if_exists=if_exists, index=index)
+            # For SQLAlchemy 1.4.54 compatibility, use raw SQL insertion
+            columns = df.columns.tolist()
+            
+            # Create INSERT statement
+            placeholders = ', '.join([f":{col}" for col in columns])
+            column_names = ', '.join(columns)
+            
+            insert_stmt = text(f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})")
+
+            with engine.begin() as conn:
+                if if_exists == 'replace':
+                    # Drop and recreate table
+                    conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+                    # Create table with appropriate schema
+                    df.head(0).to_sql(table_name, engine, if_exists='fail', index=index)
+                
+                # Convert DataFrame to list of dictionaries for batch insertion
+                data_to_insert = df.to_dict('records')
+                
+                # Use executemany for batch insertion
+                conn.execute(insert_stmt, data_to_insert)
+                
         except Exception as e:
+            if "Duplicate entry" in str(e):
+                print(f"Warning: Duplicate entries detected in {table_name}. Consider using 'replace' or handling duplicates before insertion.")
             raise ValueError(f"Error writing to table {table_name}: {str(e)}")
 
     @staticmethod
     def update_table(engine: object, df: pd.DataFrame, table_name: str, key_columns: List[str]) -> None:
         """
-        Update existing records in a table without dropping it
+        Update existing records in a table using batch operations
         
         Args:
             engine: SQLAlchemy engine
@@ -99,26 +130,24 @@ class DatabaseUtils:
             key_columns (List[str]): Columns to match for updates
         """
         try:
-            with engine.connect() as conn:
-                for _, row in df.iterrows():
-                    # Build WHERE clause from key columns
-                    where_conditions = " AND ".join(
-                        f"{col} = :{col}" for col in key_columns
-                    )
-                    
-                    # Build SET clause from non-key columns
-                    update_columns = [col for col in df.columns if col not in key_columns]
-                    set_clause = ", ".join(
-                        f"{col} = :{col}" for col in update_columns
-                    )
-                    
-                    # Create update statement
-                    sql = f"UPDATE {table_name} SET {set_clause} WHERE {where_conditions}"
-                    
-                    # Execute update with parameters from row
-                    conn.execute(sqlalchemy.text(sql), row.to_dict())
+            update_columns = [col for col in df.columns if col not in key_columns]
+            set_clause = ", ".join(
+                f"{col} = :{col}" for col in update_columns
+            )
+            where_conditions = " AND ".join(
+                f"{col} = :{col}" for col in key_columns
+            )
+            
+            # Create update statement
+            sql = f"UPDATE {table_name} SET {set_clause} WHERE {where_conditions}"
+            update_stmt = text(sql)
+            
+            with engine.begin() as conn:
+                # Convert DataFrame to list of dictionaries for batch update
+                data_to_update = df.to_dict('records')
                 
-                conn.commit()
+                # Use executemany for batch updates
+                conn.execute(update_stmt, data_to_update)
                 
         except Exception as e:
             raise ValueError(f"Error updating table {table_name}: {str(e)}")
@@ -145,11 +174,6 @@ class DuckDBUtils:
         try:
             # Connect, allowing unsigned extensions like httpfs if needed for remote data
             con = duckdb.connect(database=self.db_path if self.db_path else ':memory:', read_only=False)
-            # Example: Install and load httpfs if querying remote files (e.g., S3)
-            # con.execute("INSTALL httpfs;")
-            # con.execute("LOAD httpfs;")
-            # Configure settings like memory limit if needed
-            # con.execute("SET memory_limit='1GB';")
             return con
         except Exception as e:
             print(f"Error connecting to DuckDB: {e}")
