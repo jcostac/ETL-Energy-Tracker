@@ -136,7 +136,7 @@ class I3Config:
 class DiarioConfig(I3Config):
     def __init__(self):
         super().__init__()
-        self.diaria_id = self.id_mercado_map.get("Diario")
+        self.diario_id = self.id_mercado_map.get("Diario")
         self.market_ids: List[str] = [self.diaria_id] if self.diaria_id else []
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
@@ -146,10 +146,52 @@ class DiarioConfig(I3Config):
 class IntraConfig(I3Config): 
     
     def __init__(self, fecha: Optional[datetime] = None):
+        """
+        Initialize the IntraConfig with market IDs and sheet selections based on the provided date.
+        
+        Parameters:
+            fecha (datetime): The date used to determine which intra markets to include. Must not be None.
+        
+        Raises:
+            ValueError: If `fecha` is not provided.
+        """
         super().__init__()
-        # Adapt for date-based logic if needed (e.g., intra reduction)
-        self.intra_ids = [self.id_mercado_map.get(f"Vira {i}") or self.id_mercado_map.get(f"Intra {i}") for i in range(1, 8)]
-        self.market_ids: List[str] = [id for id in self.intra_ids if id]
+        
+        # Set the cutoff date for intra market reduction
+        self.intra_reduction_date = datetime(2024, 6, 13)
+        
+        # Use provided date or current date
+        if fecha is None:
+            raise ValueError("Fecha is required for IntraConfig")
+        
+        # Get individual IDs for each Intra market (Intra 1 through Intra 7)
+        self.intra_1_id: str = self.id_mercado_map.get("Intra 1")
+        self.intra_2_id: str = self.id_mercado_map.get("Intra 2")
+        self.intra_3_id: str = self.id_mercado_map.get("Intra 3")
+        self.intra_4_id: str = self.id_mercado_map.get("Intra 4")
+        self.intra_5_id: str = self.id_mercado_map.get("Intra 5")
+        self.intra_6_id: str = self.id_mercado_map.get("Intra 6")
+        self.intra_7_id: str = self.id_mercado_map.get("Intra 7")
+
+        # Determine which markets to include based on the date
+        if fecha >= self.intra_reduction_date:
+            # After June 13, 2024: only use Intra 1, 2, and 3
+            self.market_ids: List[str] = [
+                self.intra_1_id, self.intra_2_id, self.intra_3_id
+            ]
+            print(f"Using intra markets 1-3 (after intra reduction date) for date {fecha.date()}")
+        else:
+            # Before June 13, 2024: use all 7 intra markets
+            self.market_ids: List[str] = [
+                self.intra_1_id, self.intra_2_id, self.intra_3_id, 
+                self.intra_4_id, self.intra_5_id, self.intra_6_id, self.intra_7_id
+            ]
+            print(f"Using intra markets 1-7 (before intra reduction date) for date {fecha.date()}")
+        
+        # Filter out None values from market_ids
+        self.market_ids = [id for id in self.market_ids if id]
+        
+        # Get sheets of interest based on the selected markets
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
