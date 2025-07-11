@@ -303,15 +303,13 @@ class I90Config:
         Determine whether the configuration class provides volume sheet numbers.
         
         Returns:
-            bool: True if the class instance has a non-empty 'volumenes_sheets' attribute; False otherwise or if instantiation fails.
+            bool: True if the class instance has volume sheets; False otherwise or if instantiation fails.
         """
         try:
-            # Default behavior: try to instantiate and check
             instance = cls()
-            return hasattr(instance, 'volumenes_sheets') and instance.volumenes_sheets and any(instance.volumenes_sheets)
+            return bool(instance.volumenes_sheets)
         except TypeError:
             # If instantiation fails due to missing parameters, return False
-            # Subclasses should override this method to provide the correct answer
             return False
         except Exception:
             # Any other error during instantiation
@@ -323,15 +321,13 @@ class I90Config:
         Determine whether the configuration class provides price sheet numbers.
         
         Returns:
-            bool: True if the class instance has a non-empty 'precios_sheets' attribute; False otherwise or if instantiation fails.
+            bool: True if the class instance has price sheets; False otherwise or if instantiation fails.
         """
         try:
-            # Default behavior: try to instantiate and check
             instance = cls()
-            return hasattr(instance, 'precios_sheets') and instance.precios_sheets and any(instance.precios_sheets)
+            return bool(instance.precios_sheets)
         except TypeError:
             # If instantiation fails due to missing parameters, return False
-            # Subclasses should override this method to provide the correct answer
             return False
         except Exception:
             # Any other error during instantiation
@@ -339,11 +335,6 @@ class I90Config:
 
 class DiarioConfig(I90Config):
     def __init__(self):
-        """
-        Initialize the DiarioConfig with the market ID and relevant sheet numbers for the Diario market.
-        
-        Sets up the Diario market configuration by retrieving its market ID, grouping it for sheet retrieval, and obtaining the associated volume, price, and combined sheet numbers of interest.
-        """
         super().__init__()
         #get individual i.e. {'Diario': 1}
         self.diaria_id = self.id_mercado_map["Diario"]
@@ -357,25 +348,6 @@ class DiarioConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
-    
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Indicates whether the configuration includes price sheets.
-        
-        Returns:
-            bool: False, as price sheet extraction is not implemented for this configuration.
-        """
-        return False  # No price extraction implemented
 
 class IntraConfig(I90Config):
     def __init__(self, fecha):
@@ -427,34 +399,13 @@ class IntraConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
-    
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Indicates whether the configuration includes price sheets.
-        
-        Returns:
-            bool: False, as price sheet extraction is not implemented for this configuration.
-        """
-        return False  # No price extraction implemented
+   
 
 class SecundariaConfig(I90Config):
     """
     Config for secundaria market data
     """
     def __init__(self):
-        """
-        Initialize configuration for the Secundaria market, setting market IDs and retrieving associated sheet numbers for volumes and prices.
-        """
         super().__init__()
         # get individual ids for subir and bajar
         self.secundaria_subir_id: str = self.id_mercado_map["Secundaria a subir"]
@@ -468,26 +419,6 @@ class SecundariaConfig(I90Config):
         self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
-
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
-    
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Indicates whether the configuration includes price sheets.
-        
-        Returns:
-            bool: False, as this configuration does not include price sheets.
-        """
-        return False  # Commented out in extractor - prices from API
 
 class TerciariaConfig(I90Config):
     """
@@ -511,31 +442,8 @@ class TerciariaConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
-    
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Indicates whether the configuration includes price sheets.
-        
-        Returns:
-            bool: False, as this configuration does not include price sheets.
-        """
-        return False  # Commented out in extractor - prices from API
-
 class RRConfig(I90Config):
     def __init__(self):
-        """
-        Initializes configuration for the RR (Reserva de Regulación) market, setting up market IDs and retrieving associated sheet numbers for volume and price data.
-        """
         super().__init__()
         # get individual ids for subir and bajar
         self.rr_subir_id: str = self.id_mercado_map["RR a subir"]
@@ -549,27 +457,8 @@ class RRConfig(I90Config):
         self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
-        # No specific Redespacho filters defined for RR sheets ('06') in the provided snippet
+        
 
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
-    
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Indicates whether the configuration includes price sheets.
-        
-        Returns:
-            bool: False, as this configuration does not include price sheets.
-        """
-        return False  # Commented out in extractor - prices from API
 
 class CurtailmentConfig(I90Config):
     def __init__(self):
@@ -616,25 +505,7 @@ class CurtailmentConfig(I90Config):
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
 
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
-    
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Indicates whether the configuration includes price sheets.
-        
-        Returns:
-            bool: False, as price sheet extraction is not implemented for this configuration.
-        """
-        return False  # No price extraction implemented
+   
 
 class P48Config(I90Config):
     def __init__(self):
@@ -655,25 +526,7 @@ class P48Config(I90Config):
         self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for P48 sheets ('12') in the provided snippet
 
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
     
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Indicates whether the configuration includes price sheets.
-        
-        Returns:
-            bool: False, as price sheet extraction is not implemented for this configuration.
-        """
-        return False  # No price extraction implemented
 
 class IndisponibilidadesConfig(I90Config):
     def __init__(self):
@@ -695,25 +548,7 @@ class IndisponibilidadesConfig(I90Config):
         # Define Redespacho filter for volumenes sheet ('08')
         self.redespacho_filter_volumenes: List[str] = ["Indisponibilidad"]
 
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
     
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Indicates whether the configuration includes price sheets.
-        
-        Returns:
-            bool: False, as this configuration does not include price sheets.
-        """
-        return False  # Commented out in extractor - prices from API
 
 class RestriccionesConfig(I90Config):
     def __init__(self):
@@ -779,23 +614,6 @@ class RestriccionesConfig(I90Config):
             return self.redespacho_filter_rt_vol
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
-
-    @classmethod
-    def has_volumenes_sheets(cls) -> bool:
-        """
-        Indicates that this configuration class provides volume sheet data.
-        
-        Returns:
-            bool: True, indicating volume sheets are available.
-        """
-        return True
-    
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        """
-        Return True to indicate that this configuration includes active price sheet extraction.
-        """
-        return True  # ONLY market with active price extraction
 
 def print_config_info():
     # --- Base I90Config Info ---
@@ -872,6 +690,8 @@ def print_config_info():
 
         print(f"Temporary download path: {config_instance.temporary_download_path}")
 
+        has_precios = RestriccionesConfig().has_precios_sheets()
+        print(f"Restricciones has precios: {has_precios}")
             
 if __name__ == "__main__":
     print_config_info()
