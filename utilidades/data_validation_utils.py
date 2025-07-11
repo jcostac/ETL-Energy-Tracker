@@ -19,7 +19,7 @@ class DataValidationUtils:
         self.processed_volumenes_i3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
 
         #raw data structure requirements
-        self.raw_price_required_cols = ['datetime_utc', 'value', 'indicador_id']
+        self.raw_precios_esios_required_cols = ['datetime_utc', 'value', 'indicador_id']
         self.raw_precios_i90_required_cols = ["fecha", "precios", "Redespacho", "Sentido", "Unidad de Programación", "hora", "granularity"]
         self.raw_volumenes_required_cols = ["Unidad de Programación", "fecha", "volumenes", "hora", "granularity"]
 
@@ -180,7 +180,7 @@ class DataValidationUtils:
 
         elif type == "raw":
             if validation_schema_type == "precios":
-                required_cols = self.raw_price_required_cols
+                required_cols = self.raw_precios_esios_required_cols
             elif validation_schema_type == "precios_i90":
                 required_cols = self.raw_precios_i90_required_cols
             elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
