@@ -578,7 +578,13 @@ class DateUtilsETL:
     @staticmethod
     def convert_utc_to_naive(dt_utc: pd.Series) -> pd.DataFrame:
         """
-        Converts UTC datetime objects to naive datetime objects.
+        Converts a pandas Series of UTC datetime objects to naive datetime objects in the 'Europe/Madrid' local time.
+        
+        Parameters:
+        	dt_utc (pd.Series): Series of UTC datetime objects or strings.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing the corresponding naive datetime objects in local time.
         """
         df_local = DateUtilsETL.convert_utc_to_local(dt_utc, 'Europe/Madrid')
         df_naive = DateUtilsETL.convert_local_to_naive(df_local['datetime_local'], 'Europe/Madrid')
@@ -587,14 +593,16 @@ class DateUtilsETL:
     @staticmethod
     def convert_hourly_to_15min(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Converts hourly data to 15-minute data using vectorized operations.
-        Assumes input DataFrame has hourly frequency and 'datetime_utc' column.
+        Converts hourly data to 15-minute intervals, adjusting values based on dataset type.
         
-        Args:
-            df (pd.DataFrame): DataFrame containing hourly data, including a 'datetime_utc' column.
-
+        Each hourly row is expanded into four 15-minute rows with appropriate minute offsets. If the dataset type contains "volumenes", the 'volumenes' column is divided by 4 for each new row; otherwise, values are simply replicated.
+        
+        Parameters:
+            df (pd.DataFrame): Hourly data with a 'datetime_utc' column.
+            dataset_type (str): String indicating the type of dataset, used to determine value adjustment.
+        
         Returns:
-            pd.DataFrame: DataFrame containing 15-minute data.
+            pd.DataFrame: DataFrame with 15-minute granularity.
         """
         # Sort by datetime_utc to ensure proper ordering
         df = df.sort_values(by='datetime_utc').reset_index(drop=True)

@@ -31,12 +31,9 @@ class StorageFileUtils:
     """
     def __init__(self) -> None:
         """
-        Initializes the ParquetUtils class and sets the base path.
-
-        Sets the base path for data storage.
-
-        Args:
-            None
+        Initialize the storage file utility with environment configuration.
+        
+        Loads environment variables, validates required settings, and sets file extensions and the base data lake path for raw and processed files.
         """
         #load .env file
         load_dotenv()
@@ -54,17 +51,18 @@ class StorageFileUtils:
     @staticmethod
     def create_directory_structure(path: str, mercado: str, year: int, month: int, day = None) -> Path:
         """
-        Creates the necessary directory structure for storing parquet files.
+        Create and return a nested directory structure for organizing files by market, year, month, and optionally day.
         
-        Args:
-            path (str or Path): Base directory path where the folder structure will be created
-            mercado (str): Market name for file organization ('diario', 'intra', 'secundaria', 'terciaria', 'rr')
-            year (int): Year for the directory structure
-            month (int): Month for the directory structure
-            day (int): Day for the directory structure, optional if we want to save at the day level
+        Parameters:
+            path (str): Base directory where the structure will be created.
+            mercado (str): Market name used as a subdirectory.
+            year (int): Year for the directory structure.
+            month (int): Month for the directory structure.
+            day (int, optional): Day for the directory structure. If not provided, only up to the month level is created.
+        
         Returns:
-            Path: Path object pointing to the created month directory
-    """
+            Path: Path object pointing to the deepest created directory (month or day).
+        """
         # Convert string path to Path object if necessary
         path = Path(path)
 
@@ -102,20 +100,19 @@ class RawFileUtils(StorageFileUtils):
     Utility class for processing and saving raw csv files.
     """
     def __init__(self) -> None:
+        """
+        Initialize RawFileUtils with the base path for raw data storage.
+        """
         super().__init__()
         self.raw_path = self.base_path / 'raw'
 
     @staticmethod
     def drop_raw_duplicates(df: pd.DataFrame) -> pd.DataFrame:
         """
-        Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of raw data. 
-        This allows for redownloads of the same day since we keep last download of the same day.
-        Args:
-            df (pd.DataFrame): The DataFrame to drop duplicates from
-            dataset_type (str): The type of dataset to drop duplicates from
-            WIP redownload (bool): Whether to redownload the data
+        Remove exact duplicate rows from a DataFrame, keeping only the last occurrence of each duplicate.
+        
         Returns:
-            pd.DataFrame: The DataFrame with duplicates dropped
+            pd.DataFrame: DataFrame with exact duplicates removed.
         """
          # First remove exact duplicates across all columns
         df_before = len(df)
@@ -136,19 +133,21 @@ class RawFileUtils(StorageFileUtils):
     #@deprecated(reason="This method is only for development/debugging purposes. Use write_raw_parquet for production code.")
     def write_raw_csv(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
         """
-        Processes a DataFrame and saves/appends it as a CSV file in the appropriate directory structure.
-        Raw data is saved as-is without type conversions.
+        Saves or appends a DataFrame as a raw CSV file in the structured data lake directory for the specified market, year, and month.
         
-        Args:
-            mercado (str): Market name for file organization ('diario', 'intra', 'secundaria', 'terciaria', 'rr')
-            year (int): Year for file organization
-            month (int): Month for file organization
-            df (pd.DataFrame): Input DataFrame to be saved/appended
-            dataset_type (str): Type of data ('volumenes_i90', 'volumenes_i3', 'precios', or 'ingresos')
+        If the target CSV file exists, reads and concatenates the new data, optionally removes exact duplicates (except for the "continuo" market), and overwrites the file. If the file does not exist, creates it. Raw data is saved without type conversions.
+        
+        Parameters:
+            year (int): Year for file organization.
+            month (int): Month for file organization.
+            df (pd.DataFrame): DataFrame to be saved or appended.
+            dataset_type (str): Type of dataset (must be valid for the project).
+            mercado (str): Market name for file organization.
         
         Raises:
-            ValueError: If dataset_type is invalid or DataFrame validation fails
-            FileNotFoundError: If directory structure cannot be created
+            ValueError: If the dataset type is invalid.
+            FileNotFoundError: If the directory structure cannot be created.
+            Exception: For errors during file reading, writing, or DataFrame processing.
         """
         # Validate dataset type
         self.validate_dataset_type(dataset_type)
@@ -239,7 +238,11 @@ class RawFileUtils(StorageFileUtils):
             raise
 
     def write_raw_parquet(self, year: int, month: int, df: pd.DataFrame, dataset_type: str, mercado: str) -> None:
-        """Processes a DataFrame and saves/appends it as a Parquet file."""
+        """
+        Saves a DataFrame as a Parquet file in the raw data directory, appending and deduplicating if the file already exists.
+        
+        If a Parquet file for the specified market, year, month, and dataset type exists, reads the existing file, appends new data, removes duplicate rows, and overwrites the file. If the file does not exist, creates a new Parquet file. Uses Snappy compression and the PyArrow engine. Raises exceptions on failure.
+        """
         # Validate dataset type
         self.validate_dataset_type(dataset_type)
         
@@ -309,14 +312,9 @@ class RawFileUtils(StorageFileUtils):
     #WIP
     def delete_raw_files_older_than(self, months: int, mercado: Optional[str] = None) -> None:
         """
-        Deletes raw CSV files that are older than the specified number of months.
+        Delete raw CSV data directories older than a specified number of months.
         
-        Args:
-            months (int): Number of months. Files older than this will be deleted
-            mercado (Optional[str]): Optional market filter. If provided, only files from this market are deleted
-            
-        Returns:
-            None
+        If a market is specified, only directories for that market are considered; otherwise, all standard markets are checked. Removes entire month directories and cleans up empty year directories after deletion.
         """
         
         # Calculate cutoff date
@@ -365,17 +363,19 @@ class RawFileUtils(StorageFileUtils):
 
     def read_raw_file(self, year: int, month: int, dataset_type: str, mercado: str) -> pd.DataFrame:
         """
-        Reads a raw file from the appropriate directory structure. 
-        Args:
-            year (int): The year of the file
-            month (int): The month of the file
-            dataset_type (str): The type of dataset
-            mercado (str): The market name
+        Reads a raw CSV file for the specified market, year, month, and dataset type from the raw data directory.
+        
+        Parameters:
+        	year (int): Year of the data file.
+        	month (int): Month of the data file.
+        	dataset_type (str): Dataset type identifier.
+        	mercado (str): Market name.
+        
         Returns:
-            pd.DataFrame: The DataFrame containing the data
-
-        Note:
-            -This method is used to read raw files that are processed on a daily basis. (Fucntionality reads latest file)
+        	pd.DataFrame: DataFrame containing the contents of the raw CSV file.
+        
+        Raises:
+        	Exception: If the file cannot be read or does not exist.
         """
 
     
@@ -433,7 +433,15 @@ class RawFileUtils(StorageFileUtils):
 
     def get_raw_file_list(self, mercado: str, year: int, month: int) -> list[str]:
         """
-        Get a list of raw files for a given market, year, and month.
+        Return a list of raw CSV file names for the specified market, year, and month.
+        
+        Parameters:
+        	mercado (str): The market name.
+        	year (int): The year of the files.
+        	month (int): The month of the files.
+        
+        Returns:
+        	list[str]: List of raw CSV file names in the specified directory.
         """
         file_path = self.raw_path / mercado / str(year) / f"{month:02d}"
 
@@ -445,6 +453,9 @@ class ProcessedFileUtils(StorageFileUtils):
     Utility class for processing and saving processed parquet files.
     """
     def __init__(self) -> None:
+        """
+        Initialize the ProcessedFileUtils with the processed data path and default row group size for parquet writing.
+        """
         super().__init__()
         self.processed_path = self.base_path / 'processed'
         self.row_group_size = 122880 # Example: 128k rows per group
@@ -452,7 +463,16 @@ class ProcessedFileUtils(StorageFileUtils):
     @staticmethod
     def drop_processed_duplicates(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Drops duplicates from the DataFrame based on the data type and mercado. Used for processing of processed data
+        Remove duplicate rows from the DataFrame according to dataset-specific columns for processed data.
+        
+        Duplicates are dropped based on a subset of columns determined by the dataset type. For 'volumenes_mic', duplicates are not removed. Raises a ValueError if the DataFrame is empty, and a KeyError if required columns are missing.
+        
+        Parameters:
+            df (pd.DataFrame): The DataFrame to deduplicate.
+            dataset_type (str): The type of dataset, which determines the deduplication logic.
+        
+        Returns:
+            pd.DataFrame: The deduplicated DataFrame.
         """
         if df.empty:
             raise ValueError("Cannot process empty DataFrame")
@@ -487,7 +507,12 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _add_partition_cols(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Adds necessary partition columns to the DataFrame.
+        Add 'year', 'month', and 'mercado' columns to the DataFrame for partitioning.
+        
+        The 'year' and 'month' columns are extracted from the 'datetime_utc' column, and 'mercado' is set to the provided value.
+        
+        Returns:
+            pd.DataFrame: DataFrame with added partition columns.
         """
         df['year'] = df['datetime_utc'].dt.year
         df['month'] = df['datetime_utc'].dt.month
@@ -497,7 +522,9 @@ class ProcessedFileUtils(StorageFileUtils):
         
     def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str) -> None:
         """
-        Processes a DataFrame and saves/appends it as partitioned parquet files using Hive partitioning.
+        Writes a DataFrame as partitioned Parquet files using Hive-style directory structure.
+        
+        The DataFrame is partitioned by 'mercado', 'id_mercado', 'year', and 'month'. For each unique partition, the method combines new and existing data, removes duplicates, and writes the result as a Parquet file with the specified value columns. Raises an exception if the input DataFrame is empty or if required partition columns are missing.
         """
         if df.empty:
             raise ValueError(f"Input DataFrame for {mercado} is empty. Cannot proceed with write operation.")
@@ -541,14 +568,14 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _prepare_input_dataframe(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Prepares the input DataFrame by adding partition columns and ensuring datetime is UTC naive.
-
-        Args:
-            df (pd.DataFrame): Raw input DataFrame.
-            mercado (str): Market name for partitioning.
-
+        Prepare a DataFrame for partitioned storage by adding partition columns and converting the `datetime_utc` column to timezone-naive.
+        
+        Parameters:
+            df (pd.DataFrame): Input DataFrame to be prepared.
+            mercado (str): Market identifier used for partitioning.
+        
         Returns:
-            pd.DataFrame: Prepared DataFrame with partition columns and normalized datetime.
+            pd.DataFrame: DataFrame with added partition columns and a timezone-naive `datetime_utc` column.
         """
         # Add partition columns
         df = self._add_partition_cols(df, mercado)
@@ -558,14 +585,10 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _validate_partition_columns(self, df: pd.DataFrame, partition_cols: list) -> bool:
         """
-        Validates that all required partition columns exist in the DataFrame.
-
-        Args:
-            df (pd.DataFrame): The DataFrame to validate.
-            partition_cols (list): List of required partition column names.
-
+        Check if all specified partition columns are present in the DataFrame.
+        
         Returns:
-            bool: True if all required columns exist, False otherwise.
+            True if all required partition columns exist; False otherwise.
         """
         missing_cols = [col for col in partition_cols if col not in df.columns]
         if missing_cols:
@@ -575,14 +598,9 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _process_single_partition(self, df: pd.DataFrame, partition, partition_cols: list, value_cols: list[str], dataset_type: str) -> None:
         """
-        Processes a single partition: filters data, handles existing file if present, and writes result.
-
-        Args:
-            df (pd.DataFrame): The full input DataFrame.
-            partition: Partition values (from unique_partitions_df row).
-            partition_cols (list): List of partition column names.
-            value_cols (list[str]): List of value column names.
-            dataset_type (str): The type of dataset.
+        Processes and writes data for a single partition, combining new and existing records and ensuring deduplication.
+        
+        Filters the input DataFrame for the specified partition, reads any existing partition file, merges and deduplicates the data, and writes the result to the appropriate partitioned Parquet file. Raises exceptions if errors occur during processing.
         """
         # Filter new data for this partition
         new_data_partition_df = self._filter_df_for_partition(df, partition, partition_cols)
@@ -609,15 +627,15 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _filter_df_for_partition(self, df: pd.DataFrame, partition, partition_cols: list) -> pd.DataFrame:
         """
-        Filters the DataFrame to get the rows that apply to a specific partition.
-
-        Args:
-            df (pd.DataFrame): The full DataFrame.
-            partition: Partition values (Series or dict).
-            partition_cols (list): List of partition column names.
-
+        Return a DataFrame containing only the rows matching the specified partition values.
+        
+        Parameters:
+            df (pd.DataFrame): The DataFrame to filter.
+            partition: Partition values as a Series or dict.
+            partition_cols (list): Names of columns to use for partition filtering.
+        
         Returns:
-            pd.DataFrame: Filtered DataFrame for the partition.
+            pd.DataFrame: A copy of the DataFrame filtered to rows matching all partition column values.
         """
         # Start with a True mask that will be narrowed down with each partition column
         partition_mask = True
@@ -631,7 +649,21 @@ class ProcessedFileUtils(StorageFileUtils):
         return df[partition_mask].copy()
 
     def _read_existing_partition_file(self, file_path: str, partition) -> pd.DataFrame:
-        """Reads an existing partition file if it exists."""
+        """
+        Read an existing partition Parquet file and ensure required partition columns are present.
+        
+        If the file does not exist, returns an empty DataFrame. Ensures the `datetime_utc` column is timezone-naive and adds any missing partition columns with their corresponding values.
+        
+        Parameters:
+            file_path (str): Path to the partition Parquet file.
+            partition (dict): Dictionary mapping partition column names to their values.
+        
+        Returns:
+            pd.DataFrame: DataFrame containing the data from the partition file, with all required partition columns.
+        
+        Raises:
+            Exception: If reading the file fails for any reason.
+        """
         try:
             if not os.path.exists(file_path):
                 return pd.DataFrame()
@@ -652,7 +684,11 @@ class ProcessedFileUtils(StorageFileUtils):
     def _combine_and_write_partition(self, new_data_df: pd.DataFrame, existing_data_df: pd.DataFrame,
                                     partition_cols: list, output_file_path: str,
                                     value_cols: list[str], dataset_type: str) -> None:
-        """Combines new and existing data, deduplicates, and writes the result."""
+        """
+                                    Combine new and existing partition data, remove duplicates, and write the result as a Parquet file.
+                                    
+                                    Merges new and existing DataFrames for a partition, deduplicates based on dataset type, prepares the data for writing, and writes the final result to the specified Parquet file path. Raises an exception if no data is available or if any processing step fails.
+                                    """
         try:
             if new_data_df.empty and existing_data_df.empty:
                 raise ValueError("No data available for this partition")
@@ -687,14 +723,17 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _prepare_dataframe_for_writing(self, df: pd.DataFrame, partition_cols: list) -> Optional[pd.DataFrame]:
         """
-        Prepares the final DataFrame for writing:  sorts, and drops partition columns.
-
-        Args:
-            df (pd.DataFrame): The DataFrame to prepare.
-            partition_cols (list): Partition columns to drop.
-
+        Sorts the DataFrame by the 'datetime_utc' column and resets its index in preparation for writing.
+        
+        Parameters:
+            df (pd.DataFrame): The DataFrame to be prepared.
+            partition_cols (list): List of partition columns (not used in this method but included for interface consistency).
+        
         Returns:
-            pd.DataFrame or None: Prepared DataFrame or None if conversion fails.
+            pd.DataFrame: The sorted DataFrame with reset index.
+        
+        Raises:
+            Exception: If sorting or index resetting fails.
         """
         try:
             # Sort by datetime_utc
@@ -706,7 +745,18 @@ class ProcessedFileUtils(StorageFileUtils):
             raise
 
     def _write_final_parquet(self, df: pd.DataFrame, output_file: str, value_cols: list[str], row_group_size: int) -> None:
-        """Writes the final Parquet file."""
+        """
+        Write a pandas DataFrame to a Parquet file with specified row group size, compression, statistics, and dictionary encoding.
+        
+        Parameters:
+            df (pd.DataFrame): The DataFrame to write.
+            output_file (str): Destination file path for the Parquet file.
+            value_cols (list[str]): List of value columns to include in Parquet statistics.
+            row_group_size (int): Number of rows per Parquet row group.
+        
+        Raises:
+            Exception: If conversion to PyArrow Table fails or if the Parquet write operation encounters an error.
+        """
         try:
             print("\n📊 WRITE OPERATION")
             print("-"*40)
@@ -752,13 +802,10 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _ensure_datetime_utc_naive(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Ensures the 'datetime_utc' column is timezone-naive for Parquet compatibility.
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-
+        Convert the 'datetime_utc' column in the DataFrame to timezone-naive if it contains timezone-aware datetimes.
+        
         Returns:
-            pd.DataFrame: DataFrame with 'datetime_utc' as timezone-naive.
+            DataFrame with a timezone-naive 'datetime_utc' column for Parquet compatibility.
         """
         if pd.api.types.is_datetime64_any_dtype(df['datetime_utc']) and df['datetime_utc'].dt.tz is not None:
             print(" Converting datetime_utc to UTC naive for Parquet compatibility...")
@@ -767,13 +814,13 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _to_pyarrow_table(self, df: pd.DataFrame) -> Optional[pa.Table]:
         """
-        Converts a pandas DataFrame to a PyArrow Table.
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-
+        Convert a pandas DataFrame to a PyArrow Table.
+        
+        Raises:
+            Exception: If the conversion fails, an exception is raised with error details.
+        
         Returns:
-            pa.Table or None: PyArrow Table if successful, else None.
+            pa.Table: The resulting PyArrow Table.
         """
         try:
             return pa.Table.from_pandas(df, preserve_index=False)
@@ -784,15 +831,18 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _filter_partition(self, table: pa.Table, partition, partition_cols: list) -> pa.Table:
         """
-        Filters a PyArrow Table for rows matching the given partition.
-
-        Args:
-            table (pa.Table): The full PyArrow Table.
-            partition (pd.Series): The partition values.
-            partition_cols (list): List of partition column names.
-
+        Return a PyArrow Table containing only rows that match the specified partition values.
+        
+        Parameters:
+            table (pa.Table): The input PyArrow Table to filter.
+            partition (pd.Series): Partition values to match.
+            partition_cols (list): Names of columns to use for partition filtering.
+        
         Returns:
-            pa.Table: Filtered PyArrow Table for the partition.
+            pa.Table: A new table with rows matching all partition column values.
+        
+        Raises:
+            Exception: If filtering fails due to missing columns or computation errors.
         """
         mask = True
         try:
@@ -805,14 +855,14 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _drop_partition_cols(self, table: pa.Table, partition_cols: list) -> pa.Table:
         """
-        Drops partition columns from the PyArrow Table (they are encoded in the Hive path).
-
-        Args:
-            table (pa.Table): The PyArrow Table.
-            partition_cols (list): List of partition column names to drop.
-
+        Remove specified partition columns from a PyArrow Table.
+        
+        Parameters:
+            table (pa.Table): The input PyArrow Table.
+            partition_cols (list): Names of columns to remove.
+        
         Returns:
-            pa.Table: Table with partition columns dropped.
+            pa.Table: A new table with the specified partition columns removed.
         """
         try:
             print(f" Dropping partition columns: {partition_cols}")
@@ -828,18 +878,17 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _build_partition_path(self, partition, partition_cols: list, dataset_type: str) -> str:
         """
-        Builds the output file path for a given partition using Hive-style key=value directories.
-        Hive-style: key=value for each partition column
-        ie mercado=diario/id_mercado=1/year=2024/month=01
-
-        Hive file partitioning is useful to optimzie queries for engines like Spark. DuckDB also supports it.
-
-        Args:
-            partition (pd.Series): The partition values.
-            partition_cols (list): List of partition column names.
-
+        Constructs the full output file path for a partitioned parquet file using Hive-style key=value directories.
+        
+        The resulting path is structured as `<processed_path>/<key1>=<value1>/<key2>=<value2>/.../<dataset_type>.parquet`, with the month value zero-padded. If the dataset type is "precios_i90", the file is named "precios.parquet" for consistency. Creates the partition directory if it does not exist.
+        
+        Parameters:
+            partition: Partition values, typically a pandas Series.
+            partition_cols (list): Names of columns used for partitioning.
+            dataset_type (str): Type of dataset, used for the output file name.
+        
         Returns:
-            str: The full output file path for the partition.
+            str: Full file path for the partitioned parquet file.
         """
         # Hive-style: key=value for each partition column
         path_segments = [str(self.processed_path)]
@@ -862,7 +911,14 @@ class ProcessedFileUtils(StorageFileUtils):
 
     def _set_stats_cols(self, value_cols: list[str], schema: pa.Schema) -> list[str]:
         """
-        Sets the columns to include in statistics.
+        Determine which columns should be included in Parquet file statistics, including 'datetime_utc' and any value columns present in the schema.
+        
+        Parameters:
+            value_cols (list[str]): List of value column names to include if present in the schema.
+            schema (pa.Schema): PyArrow schema to check for column presence.
+        
+        Returns:
+            list[str]: List of column names to include in Parquet statistics.
         """
         stats_cols = ['datetime_utc']
         
@@ -877,7 +933,10 @@ class ProcessedFileUtils(StorageFileUtils):
     
     def _set_dict_cols(self, schema: pa.Schema) -> list[str]:
         """
-        Sets the columns to include in dictionary encoding.
+        Determine which columns should use dictionary encoding for Parquet writing based on the schema.
+        
+        Returns:
+            dict_cols (list[str]): List of column names to apply dictionary encoding, such as "up", "tecnologia", or "uof", depending on the dataset type.
         """
         print("--------------------------------")
         print(f" Applying dictionary encoding...")

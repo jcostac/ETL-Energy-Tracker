@@ -31,9 +31,10 @@ class LocalDataLakeLoader():
 
     def __init__(self):
         """
-        Initializes the LocalDataLakeLoader. For saving processed data locally.
-
-       """
+        Initialize a LocalDataLakeLoader instance for saving processed data to the local filesystem.
+        
+        Loads environment variables and prepares file utilities for managing processed data storage.
+        """
         load_dotenv()
         # ProcessedFileUtils constructor handles setting the correct base path (raw/processed)
         self.file_utils = ProcessedFileUtils()
@@ -43,15 +44,9 @@ class LocalDataLakeLoader():
 
     def _save_processed_data(self, processed_df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str) -> None:
         """
-        Saves the processed DataFrame to the local data lake as a partitioned Parquet file.
-
-        Delegates the writing operation to ProcessedFileUtils.
-
-        Args:
-            df (pd.DataFrame): The processed DataFrame to save.
-            mercado (str): Market identifier (used for partitioning).
-            value_cols (list[str]): The name of the main value column.
-            dataset_type (str): The type of dataset (e.g., 'precios').
+        Save a processed DataFrame to the local data lake as a partitioned Parquet file.
+        
+        The DataFrame is saved using the specified market identifier, value columns, and dataset type. If the DataFrame is empty, the save operation is skipped. Raises any exceptions encountered during the save process.
         """
         print(f"\n--- Initiating save operation for {dataset_type} ({mercado}) ---")
         if processed_df.empty:
@@ -88,19 +83,18 @@ class LocalDataLakeLoader():
 
     def load_transformed_data(self, transformed_data_dict: dict, dataset_type: str, value_cols: list[str], **kwargs) -> dict:
         """
-        Generic method to process and load transformed data for any dataset type.
+        Processes and loads transformed data for multiple markets, saving each as a partitioned Parquet file and reporting per-market status.
         
-        Args:
-            transformed_data_dict: Dictionary containing:
-                - "data": Dictionary with market names as keys and DataFrames as values
-                - "status": Dictionary with transformation status information
-            dataset_type: Type of dataset (e.g., 'precios', 'precios_i90', 'volumenes_i90')
-            value_col: Name of the value column in the DataFrame
-
+        Parameters:
+            transformed_data_dict (dict): Dictionary with a "data" key mapping market names to DataFrames, and a "status" key with transformation status information.
+            dataset_type (str): Identifier for the type of dataset being loaded.
+            value_cols (list[str]): List of column names in the DataFrame to be treated as value columns.
+        
         Returns:
-            Dictionary containing:
-                - "success": Boolean indicating if the operation was successful
-                - "messages": List of messages indicating the status of the operation
+            dict: Dictionary containing:
+                - "success": True if all markets were loaded successfully, False otherwise.
+                - "messages": List of status messages for each market.
+                - "market_status": Dictionary mapping each market to a boolean indicating success or failure.
         """
         results = []
         market_success = {}  # Track success per market
@@ -147,12 +141,13 @@ class LocalDataLakeLoader():
 
     def load_transformed_data_esios(self, transformed_data_dict, **kwargs):
         """
-        Process the dictionary output from transform phase and load each market's data
+        Loads transformed 'precios' dataset for each market from the provided dictionary.
         
-        Args:
-            transformed_data_dict: Dictionary containing:
-                - "data": Dictionary with market names as keys and DataFrames as values
-                - "status": Dictionary with transformation status information
+        Parameters:
+            transformed_data_dict (dict): Dictionary with a "data" key mapping market names to DataFrames and a "status" key with transformation status.
+        
+        Returns:
+            dict: Summary of the loading process, including overall success, messages, and per-market status.
         """
         return self.load_transformed_data(
             transformed_data_dict,
@@ -163,12 +158,13 @@ class LocalDataLakeLoader():
     
     def load_transformed_data_precios_i90(self, transformed_data_dict, **kwargs):
         """
-        Process the dictionary output from transform phase and load each market's i90 price data
+        Loads transformed i90 price data for each market from the provided dictionary and stores it as partitioned Parquet files.
         
-        Args:
-            transformed_data_dict: Dictionary containing:
-                - "data": Dictionary with market names as keys and DataFrames as values
-                - "status": Dictionary with transformation status information
+        Parameters:
+            transformed_data_dict (dict): Dictionary with a "data" key mapping market names to DataFrames and a "status" key with transformation status.
+        
+        Returns:
+            dict: Summary of the loading process, including overall success, messages, and per-market status.
         """
         return self.load_transformed_data(
             transformed_data_dict,
@@ -179,12 +175,13 @@ class LocalDataLakeLoader():
 
     def load_transformed_data_volumenes_i90(self, transformed_data_dict, **kwargs):
         """
-        Process the dictionary output from transform phase and load each market's i90 volume data
+        Loads transformed i90 volume data for each market from the provided dictionary and stores it in the local data lake.
         
-        Args:
-            transformed_data_dict: Dictionary containing:
-                - "data": Dictionary with market names as keys and DataFrames as values
-                - "status": Dictionary with transformation status information
+        Parameters:
+            transformed_data_dict (dict): Dictionary with a "data" key mapping market names to DataFrames and a "status" key with transformation status.
+        
+        Returns:
+            dict: Summary containing overall success, status messages, and per-market success flags.
         """
         return self.load_transformed_data(
             transformed_data_dict,
@@ -195,7 +192,13 @@ class LocalDataLakeLoader():
     
     def load_transformed_data_volumenes_omie(self, transformed_data_dict, **kwargs):
         """
-        Process the dictionary output from transform phase and load each market's omie volume data
+        Loads transformed OMIE volume data for each market from the provided dictionary and stores it in the local data lake.
+        
+        Parameters:
+            transformed_data_dict (dict): Dictionary containing market names as keys and their corresponding DataFrames as values.
+        
+        Returns:
+            dict: Summary of the loading process, including overall success, status messages, and per-market results.
         """
         return self.load_transformed_data(
             transformed_data_dict,
@@ -206,7 +209,13 @@ class LocalDataLakeLoader():
     
     def load_transformed_data_volumenes_mic(self, transformed_data_dict, **kwargs):
         """
-        Process the dictionary output from transform phase and load each market's mic volume data
+        Loads and stores transformed MIC volume data for each market from the provided dictionary.
+        
+        Parameters:
+            transformed_data_dict (dict): Dictionary containing market names as keys and their corresponding DataFrames as values.
+        
+        Returns:
+            dict: Summary of the loading process, including overall success, status messages, and per-market results.
         """
         return self.load_transformed_data(
             transformed_data_dict,
@@ -216,6 +225,9 @@ class LocalDataLakeLoader():
         )
 
 def example_usage():
+    """
+    Demonstrates how to use the LocalDataLakeLoader to load transformed data for the 'esios' dataset type with sample empty DataFrames.
+    """
     loader = LocalDataLakeLoader()
     transformed_data_dict = {
         'data': {

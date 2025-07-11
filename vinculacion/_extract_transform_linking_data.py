@@ -17,6 +17,9 @@ class VinculacionDataExtractor:
     """Extracts and transforms data needed for vinculacion process"""
     
     def __init__(self):
+        """
+        Initializes the VinculacionDataExtractor with configuration, extractor, and transformer instances for OMIE and I90 market data sources.
+        """
         self.config = VinculacionConfig()
         
         # Extractors (for downloading)
@@ -29,13 +32,16 @@ class VinculacionDataExtractor:
         
     def extract_data_for_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
-        Downloads and transforms data for the matching process
+        Extracts raw OMIE and I90 market data for the specified date for use in the matching process.
         
-        Args:
-            target_date: Target date for linking (YYYY-MM-DD) - this should be the actual date to download data for
-            
+        Parameters:
+            target_date (str): The date for which to extract data, in 'YYYY-MM-DD' format.
+        
         Returns:
-            Dict with extracted dataframes for each market/dataset combination
+            Dict[str, pd.DataFrame]: A dictionary containing the extracted dataframes for each market and dataset combination.
+        
+        Raises:
+            Exception: If data extraction for either OMIE or I90 fails.
         """
         print(f"\n🔄 STARTING DATA EXTRACTION FOR VINCULACION")
         print(f"Target Date: {target_date}")
@@ -79,7 +85,15 @@ class VinculacionDataExtractor:
         
     def transform_diario_data_for_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
-        Transforms diario data for initial matching
+        Transform and retrieve daily ("diario") OMIE and I90 market data for the specified date.
+        
+        Attempts to transform diario data for both OMIE and I90 sources using their respective transformers. Returns a dictionary containing the resulting dataframes under keys `'i90_diario'` and `'omie_diario'` if transformation is successful and data is present. Raises an exception if I90 diario transformation fails.
+        
+        Parameters:
+            target_date (str): The date for which to transform diario data, in 'YYYY-MM-DD' format.
+        
+        Returns:
+            Dict[str, pd.DataFrame]: Dictionary with keys `'i90_diario'` and `'omie_diario'` containing the transformed diario dataframes.
         """
         print(f"\n🔍 TRANSFORMING DIARIO DATA FOR MATCHING")
         print("-"*50)
@@ -134,14 +148,15 @@ class VinculacionDataExtractor:
             
     def transform_intra_data_for_matching(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
-        Transforms I90 intra data and OMIE intra data for matching
-        Note: Raw data should already be downloaded by extract_data_for_matching method
+        Transforms and splits OMIE and I90 intraday ("intra") market data for a given date into session-specific dataframes.
         
-        Args:
-            target_date: Target date (YYYY-MM-DD)
-            
+        For the specified target date, transforms OMIE and I90 intra data, then separates each by session based on `id_mercado` values (mapping: 2→session 1, 3→session 2, 4→session 3). Returns a dictionary with keys like `'i90_intra_1'`, `'omie_intra_2'`, each containing the corresponding session dataframe. If transformation fails or no data is found for a session, that session is omitted from the result.
+        
+        Parameters:
+            target_date (str): The date for which to transform intra data, in 'YYYY-MM-DD' format.
+        
         Returns:
-            Dict with intra dataframes split by sessions
+            Dict[str, pd.DataFrame]: Dictionary of session-specific intra dataframes for OMIE and I90 sources.
         """
         print(f"\n🔍 TRANSFORMING INTRA DATA FOR AMBIGUOUS MATCHES")
         print(f"Target Date: {target_date}")
@@ -226,13 +241,13 @@ class VinculacionDataExtractor:
             
     def transform_and_combine_data_for_linking(self, target_date: str) -> Dict[str, pd.DataFrame]:
         """
-        Transforms and combines diario and intra data for a given date.
+        Transforms and combines OMIE and I90 diario and intra data for the specified date into consolidated DataFrames.
         
-        Args:
-            target_date: Target date for transformation.
-            
+        Parameters:
+            target_date (str): The date for which to process and combine data.
+        
         Returns:
-            Dict containing combined 'omie_combined' and 'i90_combined' DataFrames.
+            Dict[str, pd.DataFrame]: A dictionary with keys 'omie_combined' and 'i90_combined', each containing a DataFrame with all relevant diario and intra session data for OMIE and I90, respectively.
         """
         print(f"\n🔄 TRANSFORMING & COMBINING ALL DATA FOR {target_date}")
         print("="*60)
@@ -284,6 +299,9 @@ class VinculacionDataExtractor:
         
 
 def example_usage():
+    """
+    Demonstrates how to use VinculacionDataExtractor to transform and extract market data for a specific date.
+    """
     data_extractor = VinculacionDataExtractor()
     data_extractor.transform_intra_data_for_matching("2025-03-07")
     data_extractor.extract_data_for_matching("2025-03-07")

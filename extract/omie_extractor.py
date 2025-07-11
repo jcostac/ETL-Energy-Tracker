@@ -22,7 +22,9 @@ class OMIEExtractor:
     """Extractor for OMIE market data"""
     
     def __init__(self):
-        """Initialize the OMIE extractor"""
+        """
+        Initialize the OMIEExtractor with configuration, downloader instances for each market type, utility classes, and a default maximum download window of 93 days.
+        """
         # Initialize configuration
         self.config = OMIEConfig()
         
@@ -41,14 +43,12 @@ class OMIEExtractor:
 
     def fecha_input_validation(self, fecha_inicio_carga: str, fecha_fin_carga: str) -> tuple[str, str]:
         """
-        Validates the input date range for OMIE data requests.
+        Validate and normalize the input date range for OMIE data extraction.
         
-        Args:
-            fecha_inicio_carga (str): Start date in 'YYYY-MM-DD' format
-            fecha_fin_carga (str): End date in 'YYYY-MM-DD' format
-            
+        If both start and end dates are provided, ensures the start date is not after the end date. If neither date is provided, defaults to a one-day range starting 93 days ago. Raises a ValueError if only one date is provided.
+        
         Returns:
-            tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format
+            tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format.
         """
         # Check if dates are provided and valid
         if fecha_inicio_carga and fecha_fin_carga:
@@ -78,18 +78,9 @@ class OMIEExtractor:
 
     def extract_omie_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
-        Extract daily market data from OMIE.
-        Uses the environment setting (DEV/PROD) for file saving format.
+        Extracts daily OMIE market data for a specified date range and saves it as standardized raw CSV files.
         
-        Args:
-            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
-            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
-            
-        Returns:
-            None
-            
-        Raises:
-            Exception: If there is an error during the extraction process
+        Validates the input dates, iterates over each day in the range, downloads daily market data, standardizes column names for consistency, adds a market identifier column, and saves the data using the configured file utility. Skips saving if no data is available for a given day. Raises an exception if an error occurs during extraction.
         """
         # Validate input dates
         self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
@@ -155,20 +146,15 @@ class OMIEExtractor:
     def extract_omie_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
                           intra_lst: Optional[List[int]] = None) -> None:
         """
-        Extract intraday market data from OMIE.
-        Uses the environment setting (DEV/PROD) for file saving format.
-        
-        Args:
-            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
-            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
-            intra_lst (Optional[List[int]]): List of intraday market IDs (1-7), default None is all available markets
-            
-        Returns:
-            None
-            
-        Note:
-            After 2024-06-13, only Intra 1-3 are available due to regulatory changes
-        """
+                          Extracts intraday (intra) market data from OMIE for a specified date range and set of intraday market sessions.
+                          
+                          Validates input dates, iterates over each day in the range, downloads intraday data for the specified sessions, standardizes column names, assigns the appropriate market ID (`id_mercado`) based on session and delivery date, and saves the resulting data as raw CSV files. Handles regulatory changes after 2024-06-13, when only intraday markets 1-3 are available.
+                          
+                          Parameters:
+                              fecha_inicio_carga (Optional[str]): Start date in 'YYYY-MM-DD' format. If None, defaults to 93 days ago.
+                              fecha_fin_carga (Optional[str]): End date in 'YYYY-MM-DD' format. If None, uses logic in fecha_input_validation.
+                              intra_lst (Optional[List[int]]): List of intraday market session IDs to extract. If None, extracts all available sessions.
+                          """
     
         # Validate input dates
         self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
@@ -229,15 +215,9 @@ class OMIEExtractor:
 
     def extract_omie_continuo(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
-        Extract continuous market data from OMIE.
-        Uses the environment setting (DEV/PROD) for file saving format.
+        Extracts and saves OMIE continuous market data for each day in the specified date range.
         
-        Args:
-            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
-            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
-            
-        Returns:
-            None
+        Validates input dates, downloads daily continuous market data, assigns a market identifier, and saves the data as raw CSV files. Skips saving if no data is available for a given day. Raises an exception if data download fails.
         """
         # Validate input dates
         self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
@@ -285,11 +265,15 @@ class OMIEExtractor:
 
     def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None , mercados_lst: Optional[List[str]] = None) -> Dict:
         """
-        Extract data for all relevant markets from OMIE for a given date range.
-        Uses the environment setting (DEV/PROD) for file saving format.
+        Extracts OMIE market data for all specified markets within a given date range and returns a summary of the extraction status.
+        
+        Parameters:
+        	fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If None, defaults to the latest available window.
+        	fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If None, defaults to the latest available window.
+        	mercados_lst (Optional[List[str]]): List of market names to extract ('diario', 'intra', 'continuo'). If None, all markets are extracted.
         
         Returns:
-            Dict: Dictionary containing success status and details of the extraction process
+        	Dict: Dictionary containing a boolean 'success' flag and a 'details' dictionary with lists of successfully downloaded and failed markets, as well as the date range.
         """
         # Validate input dates BEFORE starting any extraction
         self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
@@ -345,18 +329,20 @@ class OMIEExtractor:
     def _extract_with_status(self, market_name: str, extract_function, fecha_inicio_carga: Optional[str], 
                             fecha_fin_carga: Optional[str], status_details: Dict) -> bool:
         """
-        Helper method to track success status for each market extraction
-        
-        Args:
-            market_name (str): Name of the market being extracted
-            extract_function: The extraction function to call
-            fecha_inicio_carga (Optional[str]): Start date
-            fecha_fin_carga (Optional[str]): End date
-            status_details (Dict): Status tracking dictionary
-            
-        Returns:
-            bool: True if extraction was successful, False otherwise
-        """
+                            Attempts to extract data for a specific market and updates the extraction status.
+                            
+                            Calls the provided extraction function for the given market and date range, appending the market name to the appropriate status list in `status_details` based on success or failure.
+                            
+                            Parameters:
+                                market_name (str): The name of the market being extracted.
+                                extract_function: The extraction function to invoke for the market.
+                                fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format.
+                                fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format.
+                                status_details (Dict): Dictionary tracking downloaded and failed markets.
+                            
+                            Returns:
+                                bool: True if extraction succeeded, False if an error occurred.
+                            """
         try:
             if extract_function == self.extract_omie_diario or extract_function == self.extract_omie_intra:
                 error_msg = extract_function(fecha_inicio_carga, fecha_fin_carga)
@@ -383,18 +369,15 @@ class OMIEExtractor:
 
     def _standardize_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Standardize OMIE column names to maintain consistency across different data formats.
-        From mid-March 2025, OMIE changed:
-        - 'Hora' -> 'Periodo' 
-        - 'Energía Compra/Venta' -> 'Potencia Compra/Venta'
+        Standardize OMIE DataFrame column names to ensure consistency across schema changes.
         
-        This method renames them back to the original format for consistency.
+        Renames columns introduced by OMIE after March 2025 back to their original names, specifically converting 'Periodo' to 'Hora' and 'Potencia Compra/Venta' to 'Energía Compra/Venta'.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame with potentially new column names
-            
+        Parameters:
+            df (pd.DataFrame): DataFrame with OMIE market data that may contain updated column names.
+        
         Returns:
-            pd.DataFrame: DataFrame with standardized column names
+            pd.DataFrame: DataFrame with standardized column names for downstream processing.
         """
         if df is None or df.empty:
             return df

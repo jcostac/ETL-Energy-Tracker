@@ -8,7 +8,9 @@ import traceback
 RECIPIENTS = os.environ.get('AIRFLOW_ALERT_EMAILS', 'jcosta@optimizeenergy.es,psanchez@optimizeenergy.es').split(',')
 
 def _get_email_style() -> str:
-    """Returns common CSS styles for email templates."""
+    """
+    Return a string containing the CSS styles used for formatting HTML email templates.
+    """
     return """
     <style>
         /* Base Styles */
@@ -179,11 +181,27 @@ def _get_email_style() -> str:
     """
 
 def _format_timestamp(dt: datetime) -> str:
-    """Formats datetime for display in emails."""
+    """
+    Format a datetime object as a UTC timestamp string for email display.
+    
+    Parameters:
+    	dt (datetime): The datetime object to format.
+    
+    Returns:
+    	str: The formatted timestamp in 'YYYY-MM-DD HH:MM:SS UTC' format.
+    """
     return dt.strftime('%Y-%m-%d %H:%M:%S UTC')
 
 def _format_duration(seconds: float) -> str:
-    """Formats duration in a human-readable way."""
+    """
+    Convert a duration in seconds into a human-readable string format.
+    
+    Parameters:
+        seconds (float): The duration in seconds.
+    
+    Returns:
+        str: The formatted duration as seconds, minutes and seconds, or hours, minutes, and seconds, depending on the input value.
+    """
     if seconds < 60:
         return f"{seconds:.2f} seconds"
     elif seconds < 3600:
@@ -198,7 +216,11 @@ def _format_duration(seconds: float) -> str:
         return f"{int(hours)} hr {int(minutes)} min {int(seconds)} sec"
 
 def dag_success_email(**kwargs: Dict[str, Any]) -> None:
-    """Send enhanced email notification when a DAG completes successfully."""
+    """
+    Sends a styled HTML email notification when an Airflow DAG completes successfully.
+    
+    The email includes the DAG ID, execution date, duration (if available), and a summary indicating all tasks succeeded. The notification is sent to predefined recipients using Airflow's email utility.
+    """
     dag_id = kwargs['dag'].dag_id
     execution_date = kwargs['execution_date']
     duration_raw = kwargs.get('duration', None)
@@ -255,7 +277,11 @@ def dag_success_email(**kwargs: Dict[str, Any]) -> None:
     )
 
 def dag_failure_email(**kwargs: Dict[str, Any]) -> None:
-    """Send enhanced email notification when a DAG fails."""
+    """
+    Send a styled HTML email notification when an Airflow DAG fails.
+    
+    The email includes the DAG ID, execution date, duration (if available), failure status, and detailed error traceback. The notification is sent to predefined recipients with a subject indicating the DAG failure and execution timestamp.
+    """
     dag_id = kwargs['dag'].dag_id
     execution_date = kwargs['execution_date']
     exception = kwargs.get('exception', 'No exception information available')
@@ -331,7 +357,11 @@ def dag_failure_email(**kwargs: Dict[str, Any]) -> None:
     )
 
 def task_success_email(**kwargs: Dict[str, Any]) -> None:
-    """Send enhanced email notification when a task completes successfully."""
+    """
+    Send a styled email notification when an Airflow task completes successfully.
+    
+    The email includes the task ID, DAG ID, execution date, duration, a success status indicator, and a summary message. The notification is sent to predefined recipients using a consistent HTML template.
+    """
     task_id = kwargs['task_instance'].task_id
     dag_id = kwargs['task_instance'].dag_id
     execution_date = kwargs['execution_date']
@@ -399,7 +429,11 @@ def task_success_email(**kwargs: Dict[str, Any]) -> None:
     )
 
 def task_failure_email(**kwargs: Dict[str, Any]) -> None:
-    """Send enhanced email notification when a task fails."""
+    """
+    Send a styled email notification when an Airflow task fails.
+    
+    The email includes task and DAG identifiers, execution date, duration, failure status, and detailed error traceback. The message is sent to predefined recipients using a consistent HTML template.
+    """
     task_id = kwargs['task_instance'].task_id
     dag_id = kwargs['task_instance'].dag_id
     execution_date = kwargs['execution_date']

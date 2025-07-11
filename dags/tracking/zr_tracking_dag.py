@@ -44,7 +44,11 @@ dag = DAG(
 
 # Task functions
 def check_zr_files_func(**context):
-    """Check if ZR files exist"""
+    """
+    Checks for the presence of recent ZR input files in the download directory.
+    
+    Searches for UP export and BSP files matching specific patterns and verifies they are no older than 24 hours. Returns a dictionary indicating success if both file types are found, or failure with details about missing files.
+    """
     download_dir = setup_tracking_directories()
     
     # Check for existing UP export files and BSP files
@@ -85,7 +89,11 @@ def check_zr_files_func(**context):
         }
 
 async def download_zr_files_func(**context):
-    """Download ZR files (UP export and BSP)"""
+    """
+    Download missing ZR files (UP export and BSP) required for the ETL pipeline.
+    
+    Checks if the necessary files already exist; if so, skips downloading. If files are missing, downloads the UP export file and notifies that BSP file download must be handled manually. Returns a dictionary indicating success or failure, along with relevant details.
+    """
     ti = context['ti']
     check_result = ti.xcom_pull(task_ids='check_zr_files')
     
@@ -130,7 +138,14 @@ async def download_zr_files_func(**context):
         }
 
 def process_zr_tracking_func(**context):
-    """Process ZR tracking"""
+    """
+    Processes ZR (Zonas de Regulación) tracking data using the latest UP export and BSP files.
+    
+    This function retrieves the most recent UP export and BSP files from the download directory, then processes ZR tracking with these files using the `ZRTracker` class. If required files are missing or an error occurs during processing, it returns a failure result with error details.
+    
+    Returns:
+        dict: A dictionary indicating success or failure, processed file paths, and any error messages.
+    """
     ti = context['ti']
     download_result = ti.xcom_pull(task_ids='download_zr_files')
     
@@ -176,7 +191,11 @@ def process_zr_tracking_func(**context):
         }
 
 def cleanup_zr_files_func(**context):
-    """Cleanup downloaded files"""
+    """
+    Removes the latest UP export file from the download directory if it exists.
+    
+    This function retrieves the download directory from the previous download task and deletes the most recent UP export file matching the pattern 'export_unidades-de-programacion*.csv'. BSP files are not deleted, as they are manually uploaded and may be needed elsewhere.
+    """
     ti = context['ti']
     download_result = ti.xcom_pull(task_ids='download_zr_files')
     

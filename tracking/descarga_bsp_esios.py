@@ -6,6 +6,9 @@ import tempfile
 
 class PariticpaEsiosBot:
     def __init__(self):
+        """
+        Initialize the PariticpaEsiosBot with default settings for client certificate, login URL, and temporary file tracking.
+        """
         self._client_cert = {
             "certPath": None,  # Initialize as None; will be set later
             "keyPath": None
@@ -15,15 +18,25 @@ class PariticpaEsiosBot:
 
     @property
     def client_cert(self):
+        """
+        Get the current client certificate and key file paths used for authentication.
+        
+        Returns:
+            dict: Dictionary containing paths to the client certificate and key files.
+        """
         return self._client_cert
 
     @client_cert.setter
     def client_cert(self, client_cert_paths: list[str]):
         """
-        Set the client certificate and key paths as attributes.
-
-        Args:
-            client_cert_paths (list[str]): A list of two paths: [cert_path, key_path]
+        Set the client certificate and key file paths for authentication.
+        
+        Parameters:
+            client_cert_paths (list[str]): List containing the certificate path and optionally the key path. The first element must be the certificate file path; the second element, if provided, is the key file path.
+        
+        Raises:
+            ValueError: If the input is not a list of up to two paths.
+            FileNotFoundError: If the certificate or key file does not exist.
         """
 
         if not isinstance(client_cert_paths, list) or len(client_cert_paths) > 2:
@@ -42,24 +55,37 @@ class PariticpaEsiosBot:
 
     @property
     def url(self):
+        """
+        Get the current URL configured for the ESIOS Participa login page.
+        """
         return self._url
 
     @url.setter
     def url(self, url: str):
+        """
+        Set the target URL for the ESIOS Participa website.
+        
+        Raises:
+            ValueError: If the provided URL is not a string or does not start with 'https://'.
+        """
         if not isinstance(url, str) or not url.startswith("https://"):
             raise ValueError("URL must be a valid HTTPS string")
         self._url = url
 
     def _convert_p12_to_pem(self, certificate_path, certificate_password=None) -> tuple[str, str]:
         """
-        Convert a .p12 file to PEM format.
-
-        Args:
-            certificate_path (str): The path to the .p12 file.
-            certificate_password (str, optional): The password for the .p12 file.
-
+        Converts a PKCS#12 (.p12) certificate file to PEM format and writes the certificate and private key to temporary files.
+        
+        Parameters:
+            certificate_path (str): Path to the .p12 certificate file.
+            certificate_password (str, optional): Password for the .p12 file, if required.
+        
         Returns:
-            tuple[str, str]: A tuple containing the certificate and key in PEM format.
+            tuple[str, str]: The certificate and private key in PEM format as strings.
+        
+        Raises:
+            ValueError: If the .p12 file cannot be loaded, typically due to an incorrect or missing password.
+            Exception: For any other unexpected errors during conversion.
         """
         try:
             with open(certificate_path, "rb") as f:
@@ -102,14 +128,10 @@ class PariticpaEsiosBot:
 
     def _check_certificate_format(self, certificate_path, certificate_password=None) -> bool:
         """
-        Check if the certificate is in PEM format; if in .p12 format, convert it to PEM.
-
-        Args:
-            certificate_path (str): The path to the certificate file.
-            certificate_password (str, optional): The password for the .p12 file.
-
+        Determines if a certificate file is in PEM format, converting from .p12 to PEM if necessary.
+        
         Returns:
-            bool: True if the certificate is in PEM format or successfully converted, False otherwise.
+            True if the certificate is already in PEM format or is successfully converted from .p12; False otherwise.
         """
         try:
             with open(certificate_path, "r") as f:
@@ -126,10 +148,17 @@ class PariticpaEsiosBot:
 
     def login(self, client_cert_paths_lst: list[str], certificate_password: str = None):
         """
-        Log in to the ESIOS Participa website using the client certificate.
-
+        Authenticate to the ESIOS Participa website using the provided client certificate and launch a Playwright browser session.
+        
+        Parameters:
+            client_cert_paths_lst (list[str]): List containing paths to the client certificate and key files.
+            certificate_password (str, optional): Password for the certificate file, if required.
+        
         Returns:
-            Page: The Playwright page object after login.
+            tuple: A tuple containing the Playwright page, context, and browser objects for further interaction and cleanup.
+        
+        Raises:
+            ValueError: If the certificate format is invalid or conversion fails.
         """
         self.client_cert = client_cert_paths_lst #set the client certificate and key paths as class attributes 
 
@@ -148,13 +177,18 @@ class PariticpaEsiosBot:
 
     def download_bsp_list(self, download_path=None):
         """
-        Download the BSP LSI file from the ESIOS Participa website.
-
-        Args:
-            download_path (str, optional): Directory to save the downloaded file. Defaults to current directory.
-
+        Downloads the BSP LSI file from the ESIOS Participa website using client certificate authentication.
+        
+        If no download path is specified, the file is saved to the current working directory. Ensures cleanup of browser resources and any temporary certificate files after the download.
+        
+        Parameters:
+            download_path (str, optional): Directory where the downloaded file will be saved.
+        
         Returns:
-            str: Path to the downloaded file.
+            str: Full path to the downloaded BSP LSI file.
+        
+        Raises:
+            ValueError: If the BSP LSI download link is not found on the page.
         """
         download_path = download_path or os.getcwd() #if no download path is provided, use the current directory
         if not os.path.exists(download_path):

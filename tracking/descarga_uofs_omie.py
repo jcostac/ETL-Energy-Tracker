@@ -5,10 +5,13 @@ import pandas as pd
 
 async def download_listado_unidades(download_dir: str):
     """
-    Downloads the 'Listado de unidades' Excel file from OMIE to the specified directory.
-
-    Args:
-        download_dir (str): The directory where the file will be saved.
+    Asynchronously downloads the 'Listado de unidades' Excel file from the OMIE website and saves it to the specified directory.
+    
+    Parameters:
+        download_dir (str): Directory path where the downloaded Excel file will be saved.
+    
+    Returns:
+        str: Full path to the saved Excel file.
     """
     url = "https://www.omie.es/es/listado-de-agentes"
 
@@ -41,7 +44,15 @@ async def download_listado_unidades(download_dir: str):
 
 async def download_uofs_from_omie(download_dir: str) -> pd.DataFrame:
     """
-    Download the UOFs from OMIE and convert them to a df. Data starts at row 4. And drops all empty cols.
+    Download and process the OMIE UOFs Excel file, returning a cleaned pandas DataFrame.
+    
+    The function downloads the "Listado de unidades" Excel file from OMIE, reads its data starting from the fourth row, removes empty columns and specific unwanted columns, standardizes column names, and saves the cleaned data back to Excel in the specified directory.
+    
+    Parameters:
+        download_dir (str): Directory where the Excel file will be downloaded and saved.
+    
+    Returns:
+        pd.DataFrame: The processed DataFrame containing UOFs data.
     """
     excel_path = await download_listado_unidades(download_dir)
     df = pd.read_excel(excel_path, header=3)

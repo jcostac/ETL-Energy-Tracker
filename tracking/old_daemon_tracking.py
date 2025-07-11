@@ -30,7 +30,14 @@ spec.loader.exec_module(config)
 pymsteams_connector = config.pymsteams_connector
 
 def configure_logging():
-    """Configure logging for the UP processor"""
+    """
+    Sets up and returns a logger for tracking UP, ZR, and UOF processing activities.
+    
+    Creates a dedicated logs directory if it does not exist, configures a logger with both file and console handlers, and ensures log messages are timestamped and formatted consistently.
+    
+    Returns:
+        logger (logging.Logger): Configured logger instance for the tracking process.
+    """
     # Create logs directory if it doesn't exist
     log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'logs'))  # Updated to use os.path.abspath and os.path.join
     if not os.path.exists(log_dir):
@@ -55,14 +62,23 @@ def configure_logging():
     return logger
 
 def setup_directories():
-    """Create necessary directories if they don't exist"""
+    """
+    Ensures the existence of the tracking downloads directory and returns its absolute path.
+    
+    Returns:
+        str: The absolute path to the tracking downloads directory.
+    """
     download_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../downloads/tracking'))
     if not os.path.exists(download_dir):
         os.makedirs(download_dir, exist_ok=True)
     return download_dir
 
 async def run_tracking():
-    """Main function to download and process UPs, ZRs and UOFs"""
+    """
+    Coordinates the end-to-end workflow for downloading, verifying, and processing UPs (Unidades de Programación), Zonas de Regulación, and UOFs (Unidades de Oferta Flexible).
+    
+    This asynchronous function sets up logging and directories, downloads the latest required data files, identifies the most recent files for each category, and processes them using their respective tracker classes. It ensures all required files are present, logs progress and errors, and removes downloaded files after processing. Raises exceptions if any critical step fails.
+    """
     # Configure logger inside the function
     logger = configure_logging()
     

@@ -7,6 +7,11 @@ class DataValidationUtils:
     def __init__(self):
 
         #processed data structure requirements
+        """
+        Initialize required column lists for validating the structure of processed and raw price and volume datasets.
+        
+        Defines the expected columns for each dataset type and source, supporting multiple processed volume formats (I90, OMIE, MIC, I3) and raw data schemas.
+        """
         self.processed_price_required_cols = ['datetime_utc', "id_mercado", "precio"]
         self.processed_volumenes_i90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
         self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
@@ -64,12 +69,17 @@ class DataValidationUtils:
                
     def _validate_dtypes(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
         """
-        Validate data types for different datasets.
+        Validates and enforces correct data types for columns in raw or processed datasets based on the specified schema.
         
-        Args:
-            df: Input DataFrame with data
-            dataset_type: Either 'raw' or 'processed'
-            validation_schema_type: Type of data (precio, volumenes_i90, volumenes_i3)
+        Depending on the dataset type and schema, converts date/time columns to pandas datetime (with UTC where applicable), and enforces appropriate numeric and string types for key columns such as prices, volumes, and categorical fields. Raises a ValueError if type conversion fails.
+        
+        Parameters:
+            df (pd.DataFrame): The input DataFrame to validate.
+            type (str): Indicates whether the data is 'raw' or 'processed'.
+            validation_schema_type (str): Specifies the schema type (e.g., 'precios', 'volumenes_i90', 'volumenes_omie').
+        
+        Returns:
+            pd.DataFrame: The DataFrame with validated and converted data types.
         """
         try:
             
@@ -141,12 +151,18 @@ class DataValidationUtils:
 
     def _validate_columns(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
         """
-        Validate data structure to make sure all columns are present.
+        Checks that all required columns for the specified data type and schema are present in the DataFrame.
         
-        Args:
-            df: Input DataFrame with data
-            dataset_type: Either 'raw' or 'processed'
-            validation_schema_type: Type of data (precio, volumenes_i90, volumenes_i3)
+        Parameters:
+            df (pd.DataFrame): The DataFrame to validate.
+            type (str): Indicates whether the data is 'raw' or 'processed'.
+            validation_schema_type (str): Specifies the dataset schema (e.g., 'precios', 'volumenes_i90', 'volumenes_omie').
+        
+        Returns:
+            pd.DataFrame: The validated DataFrame if all required columns are present.
+        
+        Raises:
+            ValueError: If any required column is missing from the DataFrame.
         """
         required_cols = None
         

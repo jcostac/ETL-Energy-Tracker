@@ -49,22 +49,19 @@ class I90Extractor:
 
     def fecha_input_validation(self, fecha_inicio_carga: str, fecha_fin_carga: str) -> tuple[str, str]:
         """
-        Validates the input date range for ESIOS API requests.
+        Validate and normalize the input date range for ESIOS API data extraction.
         
-        This method checks if the provided date range is valid according to ESIOS API limitations.
-        If no dates are provided, it sets default values. The method ensures that:
-        1. Start date is not greater than end date
-        2. Date range does not exceed the maximum allowed window (typically 93 days)
+        Ensures that both start and end dates are provided and in the correct order, or defaults to a specific day if none are given. Raises a ValueError if the input is incomplete or invalid.
         
-        Args:
-            fecha_inicio_carga (str): Start date in 'YYYY-MM-DD' format
-            fecha_fin_carga (str): End date in 'YYYY-MM-DD' format
-            
+        Parameters:
+            fecha_inicio_carga (str): Start date in 'YYYY-MM-DD' format.
+            fecha_fin_carga (str): End date in 'YYYY-MM-DD' format.
+        
         Returns:
-            tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format
-            
+            tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format.
+        
         Raises:
-            ValueError: If date range is invalid or incomplete
+            ValueError: If the date range is incomplete or the start date is after the end date.
         """
         # Check if fecha inicio < fecha fin, and if time range is valid
         if fecha_inicio_carga and fecha_fin_carga:
@@ -97,16 +94,12 @@ class I90Extractor:
     
     def download_i90_data(self, day: datetime) -> None:
         """
-        Downloads the I90 file for a specific day using the downloader.
-
-        Args:
-            day (datetime): The specific day to download the I90 file for.
-
-        Returns:
-            Tuple[str, str, List[str]]: A tuple containing:
-                - zip_file_name (str): The name of the downloaded zip file.
-                - excel_file_name (str): The name of the extracted Excel file.
-                - pestañas_con_error (List[str]): A list of sheet IDs that have errors for the given day.
+        Download the I90 zip and Excel files for a specific day and update the latest file attributes.
+        
+        Parameters:
+            day (datetime): The date for which to download the I90 data.
+        
+        The method updates the object's attributes with the names of the downloaded zip and Excel files, as well as any sheet IDs with errors. It pauses briefly to avoid rate limiting.
         """
         # Assuming self.downloader is an instance of I90DownloaderDL or a subclass
         # initialized in the class constructor (__init__)
@@ -129,7 +122,12 @@ class I90Extractor:
         return
 
     def validate_i90_correct_download(self):
-        """Validates the presence and format of the latest I90 download attributes. Used to check if i90 data was downloaded correctly"""
+        """
+        Checks whether the latest I90 zip and Excel file attributes are present and correctly formatted.
+        
+        Returns:
+            bool: True if all required attributes exist and have valid formats; False otherwise.
+        """
 
         # Check for None values
         if self.latest_i90_zip_file_name is None:
@@ -188,21 +186,17 @@ class I90Extractor:
     
     def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, mercados_lst: Optional[list[str]] = None) -> dict:
         """
-        Generic workflow to extract all data for each day in the specified date range.
-
-        This method orchestrates the extraction process by validating the provided date range,
-        iterating through each day within that range, and calling the `extract_i90_data` method
-        for each day. It also handles potential errors during the extraction process and ensures
-        that the latest I90 data attributes are reset after each day's extraction attempt.
-
-        Args:
-            fecha_inicio_carga (Optional[str]): The start date for the data extraction in 'YYYY-MM-DD' format.
-            fecha_fin_carga (Optional[str]): The end date for the data extraction in 'YYYY-MM-DD' format.
-            mercados_lst (Optional[list[str]]): A list of markets to extract data for.
-
-        Raises:
-            ValueError: If the date range is invalid or incomplete.
-            Exception: If an error occurs during the extraction for a specific day.
+        Extracts data for all specified markets over a given date range, coordinating download, validation, and extraction workflows.
+        
+        Validates the input date range, iterates through each day, downloads I90 data, checks file integrity, and invokes per-market extraction logic. Tracks and reports extraction success or failure for each market and day, cleans up temporary files, and returns a summary of the extraction process.
+        
+        Parameters:
+            fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to 93 days ago.
+            fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to 93 days ago.
+            mercados_lst (Optional[list[str]]): List of market names to extract. If None, extracts all supported markets.
+        
+        Returns:
+            dict: Dictionary containing overall success status and detailed results for each market and day.
         """
         # Initialize status tracking
         if (fecha_fin_carga is None and fecha_inicio_carga is None) or fecha_fin_carga == fecha_inicio_carga:
@@ -284,12 +278,25 @@ class I90Extractor:
 
     def _extract_data_per_day_all_markets(self, day: datetime):
         """
-        To be implemented by child classes.
+        Abstract method for extracting data for all markets on a given day.
+        
+        This method must be implemented by subclasses to define the extraction logic for each market segment for the specified date.
         """
         raise NotImplementedError("This method should be implemented by subclasses.")
     
     def _extract_with_status(self, market_name, extract_function, day, status_details):
-        """Helper method to track success status for each market extraction"""
+        """
+        Executes a market extraction function for a given day, updating the status details with success or failure information.
+        
+        Parameters:
+            market_name (str): The name of the market being extracted.
+            extract_function (Callable): The extraction function to execute for the market.
+            day (datetime): The date for which data is being extracted.
+            status_details (dict): Dictionary tracking extraction results.
+        
+        Returns:
+            dict: Updated status details reflecting the outcome of the extraction attempt.
+        """
         try:
             extract_function(day)
             status_details["markets_downloaded"].append({
@@ -311,11 +318,18 @@ class I90VolumenesExtractor(I90Extractor):
     Extracts volume data from I90 files.
     """
     def __init__(self):
+        """
+        Initializes the I90VolumenesExtractor, setting up base class attributes and preparing for intradiario downloader initialization.
+        """
         super().__init__()
         self.intradiario_downloader = None #initialized in intra method with relevant day parameter passed to get correct number of intrasheets
 
     def _extract_and_save_volumenes(self, day: datetime, mercado: str, downloader) -> None:
-        """Helper method to extract and save volumenes data for a given market."""
+        """
+        Extracts and saves volume data for a specified market and day using the provided downloader.
+        
+        Attempts to extract volume data from the latest I90 Excel file for the given market and date. If data is found, it is saved as a CSV file. Handles missing files and extraction errors gracefully.
+        """
         try:
     
 
@@ -350,13 +364,24 @@ class I90VolumenesExtractor(I90Extractor):
             print(f"Error processing {mercado} volumenes for {day.date()}: {e}")
 
     def extract_volumenes_diario(self, day: datetime) -> None:
+        """
+        Extracts and saves daily volume data for the specified date using the Diario market downloader.
+        """
         self._extract_and_save_volumenes(day, 'diario', self.diario_downloader)
 
     def extract_volumenes_intradiario(self, day: datetime) -> None:
+        """
+        Extracts and saves intradiario (intra-day) volume data for the specified day.
+        
+        Initializes the intradiario downloader for the given date and processes the extraction and saving of volume data for the "intra" market segment.
+        """
         self.intradiario_downloader = IntradiarioDL(fecha=day)
         self._extract_and_save_volumenes(day, 'intra', self.intradiario_downloader)
 
     def extract_volumenes_terciaria(self, day: datetime) -> None:
+        """
+        Extracts and saves volume data for the 'terciaria' market segment for the specified day.
+        """
         self._extract_and_save_volumenes(day, 'terciaria', self.terciaria_downloader)
 
     def extract_volumenes_secundaria(self, day: datetime) -> None:
@@ -375,11 +400,23 @@ class I90VolumenesExtractor(I90Extractor):
         self._extract_and_save_volumenes(day, 'indisponibilidades', self.indisponibilidades_downloader)
 
     def extract_volumenes_restricciones(self, day: datetime) -> None:
+        """
+        Extracts and saves volume data for the 'restricciones' market segment for a given day.
+        """
         self._extract_and_save_volumenes(day, 'restricciones', self.restricciones_downloader)
 
     def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict, mercados_lst: list[str] = None):
-        """Extracts all volumenes data from I90 files for a given day.
-        Returns market-specific status information.
+        """
+        Extracts volume data for all or selected markets from I90 files for a specific day, updating extraction status for each market.
+        
+        Parameters:
+            day (datetime): The date for which to extract data.
+            status_details (dict): Dictionary tracking extraction success and failure per market.
+            mercados_lst (list[str], optional): List of market names to extract. If None, extracts all markets.
+        
+        Returns:
+            overall_success (bool): True if all requested markets were extracted successfully; False otherwise.
+            status_details (dict): Updated dictionary with per-market extraction results.
         """
         # Track success for each market
         print("\n--------- I90 Volumenes Extraction ---------")
@@ -414,10 +451,17 @@ class I90VolumenesExtractor(I90Extractor):
 
 class I90PreciosExtractor(I90Extractor):
     def __init__(self):
+        """
+        Initialize the I90VolumenesExtractor by calling the base class constructor.
+        """
         super().__init__()
 
     def _extract_and_save_precios(self, day: datetime, mercado: str, downloader) -> None:
-        """Helper method to extract and save precios data for a given market."""
+        """
+        Extracts price data for a specified market and day using the provided downloader and saves it as a CSV file.
+        
+        If no data is found or extracted, a message is printed. Handles missing Excel files and other exceptions gracefully.
+        """
         try:
             # 1. Call the specific downloader's get_i90_precios
             df_precios = downloader.get_i90_precios(
@@ -455,7 +499,10 @@ class I90PreciosExtractor(I90Extractor):
 
     def extract_precios_secundaria(self, day: datetime) -> None:
         """
-        Not yet implemented in downlaoder since prices are retrived from ESIOS API directly
+        Extracts secondary market price data for the specified day and saves it as a CSV file.
+        
+        Note:
+            This method currently delegates to the downloader, but price extraction for the secondary market is not yet implemented and prices are typically retrieved directly from the ESIOS API.
         """
         self._extract_and_save_precios(day, 'secundaria', self.secundaria_downloader)
 
@@ -478,14 +525,22 @@ class I90PreciosExtractor(I90Extractor):
         self._extract_and_save_precios(day, 'indisponibilidades', self.indisponibilidades_downloader)
 
     def extract_precios_restricciones(self, day: datetime) -> None:
+        """
+        Extracts and saves price data for the 'restricciones' market segment for a given day.
+        """
         self._extract_and_save_precios(day, 'restricciones', self.restricciones_downloader)
 
     def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict, mercados_lst: list[str] = None):
         """
-        Extracts all precios data from I90 files for a given day.
-        Returns market-specific status information.
+        Extracts price data for all specified markets from I90 files for a given day, updating the extraction status for each market.
         
-        Note: All prices come from API, not I90 file typically except for restricciones
+        Parameters:
+            day (datetime): The date for which to extract price data.
+            status_details (dict): Dictionary tracking extraction success and failure per market.
+            mercados_lst (list[str], optional): List of market names to extract; if None, extracts all available markets.
+        
+        Returns:
+            tuple: (overall_success (bool), status_details (dict)) indicating whether all extractions succeeded and detailed per-market results.
         """
         # Track success for each market
         print("\n--------- I90 Precios Extraction ---------")
@@ -515,6 +570,9 @@ class I90PreciosExtractor(I90Extractor):
         return overall_success, status_details
 
 def example_usage():
+    """
+    Demonstrates how to use the I90VolumenesExtractor and I90PreciosExtractor classes to extract volume and price data for a specified date range.
+    """
     i90_volumenes_extractor = I90VolumenesExtractor()
     i90_precios_extractor = I90PreciosExtractor()
 

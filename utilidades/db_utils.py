@@ -24,13 +24,16 @@ class DatabaseUtils:
 
     @staticmethod
     def create_engine(database_name: str):
-        """Create SQLAlchemy engine for database operations
+        """
+        Creates or retrieves a cached SQLAlchemy engine for the specified database.
         
-        Args:
-            database_name (str): Name of the database
-            
+        If an engine for the given database name already exists in the internal cache, it is returned; otherwise, a new engine is created, tested for connectivity, cached, and returned. Raises a ConnectionError if the connection cannot be established.
+        
+        Parameters:
+            database_name (str): The name of the database to connect to.
+        
         Returns:
-            Engine: SQLAlchemy engine object
+            Engine: A SQLAlchemy engine instance connected to the specified database.
         """
         if database_name in DatabaseUtils._engines:
             return DatabaseUtils._engines[database_name]
@@ -47,17 +50,20 @@ class DatabaseUtils:
     
     @staticmethod
     def read_table(engine: object, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None, params: Optional[Union[dict, tuple]] = None) -> pd.DataFrame:
-        """Read data from a table into a DataFrame
+        """
+        Reads data from a database table into a Pandas DataFrame, with optional column selection and parameterized filtering.
         
-        Args:
-            engine: SQLAlchemy engine
-            table_name (str): Name of the table to read ie 'prices'
-            columns (List[str], optional): Specific columns to read ie ['column1', 'column2']
-            where_clause (str, optional): SQL WHERE clause with placeholders, e.g., "column1 = :value1"
-            params (Union[dict, tuple], optional): Dictionary or tuple of parameters to bind to the query.
-            
+        Parameters:
+            table_name (str): Name of the table to read.
+            columns (List[str], optional): List of columns to select; selects all columns if not specified.
+            where_clause (str, optional): SQL WHERE clause with placeholders for parameter binding.
+            params (Union[dict, tuple], optional): Parameters to bind to the WHERE clause.
+        
         Returns:
-            pd.DataFrame: Table data
+            pd.DataFrame: DataFrame containing the query results.
+        
+        Raises:
+            ValueError: If an error occurs during query execution or data retrieval.
         """
         try:
             # Construct query
@@ -81,15 +87,20 @@ class DatabaseUtils:
     @staticmethod
     def write_table(engine: object, df: pd.DataFrame, table_name: str, 
                     if_exists: str = 'append', index: bool = False) -> None:
-        """Write DataFrame to database table using batch insertion
-        
-        Args:
-            engine: SQLAlchemy engine
-            df (pd.DataFrame): Data to write
-            table_name (str): Target table name
-            if_exists (str): How to behave if table exists ('fail', 'replace', 'append'), default is 'append'
-            index (bool): Whether to write DataFrame index, default is False
         """
+                    Writes a Pandas DataFrame to a database table using batch insertion.
+                    
+                    If `if_exists` is set to 'replace', the target table is dropped and recreated with the DataFrame's schema before insertion. Batch insertion is performed using parameterized SQL statements for efficiency. Duplicate entry errors are caught and reported as warnings.
+                    
+                    Parameters:
+                        df (pd.DataFrame): The data to write to the database.
+                        table_name (str): The name of the target table.
+                        if_exists (str): Behavior when the table exists ('fail', 'replace', 'append'). Defaults to 'append'.
+                        index (bool): Whether to include the DataFrame index as a column. Defaults to False.
+                    
+                    Raises:
+                        ValueError: If an error occurs during insertion.
+                    """
         try:
             # For SQLAlchemy 1.4.54 compatibility, use raw SQL insertion
             columns = df.columns.tolist()
@@ -121,13 +132,15 @@ class DatabaseUtils:
     @staticmethod
     def update_table(engine: object, df: pd.DataFrame, table_name: str, key_columns: List[str]) -> None:
         """
-        Update existing records in a table using batch operations
+        Batch updates existing records in a database table using values from a DataFrame.
         
-        Args:
-            engine: SQLAlchemy engine
-            df (pd.DataFrame): DataFrame containing update data
-            table_name (str): Name of table to update
-            key_columns (List[str]): Columns to match for updates
+        Parameters:
+            df (pd.DataFrame): DataFrame containing the new values for the update.
+            table_name (str): Name of the table to update.
+            key_columns (List[str]): List of column names used to match records for updating.
+        
+        Raises:
+            ValueError: If an error occurs during the update operation.
         """
         try:
             update_columns = [col for col in df.columns if col not in key_columns]
@@ -169,7 +182,15 @@ class DuckDBUtils:
         self.con = self._connect()
 
     def _connect(self):
-        """Establishes the DuckDB connection."""
+        """
+        Establishes and returns a DuckDB connection to the specified database file or an in-memory instance.
+        
+        Returns:
+            duckdb.DuckDBPyConnection: The established DuckDB connection.
+        
+        Raises:
+            Exception: If the connection to DuckDB fails.
+        """
         print(f"Connecting to DuckDB {'at ' + self.db_path if self.db_path else 'in-memory'}...")
         try:
             # Connect, allowing unsigned extensions like httpfs if needed for remote data
@@ -293,7 +314,11 @@ class DuckDBUtils:
         self.close()
 
 def example_usage():
-    """Example usage of the DatabaseUtils class"""
+    """
+    Demonstrates how to use the DatabaseUtils class for writing and updating database tables with Pandas DataFrames.
+    
+    Shows the difference between replacing a table (which may drop columns) and updating specific columns while preserving existing data.
+    """
     engine = DatabaseUtils.create_engine("example")
     # Example: Updating daily energy prices
 

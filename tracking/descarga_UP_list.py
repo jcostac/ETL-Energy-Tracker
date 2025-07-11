@@ -7,6 +7,13 @@ import pretty_errors
 
 # Function to delete existing files matching the pattern
 def delete_existing_files(pattern, directory):
+    """
+    Delete all files in the specified directory that match the given filename pattern.
+    
+    Parameters:
+    	pattern (str): Filename pattern to match (e.g., 'export_unidades-de-programacion*.csv').
+    	directory (str): Path to the directory where files will be deleted.
+    """
     files_to_delete = glob.glob(os.path.join(directory, pattern))
     for file_path in files_to_delete:
         try:
@@ -17,7 +24,12 @@ def delete_existing_files(pattern, directory):
 
 async def descargador_UP_list(download_dir: str):
     """
-    Descarga la lista de UPs desde el sitio web de ESIOS, como un CSV, usando Playwright.
+    Automates downloading the "Unidades de Programación" CSV file from the ESIOS website using Playwright.
+    
+    Deletes any existing matching CSV files in the specified directory, navigates to the ESIOS UP list page, attempts to accept cookie consent, and triggers the CSV export. Saves the downloaded file to the given directory and verifies its completion. Raises an error if the download fails or times out.
+    
+    Parameters:
+        download_dir (str): Directory where the downloaded CSV file will be saved.
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True) # You can set headless=False for debugging
@@ -87,6 +99,11 @@ async def main():
     # Using a relative path for the example, adjust as needed.
     # For your original path: "C:\\Users\\Usuario\\OneDrive - OPTIMIZE ENERGY\\Escritorio\\Optimize Energy\\Energy_tracker_scripts\\scripts\\Spain\\data"
     # It's better to construct paths using os.path.join for cross-platform compatibility
+    """
+    Sets up the download directory and initiates the asynchronous download of the UP list CSV file.
+    
+    Ensures the target directory exists, creating it if necessary, and then calls the downloader function to retrieve the latest data.
+    """
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "downloads")) # Example: navigating up to a 'data' folder
     # If you want to keep your specific Windows path:
     # download_dir = r"C:\Users\Usuario\OneDrive - OPTIMIZE ENERGY\Escritorio\Optimize Energy\Energy_tracker_scripts\scripts\Spain\data"

@@ -15,36 +15,75 @@ from utilidades.db_utils import DatabaseUtils
 class OMIEConfig:
  
     def __init__(self):
+        """
+        Initialize the OMIEConfig instance with empty configuration values for base URL, market type, and filename pattern.
+        """
         self._base_url = ""
         self._mercado = ""
         self._filename_pattern = ""
  
     @property
     def base_url(self):
+        """
+        Get the base URL used for OMIE data file downloads.
+        
+        Returns:
+            str: The base URL for downloading OMIE market data files.
+        """
         return self._base_url
  
     @base_url.setter
     def base_url(self, value):
+        """
+        Set the base URL for OMIE data downloads.
+        
+        Raises:
+            ValueError: If the provided value is not a non-empty string.
+        """
         if not isinstance(value, str) or not value.strip():
             raise ValueError("base_url must be a non-empty string")
         self._base_url = value
  
     @property
     def mercado(self):
+        """
+        Get the market type identifier for the OMIE configuration.
+        
+        Returns:
+            str: The market type (e.g., "diario", "intra", or "continuo").
+        """
         return self._mercado
  
     @mercado.setter
     def mercado(self, value):
+        """
+        Set the market type identifier after validating it is a non-empty string.
+        
+        Raises:
+            ValueError: If the provided value is not a non-empty string.
+        """
         if not isinstance(value, str) or not value.strip():
             raise ValueError("mercado must be a non-empty string")
         self._mercado = value
  
     @property
     def filename_pattern(self):
+        """
+        Get the filename pattern used for OMIE data files.
+        
+        Returns:
+            str: The filename pattern, which must include the '{year_month}' placeholder.
+        """
         return self._filename_pattern
  
     @filename_pattern.setter
     def filename_pattern(self, value):
+        """
+        Set the filename pattern for OMIE data files, ensuring it is a non-empty string containing the '{year_month}' placeholder.
+        
+        Raises:
+            ValueError: If the pattern is empty, not a string, or missing the '{year_month}' placeholder.
+        """
         if not isinstance(value, str) or not value.strip():
             raise ValueError("filename_pattern must be a non-empty string")
         if "{year_month}" not in value:
@@ -54,10 +93,10 @@ class OMIEConfig:
  
     def get_error_data(self) -> pd.DataFrame:
         """
-        Get error data for OMIE files from the database.
-       
+        Retrieve OMIE error records from the database as a DataFrame.
+        
         Returns:
-            pd.DataFrame: DataFrame with error data containing dates and error types
+            pd.DataFrame: A DataFrame containing 'fecha' (as date objects) and 'tipo_error' columns for errors with source 'omie-intra'.
         """
         engine = None
         try:
@@ -87,6 +126,9 @@ class OMIEConfig:
  
 class DiarioConfig(OMIEConfig):
     def __init__(self):
+        """
+        Initialize the DiarioConfig with OMIE daily market file settings.
+        """
         super().__init__()
         self.base_url = "https://www.omie.es/es/file-download?parents=curva_pbc_uof&filename="
         self.mercado = "diario"
@@ -95,6 +137,11 @@ class DiarioConfig(OMIEConfig):
  
 class IntraConfig(OMIEConfig):
     def __init__(self):
+        """
+        Initialize the IntraConfig with OMIE intraday market file settings.
+        
+        Sets the base URL, market identifier, and filename pattern for downloading intraday OMIE data files.
+        """
         super().__init__()
         self.base_url = "https://www.omie.es/es/file-download?parents=curva_pibc_uof&filename="
         self.mercado = "intra"
@@ -103,6 +150,9 @@ class IntraConfig(OMIEConfig):
  
 class IntraContinuoConfig(OMIEConfig):
     def __init__(self):
+        """
+        Initialize the configuration for OMIE continuous intraday market data downloads with predefined URL, market identifier, and filename pattern.
+        """
         super().__init__()
         self.base_url = f"https://www.omie.es/es/file-download?parents=trades&filename="
         self.mercado = "continuo"

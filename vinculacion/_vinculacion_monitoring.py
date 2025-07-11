@@ -18,13 +18,24 @@ class UPChangeMonitor:
     """Monitors up_change_log table for UPs enabled at least 93 days ago so we can link them to UOFs"""
     
     def __init__(self, database_name: str = "energy_tracker"):
+        """
+        Initialize the UPChangeMonitor with configuration, linking algorithm, database utilities, and a database engine for the specified database.
+        
+        Parameters:
+            database_name (str): Name of the database to connect to. Defaults to "energy_tracker".
+        """
         self.config = VinculacionConfig()
         self.linking_algorithm = UOFUPLinkingAlgorithm()
         self.db_utils = DatabaseUtils()
         self.engine = self.db_utils.create_engine(database_name)
 
     def _get_current_links(self) -> pd.DataFrame:
-        """Fetches current UP-UOF links from the database."""
+        """
+        Retrieve the current UP-UOF linking records from the database.
+        
+        Returns:
+            pd.DataFrame: A DataFrame containing existing UP-UOF links with columns 'up' and 'uof_old'. Returns an empty DataFrame if the linking table is missing or empty.
+        """
 
         print("1. Fetching current UP-UOF links from database...")
         try:
@@ -39,10 +50,11 @@ class UPChangeMonitor:
             return pd.DataFrame(columns=['up', 'uof_old'])
 
     async def _run_initial_linking(self, target_date: str) -> None:
-        """Runs an initial full linking round and populates the database. 
-        Only used if the table is empty
-        Args:
-            target_date: The date to link to
+        """
+        Performs an initial full linking of UPs to UOFs for the specified date and populates the database if no existing links are present.
+        
+        Parameters:
+            target_date (str): The date for which to perform the initial linking.
         """
 
         print("\n⚠️ No existing links found. Running initial full linking round...")
@@ -60,9 +72,14 @@ class UPChangeMonitor:
             print("ℹ️ No links found in the initial run.")
 
     async def _get_new_matches(self, target_date: str) -> pd.DataFrame:
-        """Runs a full linking round to get new matches.
-        Args:
-            target_date: The date to link to
+        """
+        Asynchronously runs a full linking round for the specified date and returns new UP-UOF matches.
+        
+        Parameters:
+            target_date (str): The date for which to perform the linking operation.
+        
+        Returns:
+            pd.DataFrame: DataFrame containing new UP-UOF matches with columns renamed for consistency. Returns an empty DataFrame if no matches are found.
         """
 
         print("\n2. Running full linking round to get new matches...")
@@ -81,10 +98,22 @@ class UPChangeMonitor:
         return new_matches_df
 
     def _find_changes(self, current_links_df: pd.DataFrame, new_matches_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Compares current and new links to find changes and new links.
-        Args:
-            current_links_df: The current links dataframe (UP-UOF) from the database
-            new_matches_df: The "new" matches dataframe ie the dataframe with the UP matches found in the full linking round
+        """
+        Compare current and new UP-UOF links to identify changes and new links.
+        
+        This method merges the current and newly generated UP-UOF link DataFrames to detect:
+        - New links (UPs present only in the new matches).
+        - Unlinked UPs (UPs present only in the current links).
+        - Changed links (UPs present in both, but with a different UOF).
+        
+        Parameters:
+            current_links_df (pd.DataFrame): DataFrame of current UP-UOF links from the database.
+            new_matches_df (pd.DataFrame): DataFrame of new UP-UOF matches from the latest linking round.
+        
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame]: 
+                - DataFrame of all detected changes (including changed and unlinked UPs) with columns ['up', 'uof_old', 'uof_new'].
+                - DataFrame of new links to be added, with columns ['up', 'uof_new'].
         """
         all_changes_df = pd.DataFrame()
         new_links_df = pd.DataFrame()
@@ -113,15 +142,16 @@ class UPChangeMonitor:
         return all_changes_df[['up', 'uof_old', 'uof_new']], new_links_df
 
     def _filter_valid_unlinked_ups(self, all_changes_df: pd.DataFrame) -> pd.DataFrame:
-        """Filters out changes for UPs that are now unlinked and obsolete.
-        Args:
-            all_changes_df: The dataframe with the all the detected changes in UP
-
+        """
+        Categorizes unlinked UPs from detected changes into active, obsolete/invalid, and UOF-changed groups.
+        
+        Parameters:
+            all_changes_df (pd.DataFrame): DataFrame containing all detected UP changes, including UOF changes and unlinked UPs.
+        
         Returns:
-            * note: all_changes_df = uof_changes_df + unknown_changes_df + obsolete_invalid_ups_df
-            uof_changes_df: The dataframe with the changes in UOF
-            unknown_changes_df: The dataframe with the changes in UP where UP no longer is in mathcing but still active
-            obsolete_invalid_ups_df: The data frame with the changes in UP where UP is obsolete hence it does not appear in matching 
+            unknown_changes_df (pd.DataFrame): UPs that are no longer matched but remain active (not obsolete).
+            obsolete_invalid_ups_df (pd.DataFrame): UPs that are unlinked and marked as obsolete or invalid.
+            uof_changes_df (pd.DataFrame): UPs with detected changes in their associated UOF.
         """
         uof_changes_df = all_changes_df[all_changes_df['uof_new'] != 'unknown']
         missing_vinculaciones_df = all_changes_df[all_changes_df['uof_new'] == 'unknown']
@@ -153,7 +183,20 @@ class UPChangeMonitor:
         return unknown_changes_df, obsolete_invalid_ups_df, uof_changes_df
 
     def _log_changes(self, uof_changes_df: pd.DataFrame, unknown_changes_df: pd.DataFrame, obsolete_invalid_ups_df: pd.DataFrame) -> None:
-        """Logs changes and updates the main linking table."""
+        """
+        Log detected changes in UP-UOF links and prepare updates for the main linking table.
+        
+        Creates change log entries for UOF changes and obsolete or invalid UPs, printing details for each. Unknown changes are not logged but are available for debugging. Returns DataFrames for the change log and for updating the main linking table.
+        
+        Parameters:
+            uof_changes_df (pd.DataFrame): DataFrame of UPs with changed UOF assignments.
+            unknown_changes_df (pd.DataFrame): DataFrame of UPs with unknown or ambiguous changes.
+            obsolete_invalid_ups_df (pd.DataFrame): DataFrame of UPs identified as obsolete or invalid.
+        
+        Returns:
+            change_log_df (pd.DataFrame): DataFrame containing the changes to be logged.
+            up_uof_to_update_df (pd.DataFrame): DataFrame with updates for the main UP-UOF linking table.
+        """
         if unknown_changes_df.empty and obsolete_invalid_ups_df.empty and uof_changes_df.empty:
             return
             
@@ -218,10 +261,15 @@ class UPChangeMonitor:
         return change_log_df, up_uof_to_update_df
 
     def _add_new_links(self, new_links_df: pd.DataFrame, target_date: str) -> None:
-        """Adds newly identified links to the database.
-        Args:
-            new_links_df: The new links dataframe
-            target_date: The date to link to
+        """
+        Prepare a DataFrame of new UP-UOF links with standardized formatting for database insertion.
+        
+        Parameters:
+            new_links_df (pd.DataFrame): DataFrame containing new UP-UOF link information.
+            target_date (str): Date to assign as the update date for the new links.
+        
+        Returns:
+            pd.DataFrame: Formatted DataFrame of new links ready for database insertion.
         """
        
         print(f"\n5. Adding {len(new_links_df)} new links...")
@@ -234,7 +282,12 @@ class UPChangeMonitor:
         return db_new_links
         
     def _check_if_already_updated_today(self) -> bool:
-        """Checks if the UP-UOF vinculacion table was already updated today."""
+        """
+        Determine whether the UP-UOF linking table has already been updated on the current date.
+        
+        Returns:
+            bool: True if the table was updated today; otherwise, False.
+        """
         latest_dates_df = self.db_utils.read_table(
             self.engine,
             self.config.UP_UOF_VINCULACION_TABLE,
@@ -247,7 +300,16 @@ class UPChangeMonitor:
         return False
     
     def _write_operations_to_db(self, change_log_df: pd.DataFrame, up_uof_to_update_df: pd.DataFrame, db_new_links: pd.DataFrame) -> None:
-        """Writes operations to the database."""
+        """
+        Write change logs, updates, and new UP-UOF links to the database, handling duplicates and errors.
+        
+        This method appends change logs, updates existing UP-UOF links, and inserts new links into the appropriate database tables. If duplicate entries are detected during insertion, it identifies and reports the duplicates before raising an exception. Any other database errors are also raised after logging.
+        
+        Parameters:
+            change_log_df (pd.DataFrame): DataFrame containing change log entries to append.
+            up_uof_to_update_df (pd.DataFrame): DataFrame of UP-UOF records to update.
+            db_new_links (pd.DataFrame): DataFrame of new UP-UOF links to insert.
+        """
         
         try:
             if not change_log_df.empty:
@@ -282,7 +344,12 @@ class UPChangeMonitor:
             raise e
 
     async def monitor_existing_links(self) -> Dict:
-        """Monitors existing UP-UOF links for changes, updates the database, and logs changes."""
+        """
+        Asynchronously monitors and updates UP-UOF links, detecting changes, updating the database, and logging modifications.
+        
+        Returns:
+            Dict: A summary of the monitoring operation, including the target date, detected changes, new links, success status, and a message.
+        """
         print("\n🔍 STARTING EXISTING LINK MONITORING")
         print("="*60)
         

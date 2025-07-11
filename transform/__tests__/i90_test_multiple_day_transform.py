@@ -8,7 +8,9 @@ import time
 
 def test_multiple_day_precios():
     """
-    Test the transformation of multiple days for all markets
+    Test the transformation of "precios_i90" data for multiple days and a specific market.
+    
+    Asserts that the transformation for the date range March 1–3, 2025, for the "restricciones" market completes successfully.
     """
     transformer = TransformadorI90()
     result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-01", fecha_fin="2025-03-03", dataset_type="precios_i90", mercados_lst=["restricciones"])
@@ -18,7 +20,9 @@ def test_multiple_day_precios():
 
 def test_multiple_day_volumenes():
     """
-    Test the transformation of multiple days for all markets
+    Test the transformation of "volumenes_i90" data across multiple days for all markets.
+    
+    Asserts that the transformation is successful for the specified date range.
     """
     transformer = TransformadorI90()
     result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-01", fecha_fin="2025-03-03", dataset_type="volumenes_i90")

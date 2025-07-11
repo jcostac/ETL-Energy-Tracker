@@ -15,15 +15,19 @@ if str(PROJECT_ROOT) not in sys.path:
 
 def check_required_files(download_dir: str, file_patterns: List[str], max_age_hours: int = 24) -> Dict[str, Any]:
     """
-    Check if required files exist and are recent enough
+    Checks whether files matching specified patterns exist in a directory and verifies that they are not older than a given maximum age.
     
-    Args:
-        download_dir (str): Directory to check for files
-        file_patterns (List[str]): List of file patterns to check
-        max_age_hours (int): Maximum age in hours for files to be considered valid
-        
+    Parameters:
+        download_dir (str): Path to the directory where files are checked.
+        file_patterns (List[str]): List of filename patterns to search for.
+        max_age_hours (int): Maximum allowed file age in hours.
+    
     Returns:
-        Dict[str, Any]: Dictionary with success status and file details
+        Dict[str, Any]: A dictionary containing:
+            - 'success': True if all required files are present and recent, False otherwise.
+            - 'files_found': Mapping of patterns to the most recent matching file paths.
+            - 'missing_patterns': List of patterns for which no files were found.
+            - 'details': Additional information about each pattern's result.
     """
     result = {
         'success': True,
@@ -59,24 +63,24 @@ def check_required_files(download_dir: str, file_patterns: List[str], max_age_ho
 
 def get_latest_file_by_pattern(download_dir: str, pattern: str) -> Optional[str]:
     """
-    Get the latest file matching a pattern
+    Return the path to the most recently created file in a directory matching a given pattern.
     
-    Args:
-        download_dir (str): Directory to search
-        pattern (str): File pattern to match
-        
+    Parameters:
+        download_dir (str): Directory to search for files.
+        pattern (str): Filename pattern to match.
+    
     Returns:
-        Optional[str]: Path to the latest file or None if not found
+        str or None: Absolute path to the latest matching file, or None if no files are found.
     """
     files = glob.glob(os.path.join(download_dir, pattern))
     return max(files, key=lambda x: os.path.getctime(x)) if files else None
 
 def setup_tracking_directories() -> str:
     """
-    Setup tracking download directories
+    Create the 'data_lake/tracking' directory within the project if it does not exist and return its absolute path.
     
     Returns:
-        str: Path to the download directory
+        The absolute path to the tracking download directory.
     """
     download_dir = os.path.abspath(os.path.join(
         os.path.dirname(__file__), '..', '..', 'data_lake', 'tracking'

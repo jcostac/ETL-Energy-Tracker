@@ -31,13 +31,9 @@ class ZRTracker:
     """
     def __init__(self):
         """
-        Initialize ZRTracker with database connection
+        Initialize a ZRTracker instance with default database connection attributes and table names.
         
-        Args:
-            download_dir (Path): Directory for downloading files
-            
-        Raises:
-            sqlalchemy.exc.SQLAlchemyError: If database connection fails
+        Sets up internal variables for database name, URL, SQLAlchemy engine, and the names of the main and change log tables. Does not establish a database connection or require any parameters.
         """
         self._bbdd_name = None
         self._bbdd_url = None
@@ -47,28 +43,49 @@ class ZRTracker:
 
     @property
     def bbdd_name(self):
+        """
+        Gets the current database name used by the tracker.
+        """
         return self._bbdd_name
     
     @bbdd_name.setter
     def bbdd_name(self, bbdd_name):
+        """
+        Set the database name and update the corresponding database URL and SQLAlchemy engine.
+        """
         self._bbdd_name = bbdd_name
         self._bbdd_url = DB_URL(self._bbdd_name)
         self._engine = sqlalchemy.create_engine(self._bbdd_url)
 
     @property
     def bbdd_url(self):
+        """
+        Get the current database URL used for connecting to the database.
+        """
         return self._bbdd_url
     
     @bbdd_url.setter
     def bbdd_url(self, bbdd_url):
+        """
+        Set the database URL for the tracker instance.
+        """
         self._bbdd_url = bbdd_url
 
     @property
     def engine(self):
+        """
+        Returns the current SQLAlchemy engine instance used for database operations.
+        """
         return self._engine
     
     @engine.setter
     def engine(self, engine):
+        """
+        Sets the SQLAlchemy engine for database operations and tests the connection.
+        
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: If the database connection fails.
+        """
         try:
             self._engine = engine
             with self.engine.connect() as connection:
@@ -80,13 +97,16 @@ class ZRTracker:
 
     def get_esios_zonas(self, csv_path: str) -> pd.DataFrame:
         """
-        Extract Zonas de Regulación from ESIOS UP export file
+        Reads an ESIOS UP export CSV file, filters for generation units, and returns a DataFrame with total maximum power per Regulation Zone.
         
-        Args:
-            csv_path (str): Path to ESIOS UP export CSV
-            
+        Parameters:
+        	csv_path (str): Path to the ESIOS UP export CSV file.
+        
         Returns:
-            pd.DataFrame: DataFrame with zona_regulacion and potencia values
+        	pd.DataFrame: DataFrame containing 'Zona de Regulación' and the summed 'Potencia máxima MW' for each zone.
+        
+        Raises:
+        	Exception: If the CSV file cannot be processed or contains invalid data.
         """
         try:
             df = pd.read_csv(csv_path, sep=';')
@@ -117,13 +137,17 @@ class ZRTracker:
 
     def get_i90_mapping(self, bsp_path) -> Dict[str, str]:
         """
-        Create mapping between ESIOS and i90 IDs from BSP file
+        Generate a mapping from ESIOS zone IDs to i90 IDs by reading a BSP file in CSV or Excel format.
         
-        Args:
-            bsp_path (str): Path to BSP CSV file
-            
+        Parameters:
+            bsp_path (str): Path to the BSP file (CSV or XLSX) containing ESIOS and i90 zone identifiers.
+        
         Returns:
-            Dict[str, str]: Mapping of ESIOS IDs to i90 IDs
+            Dict[str, str]: Dictionary mapping ESIOS zone IDs to corresponding i90 IDs.
+        
+        Raises:
+            ValueError: If the file extension is not supported.
+            Exception: If there is an error reading the file or processing the data.
         """
         try:
             if bsp_path.endswith('.xlsx'):
@@ -148,17 +172,18 @@ class ZRTracker:
 
     def identify_changes(self, esios_df: pd.DataFrame, db_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, List[Dict]]:
         """
-        Identify new, obsolete, and potencia changes in Zonas de Regulación from ESIOS
+        Compares current ESIOS Regulation Zones with database records to identify new zones, obsolete zones, and changes in maximum power (potencia).
         
-        Args:
-            esios_df (pd.DataFrame): Current ESIOS data
-            db_df (pd.DataFrame): Existing database data
-            
+        Parameters:
+        	esios_df (pd.DataFrame): DataFrame containing current ESIOS Regulation Zones and their maximum power.
+        	db_df (pd.DataFrame): DataFrame containing existing Regulation Zones from the database.
+        
         Returns:
-            Tuple containing:
-                - DataFrame of new zones
-                - DataFrame of obsolete zones
-                - List of change log entries
+        	new_zones_df (pd.DataFrame): DataFrame of zones present in ESIOS but not in the database.
+        	obsolete_zones_df (pd.DataFrame): DataFrame of zones that are active in the database but no longer present in ESIOS.
+        	change_log (List[Dict]): List of dictionaries describing changes in maximum power for zones present in both sources.
+        	num_active (int): Number of active (non-obsolete) zones in the database before update.
+        	num_total (int): Total number of zones in the database before update.
         """
         try:
             # Get sets of active zones
@@ -221,13 +246,13 @@ class ZRTracker:
 
     def load_db_zonas(self) -> pd.DataFrame:
         """
-        Load existing Zonas de Regulación from unified database table
+        Load all Regulation Zones from the database table.
         
         Returns:
-            pd.DataFrame: DataFrame containing all Zonas de Regulación from database
-            
+            pd.DataFrame: DataFrame containing all Regulation Zones records from the database.
+        
         Raises:
-            sqlalchemy.exc.SQLAlchemyError: If there is a database error
+            Exception: If an error occurs while accessing or reading from the database.
         """
         try:
             self.bbdd_name = "energy_tracker"
@@ -250,13 +275,15 @@ class ZRTracker:
 
     def update_missing_i90_mappings(self, i90_mapping: Dict[str, str]) -> List[Dict]:
         """
-        Check and update missing i90 IDs for existing zones using latest mapping
+        Update missing i90 IDs for existing, non-obsolete zones in the database using the provided mapping.
         
-        Args:
-            i90_mapping (Dict[str, str]): Current mapping of ESIOS IDs to i90 IDs
-            
+        Checks for zones without an i90 ID, updates them if a mapping is available, and records each change. Handles duplicate entry errors gracefully by skipping affected updates.
+        
+        Parameters:
+            i90_mapping (Dict[str, str]): Mapping from ESIOS zone IDs to i90 IDs.
+        
         Returns:
-            List[Dict]: List of changes made to i90 mappings
+            List[Dict]: A list of dictionaries describing each i90 ID update performed.
         """
         try:
             self.bbdd_name = "energy_tracker"
@@ -318,16 +345,18 @@ class ZRTracker:
 
     def update_database(self, new_zones_df: pd.DataFrame, obsolete_zones_df: pd.DataFrame, i90_mapping: Dict[str, str], change_log: List[Dict]) -> List[Dict]:
         """
-        Update database with new zones, mark obsolete zones, and record changes
+        Update the database with new zones, mark obsolete zones, update power values, and fill missing i90 mappings.
         
-        Args:
-            new_zones_df (pd.DataFrame): DataFrame containing new zones
-            obsolete_zones_df (pd.DataFrame): DataFrame containing obsolete zones
-            i90_mapping (Dict[str, str]): Mapping of ESIOS IDs to i90 IDs
-            change_log (List[Dict]): List of existing changes to append to
-            
+        This method inserts new regulation zones, marks obsolete zones as such, updates power ("potencia") values for existing zones with changes, and attempts to fill in missing i90 IDs using the provided mapping. All changes are appended to the change log. Duplicate entry errors during database operations are handled gracefully and skipped.
+        
+        Parameters:
+            new_zones_df (pd.DataFrame): DataFrame of new zones to add.
+            obsolete_zones_df (pd.DataFrame): DataFrame of zones to mark as obsolete.
+            i90_mapping (Dict[str, str]): Mapping from ESIOS zone IDs to i90 IDs.
+            change_log (List[Dict]): List of change log entries to append to.
+        
         Returns:
-            List[Dict]: Updated change log list
+            List[Dict]: The updated change log including all modifications made during the update.
         """
         try:
             self.bbdd_name = "energy_tracker"
@@ -442,13 +471,9 @@ class ZRTracker:
 
     def save_change_log(self, change_log: List[Dict]) -> None:
         """
-        Save change log entries to database
+        Save the provided change log entries to the database table for change logs.
         
-        Args:
-            change_log (List[Dict]): List of change log entries to save
-            
-        Raises:
-            sqlalchemy.exc.SQLAlchemyError: If database operation fails
+        If the change log is not empty, converts the list of change entries to a DataFrame and writes it to the database, handling duplicate entry errors by skipping them. Prints a summary of changes by zone, including the type of change and the date. Raises exceptions on other errors.
         """
         try:
             self.bbdd_name = "energy_tracker"
@@ -493,14 +518,9 @@ class ZRTracker:
 
     def process_zonas(self, esios_csv_path: str, bsp_csv_path: str) -> None:
         """
-        Main method to process and update Zonas de Regulación
+        Executes the full workflow to synchronize Regulation Zones data from ESIOS and BSP files with the database.
         
-        Args:
-            esios_csv_path (str): Path to ESIOS UP export CSV
-            bsp_csv_path (str): Path to BSP CSV containing i90 mappings
-            
-        Raises:
-            Exception: If any processing step fails
+        Loads ESIOS data and i90 mappings, compares with the current database state to identify new, obsolete, and updated zones, applies all necessary updates, saves a detailed change log, and prints summary statistics before and after the update. Raises an exception if any processing step fails.
         """
         try:
             # Load current data
@@ -552,7 +572,9 @@ class ZRTracker:
     
 def main():
     """
-    Main execution function
+    Runs the Regulation Zones update workflow using hardcoded file paths for ESIOS and BSP data sources.
+    
+    Instantiates the ZRTracker, sets the input file paths, and executes the full process to synchronize zones and mappings with the database.
     """
     tracker = ZRTracker()   
         

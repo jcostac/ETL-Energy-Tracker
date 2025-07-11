@@ -6,7 +6,12 @@ from airflow.operators.empty import EmptyOperator
 from airflow.utils.email import send_email
 
 def dag_success_callback(context):
-    """Callback function to send email on DAG success"""
+    """
+    Sends an email notification upon successful completion of the DAG.
+    
+    Parameters:
+        context (dict): Airflow context dictionary containing DAG run information.
+    """
     return EmailOperator(
         task_id='dag_success_email',
         to='jj_costa@outlook.es',
