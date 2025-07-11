@@ -3,45 +3,77 @@ from typing import Optional, List, Tuple, Dict
 import pandas as pd
 import sys
 import os
+from sqlalchemy import text
+from dotenv import load_dotenv
+from pathlib import Path
 
-# Add the project root to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_root)
 
 from utilidades.db_utils import DatabaseUtils
-from configs.storage_config import DATA_LAKE_BASE_PATH
-import os
 
 class I90Config:
     def __init__(self):
 
+        """
+        Initialize the I90Config base class by loading environment variables, setting the regulatory change date, preparing database engine management, retrieving market and sheet mappings, and configuring the temporary download path.
+        """
+        load_dotenv()
+
         self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date
 
-        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+        self._bbdd_engine = None
 
         self.id_mercado_map, self.precios_sheet, self.volumenes_sheet, self.sentido_map = self.get_id_mercado_sheet_mapping()
 
-        self.temporary_download_path = os.path.join(DATA_LAKE_BASE_PATH, 'temporary')
+        self.temporary_download_path = Path(os.getenv('DATA_LAKE_PATH')) / 'temporary'
+      
 
+    @property
+    def bbdd_engine(self):
+        """
+        Returns the current database engine instance.
+        
+        Raises:
+            ValueError: If the database engine has not been set.
+        """
+        if not self._bbdd_engine:
+            raise ValueError("Engine not set")
+        return self._bbdd_engine
+    
+    @bbdd_engine.setter
+    def bbdd_engine(self, engine):
+        """
+        Set the database engine and verify its connectivity.
+        
+        Attempts to establish a connection and execute a simple query to ensure the provided engine is valid. Raises an exception if the connection or query fails.
+        """
+        self._bbdd_engine = engine
+        # Test if the engine is working by simply connecting and checking
+        try:
+            with self._bbdd_engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+        except Exception as e:
+            print(f"Error in engine setting: {e}")
+            raise e
+    
     def get_id_mercado_sheet_mapping(self) -> tuple[dict[str, str], dict[str, Optional[str]], dict[str, Optional[str]], dict[str, str]]:
         """
-        Obtiene el mapping de los IDs de los mercados de ESIOS y sus números de hoja correspondientes.
-
+        Retrieve mappings between market names, market IDs, and their associated I90 sheet numbers and directions from the database.
+        
         Returns:
-            tuple[dict[str, str], dict[str, Optional[str]], dict[str, Optional[str]]]:
-                1. id_mercado_map: Mapping de nombre de mercado a ID de mercado (str -> str).
-                   Ej: {'Diario': '1', 'Intra 1': '2', ...}
-
-                2. precios_id_map: Mapping de ID de mercado a número de hoja de precios (str -> Optional[str]).
-                   El número de hoja es un string con padding ('01', '09', etc.) o None si no aplica.
-                   Ej: {'1': '01', '2': None, ...}
-
-                3. volumenes_id_map: Mapping de ID de mercado a número de hoja de volúmenes (str -> Optional[str]).
-                   El número de hoja es un string con padding ('01', '03', etc.) o None si no aplica.
-                   Ej: {'1': '03', '2': '05', ...}
-
+            tuple: A tuple containing four dictionaries:
+                - id_mercado_map (dict[str, str]): Maps market names to their corresponding market IDs as strings.
+                - precios_id_map (dict[str, Optional[str]]): Maps market IDs to their price sheet numbers as zero-padded strings, or None if not applicable.
+                - volumenes_id_map (dict[str, Optional[str]]): Maps market IDs to their volume sheet numbers as zero-padded strings, or None if not applicable.
+                - sentido_map (dict[str, str]): Maps market IDs to their direction ("subir" or "bajar").
         """
+
+        self.bbdd_engine = DatabaseUtils.create_engine('energy_tracker')
+
         # Get all market ids where either sheet number is specified (not 0)
-        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados',
+        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'mercados_mapping',
                                                 columns=['id', 'mercado', 'sheet_i90_precios', 'sheet_i90_volumenes', 'is_quinceminutal', 'sentido'],
                                                 where_clause='(sheet_i90_volumenes != 0 OR sheet_i90_precios != 0)')
 
@@ -95,14 +127,16 @@ class I90Config:
     
     def get_lista_UPs(self, UP_ids: Optional[List[int]] = None) -> Tuple[List[str], Dict[str, int]]:
         """
-        Get the list of programming units from the database.
+        Retrieve programming unit names and their corresponding IDs from the database, optionally filtered by a list of unit IDs.
         
-        Args:
-            UP_ids (Optional[List[int]]): List of programming unit IDs to filter
-            
+        Parameters:
+            UP_ids (Optional[List[int]]): If provided, only programming units with these IDs are included.
+        
         Returns:
-            Tuple[List[str], Dict[str, int]]: List of programming unit names and dictionary mapping names to IDs
+            Tuple[List[str], Dict[str, int]]: A list of programming unit names and a dictionary mapping each name to its ID.
         """
+        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+
         # Build the WHERE clause for filtering by region and optionally by UP_ids
         where_clause = 'a.region = "ES"'
         if UP_ids:
@@ -124,13 +158,16 @@ class I90Config:
     
     def get_market_data(self, mercados_ids: Optional[List[int]] = None) -> Tuple[pd.DataFrame, List[int], List[int]]:
         """
-        Get market data from the database.
+        Retrieve market data and associated sheet numbers from the database, optionally filtered by market IDs.
         
-        Args:
-            mercados_ids (Optional[List[int]]): List of market IDs to filter
-            
+        Parameters:
+        	mercados_ids (Optional[List[int]]): List of market IDs to filter the query. If None, all markets with volume sheets are included.
+        
         Returns:
-            Tuple[pd.DataFrame, List[int], List[int]]: DataFrame with market data, list of volume sheet IDs, and list of all relevant sheet numbers
+        	Tuple containing:
+        	- DataFrame with market data for the selected markets.
+        	- List of unique volume sheet numbers.
+        	- List of all relevant sheet numbers (volume and price), with duplicates removed.
         """
         # Build the WHERE clause for filtering by sheet_i90_volumenes and optionally by mercados_ids
         where_clause = 'sheet_i90_volumenes != 0'
@@ -138,10 +175,12 @@ class I90Config:
             mercados_list = ", ".join([str(item) for item in mercados_ids])
             where_clause += f' AND id IN ({mercados_list})'
 
+        self.bbdd_engine = DatabaseUtils.create_engine('energy_tracker')
+
         # Use DatabaseUtils.read_table to fetch the data
         df_mercados = DatabaseUtils.read_table(
             self.bbdd_engine,
-            table_name="Mercados",
+            table_name="mercados_mapping",
             columns=None,  # None means select all columns
             where_clause=where_clause
         )
@@ -156,11 +195,13 @@ class I90Config:
     
     def get_error_data(self) -> pd.DataFrame:
         """
-        Get error data for I90 files from the database.
+        Retrieve error records for I90 files from the database, including error dates and types.
         
         Returns:
-            pd.DataFrame: DataFrame with error data containing dates and error types
+            pd.DataFrame: DataFrame containing 'fecha' (date) and 'tipo_error' columns for errors with source "i90".
         """
+        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
+
         # Use DatabaseUtils.read_table to fetch error data
         df_errores = DatabaseUtils.read_table(
             self.bbdd_engine,
@@ -231,14 +272,14 @@ class I90Config:
 
     def get_sheets_of_interest(self) -> Tuple[List[str], List[str], List[str]]:
         """
-        Get the lists of relevant sheet numbers (volumenes, precios, and combined unique)
-        based on the market_ids defined in the specific config instance.
-
+        Return lists of relevant sheet numbers for volumes, prices, and their combined unique set based on the instance's market IDs.
+        
         Returns:
-            Tuple[List[str], List[str], List[str]]:
-                - List of unique volume sheet numbers (as strings).
-                - List of unique price sheet numbers (as strings).
-                - List of unique combined sheet numbers (as strings).
+            Tuple[List[str], List[str], List[str]]: 
+                A tuple containing:
+                - List of unique volume sheet numbers.
+                - List of unique price sheet numbers.
+                - List of all unique sheet numbers from both categories.
         """
         # Ensure market_ids attribute exists in the subclass instance calling this
         if not hasattr(self, 'market_ids'):
@@ -256,8 +297,53 @@ class I90Config:
 
         return volumenes_sheets, precios_sheets, sheets_of_interest
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Determine whether the configuration class provides volume sheet numbers.
+        
+        Returns:
+            bool: True if the class instance has a non-empty 'volumenes_sheets' attribute; False otherwise or if instantiation fails.
+        """
+        try:
+            # Default behavior: try to instantiate and check
+            instance = cls()
+            return hasattr(instance, 'volumenes_sheets') and instance.volumenes_sheets and any(instance.volumenes_sheets)
+        except TypeError:
+            # If instantiation fails due to missing parameters, return False
+            # Subclasses should override this method to provide the correct answer
+            return False
+        except Exception:
+            # Any other error during instantiation
+            return False
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Determine whether the configuration class provides price sheet numbers.
+        
+        Returns:
+            bool: True if the class instance has a non-empty 'precios_sheets' attribute; False otherwise or if instantiation fails.
+        """
+        try:
+            # Default behavior: try to instantiate and check
+            instance = cls()
+            return hasattr(instance, 'precios_sheets') and instance.precios_sheets and any(instance.precios_sheets)
+        except TypeError:
+            # If instantiation fails due to missing parameters, return False
+            # Subclasses should override this method to provide the correct answer
+            return False
+        except Exception:
+            # Any other error during instantiation
+            return False
+
 class DiarioConfig(I90Config):
     def __init__(self):
+        """
+        Initialize the DiarioConfig with the market ID and relevant sheet numbers for the Diario market.
+        
+        Sets up the Diario market configuration by retrieving its market ID, grouping it for sheet retrieval, and obtaining the associated volume, price, and combined sheet numbers of interest.
+        """
         super().__init__()
         #get individual i.e. {'Diario': 1}
         self.diaria_id = self.id_mercado_map["Diario"]
@@ -271,14 +357,103 @@ class DiarioConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Indicates whether the configuration includes price sheets.
+        
+        Returns:
+            bool: False, as price sheet extraction is not implemented for this configuration.
+        """
+        return False  # No price extraction implemented
+
+class IntraConfig(I90Config):
+    def __init__(self, fecha):
+        """
+        Initialize the IntraConfig with market IDs and sheet selections based on the provided date.
+        
+        Parameters:
+            fecha (datetime): The date used to determine which intra markets to include. Must not be None.
+        
+        Raises:
+            ValueError: If `fecha` is not provided.
+        """
+        super().__init__()
+        
+        # Set the cutoff date for intra market reduction
+        self.intra_reduction_date = datetime(2024, 6, 13)
+        
+        # Use provided date or current date
+        if fecha is None:
+            raise ValueError("Fecha is required for IntraConfig")
+        
+        # Get individual IDs for each Intra market (Intra 1 through Intra 7)
+        self.intra_1_id: str = self.id_mercado_map["Intra 1"]  # ID: 2
+        self.intra_2_id: str = self.id_mercado_map["Intra 2"]  # ID: 3  
+        self.intra_3_id: str = self.id_mercado_map["Intra 3"]  # ID: 4
+        self.intra_4_id: str = self.id_mercado_map["Intra 4"]  # ID: 5
+        self.intra_5_id: str = self.id_mercado_map["Intra 5"]  # ID: 6
+        self.intra_6_id: str = self.id_mercado_map["Intra 6"]  # ID: 7
+        self.intra_7_id: str = self.id_mercado_map["Intra 7"]  # ID: 8
+
+        # Determine which markets to include based on the date
+        if fecha >= self.intra_reduction_date:
+            # After June 13, 2024: only use Intra 1, 2, and 3
+            self.market_ids: List[str] = [
+                self.intra_1_id, self.intra_2_id, self.intra_3_id
+            ]
+            print(f"Using intra markets 1-3 (after intra reduction date) for date {fecha.date()}")
+        else:
+            # Before June 13, 2024: use all 7 intra markets
+            self.market_ids: List[str] = [
+                self.intra_1_id, self.intra_2_id, self.intra_3_id, 
+                self.intra_4_id, self.intra_5_id, self.intra_6_id, self.intra_7_id
+            ]
+            print(f"Using intra markets 1-7 (before intra reduction date) for date {fecha.date()}")
+
+        # Get sheets of interest based on the selected markets
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+        self.sheets_of_interest: List[str]
+        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Indicates whether the configuration includes price sheets.
+        
+        Returns:
+            bool: False, as price sheet extraction is not implemented for this configuration.
+        """
+        return False  # No price extraction implemented
+
 class SecundariaConfig(I90Config):
     """
     Config for secundaria market data
     """
     def __init__(self):
         """
-        Configuration specific to the Secundaria market.
-        Initializes Secundaria specific settings including market IDs and relevant sheet filters.
+        Initialize configuration for the Secundaria market, setting market IDs and retrieving associated sheet numbers for volumes and prices.
         """
         super().__init__()
         # get individual ids for subir and bajar
@@ -294,11 +469,34 @@ class SecundariaConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Indicates whether the configuration includes price sheets.
+        
+        Returns:
+            bool: False, as this configuration does not include price sheets.
+        """
+        return False  # Commented out in extractor - prices from API
+
 class TerciariaConfig(I90Config):
     """
     Config for terciaria market data
     """
     def __init__(self):
+        """
+        Initialize the configuration for the Terciaria market, setting market IDs and retrieving relevant sheet numbers for volume and price data.
+        """
         super().__init__()
         # get individual ids for subir and bajar
         self.terciaria_subir_id: str = self.id_mercado_map["Terciaria a subir"]
@@ -313,11 +511,30 @@ class TerciariaConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Indicates whether the configuration includes price sheets.
+        
+        Returns:
+            bool: False, as this configuration does not include price sheets.
+        """
+        return False  # Commented out in extractor - prices from API
+
 class RRConfig(I90Config):
     def __init__(self):
         """
-        Configuration specific to the RR (Reserva de Regulación) market.
-        Initializes RR specific settings including market IDs and relevant sheet filters.
+        Initializes configuration for the RR (Reserva de Regulación) market, setting up market IDs and retrieving associated sheet numbers for volume and price data.
         """
         super().__init__()
         # get individual ids for subir and bajar
@@ -334,11 +551,30 @@ class RRConfig(I90Config):
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for RR sheets ('06') in the provided snippet
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Indicates whether the configuration includes price sheets.
+        
+        Returns:
+            bool: False, as this configuration does not include price sheets.
+        """
+        return False  # Commented out in extractor - prices from API
+
 class CurtailmentConfig(I90Config):
     def __init__(self):
         """
-        Configuration specific to the Curtailment market.
-        Initializes Curtailment specific settings including market ID and relevant sheet filters.
+        Initializes configuration for the Curtailment market, setting up market IDs, relevant sheet numbers, and redespacho filters for Curtailment-specific data processing.
         """
         super().__init__()
         # get individual id
@@ -361,9 +597,15 @@ class CurtailmentConfig(I90Config):
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
         """
-        Returns the redespacho filter list applicable to the Curtailment market ID.
-        This filter is intended for the 'Redespacho' column when processing data
-        associated with the main Curtailment market (ID '13').
+        Return the redespacho filter list for the specified Curtailment market ID.
+        
+        If the provided market ID matches the main Curtailment market, returns the configured filter list for use with the 'Redespacho' column. Otherwise, delegates to the parent class implementation.
+        
+        Parameters:
+            market_id (str): The market ID for which to retrieve the redespacho filter.
+        
+        Returns:
+            Optional[List[str]]: The filter list if applicable, otherwise None.
         """
         if market_id == self.curtailment_id:
             # This filter applies when dealing with the primary Curtailment market ID ('13')
@@ -374,11 +616,30 @@ class CurtailmentConfig(I90Config):
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Indicates whether the configuration includes price sheets.
+        
+        Returns:
+            bool: False, as price sheet extraction is not implemented for this configuration.
+        """
+        return False  # No price extraction implemented
+
 class P48Config(I90Config):
     def __init__(self):
         """
-        Configuration specific to the P48 market.
-        Initializes P48 specific settings including market ID and relevant sheet filters.
+        Initializes configuration for the P48 market, setting the market ID and retrieving relevant volume sheet numbers.
         """
         super().__init__()
         # get individual id
@@ -394,11 +655,30 @@ class P48Config(I90Config):
         self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for P48 sheets ('12') in the provided snippet
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Indicates whether the configuration includes price sheets.
+        
+        Returns:
+            bool: False, as price sheet extraction is not implemented for this configuration.
+        """
+        return False  # No price extraction implemented
+
 class IndisponibilidadesConfig(I90Config):
     def __init__(self):
         """
-        Configuration specific to the Indisponibilidades market.
-        Initializes Indisponibilidades specific settings including market ID and relevant sheet filters.
+        Initializes configuration for the Indisponibilidades market, setting up market IDs, relevant volume sheets, and redespacho filters.
         """
         super().__init__()
         # get individual id
@@ -415,11 +695,32 @@ class IndisponibilidadesConfig(I90Config):
         # Define Redespacho filter for volumenes sheet ('08')
         self.redespacho_filter_volumenes: List[str] = ["Indisponibilidad"]
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Indicates whether the configuration includes price sheets.
+        
+        Returns:
+            bool: False, as this configuration does not include price sheets.
+        """
+        return False  # Commented out in extractor - prices from API
+
 class RestriccionesConfig(I90Config):
     def __init__(self):
         """
-        Configuration specific to the Restricciones markets (MD, TR, RT2).
-        Initializes Restricciones specific settings including market IDs and relevant sheet filters.
+        Initializes configuration for Restricciones markets, setting market IDs, relevant sheet numbers, and redespacho filters for each market type.
+        
+        Defines market IDs for Restricciones MD, TR, and RT2 (both subir and bajar), retrieves associated volume and price sheets, and sets up filters used to process redespacho data for each market category.
         """
         super().__init__()
 
@@ -459,8 +760,13 @@ class RestriccionesConfig(I90Config):
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
         """
-        Returns the appropriate redespacho filter list based on the market ID for Restricciones.
-        The returned list is intended to filter the 'Redespacho' column in your DataFrame.
+        Return the redespacho filter list for a given market ID in the Restricciones configuration.
+        
+        Parameters:
+            market_id (str): The market ID for which to retrieve the redespacho filter.
+        
+        Returns:
+            Optional[List[str]]: The filter list for the specified market ID, or None if no filter is defined.
         """
         if market_id in [self.restricciones_md_subir_id, self.restricciones_md_bajar_id]:
             # Market IDs 24, 25 correspond to MD filters
@@ -474,8 +780,30 @@ class RestriccionesConfig(I90Config):
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
 
+    @classmethod
+    def has_volumenes_sheets(cls) -> bool:
+        """
+        Indicates that this configuration class provides volume sheet data.
+        
+        Returns:
+            bool: True, indicating volume sheets are available.
+        """
+        return True
+    
+    @classmethod
+    def has_precios_sheets(cls) -> bool:
+        """
+        Return True to indicate that this configuration includes active price sheet extraction.
+        """
+        return True  # ONLY market with active price extraction
+
 def print_config_info():
     # --- Base I90Config Info ---
+    """
+    Prints detailed configuration information for the base I90Config and all its subclasses.
+    
+    Displays mappings of market IDs to market names, sheet numbers, and directions for the base configuration. For each subclass, prints the configured market IDs, associated sheet numbers, and any redespacho filters, along with the temporary download path. Intended for diagnostic or inspection purposes.
+    """
     print("\n=== BASE I90CONFIG INFORMATION ===")
     base_config = I90Config()
     print("\nID -> Mercado Map:")
@@ -496,7 +824,13 @@ def print_config_info():
 
     # --- Test Specific Configs ---
     # Get all subclasses of I90Config
-    configs_to_test = {cls.__name__: cls() for cls in I90Config.__subclasses__()}
+    configs_to_test = {}
+    for cls in I90Config.__subclasses__():
+        if cls.__name__ == 'IntraConfig':
+            # IntraConfig requires a fecha parameter - use a date before 2024-06
+            configs_to_test[cls.__name__] = cls(fecha=datetime(2024, 5, 1))
+        else:
+            configs_to_test[cls.__name__] = cls()
 
     print("\n\n=== SPECIFIC CONFIG CLASSES ===")
     for config_name, config_instance in configs_to_test.items():
@@ -525,7 +859,6 @@ def print_config_info():
             continue
 
         print("\nDetailed Market Information:")
-        print(f"{'ID':<6} {'Sentido':<10} {'Redespacho Filter'}")
         print(f"{'-'*6} {'-'*10} {'-'*50}")
         for mid in market_ids:
             # Access sentido_map from the instance (inherited or overridden)
@@ -536,6 +869,8 @@ def print_config_info():
             filter_list = config_instance.get_redespacho_filter(mid)
             filter_str = ', '.join(filter_list) if filter_list else 'None'
             print(f"{mid:<6} {sentido:<10} {filter_str}")
+
+        print(f"Temporary download path: {config_instance.temporary_download_path}")
 
             
 if __name__ == "__main__":

@@ -174,12 +174,15 @@ cython_debug/
 .pypirc
 
 #ignore all files in the data/raw directory
+data_lake/raw/*
 data/raw/*
 
 #ignore all files in the data/processed directory
+data_lake/processed/*
 data/processed/*
 
 #ignore all files in the data/temporary directory
+data_lake/temporary/*
 data/temporary/*
 
 #ignore all files in the tests directory
@@ -188,4 +191,23 @@ tests/*
 #ignor all files in .cursor folder
 .cursor/*
 
+#ignore all files in venv folder
+venv/
 
+#ignore all files in airflow_venv folder
+airflow_venv/
+
+#ignore all files in .pyc folder
+*.pyc
+
+#ignore all files in __pycache__ folder
+__pycache__/
+
+#ignore .vscode folder
+.vscode/
+
+#ignore root tests folder
+tests/
+
+#all sql files 
+*.sql

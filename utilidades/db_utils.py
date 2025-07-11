@@ -4,7 +4,7 @@ Utility class for database operations
 
 __all__ = ['DatabaseUtils', 'DuckDBUtils'] #Export the class
 
-from sqlalchemy import create_engine, text, Engine
+from sqlalchemy import create_engine, text
 import pandas as pd
 from typing import Optional, Union, List
 import sys
@@ -20,100 +20,147 @@ from configs.storage_config import DB_URL
 
 class DatabaseUtils:
     """Utility class for database operations. Operations include read, write and update."""
+    _engines = {} #cache for engines to avoid creating new ones
 
     @staticmethod
     def create_engine(database_name: str):
-        """Create SQLAlchemy engine for database operations
-        
-        Args:
-            database_name (str): Name of the database
-            
-        Returns:
-            Engine: SQLAlchemy engine object
         """
+        Creates or retrieves a cached SQLAlchemy engine for the specified database.
+        
+        If an engine for the given database name already exists in the internal cache, it is returned; otherwise, a new engine is created, tested for connectivity, cached, and returned. Raises a ConnectionError if the connection cannot be established.
+        
+        Parameters:
+            database_name (str): The name of the database to connect to.
+        
+        Returns:
+            Engine: A SQLAlchemy engine instance connected to the specified database.
+        """
+        if database_name in DatabaseUtils._engines:
+            return DatabaseUtils._engines[database_name]
+        
         try:
             engine = create_engine(DB_URL(database_name))
             # Test connection
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
+            DatabaseUtils._engines[database_name] = engine
             return engine
         except Exception as e:
             raise ConnectionError(f"Failed to connect to database {database_name}: {str(e)}")
-
-    def read_table(engine: Engine, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None) -> pd.DataFrame:
-        """Read data from a table into a DataFrame
+    
+    @staticmethod
+    def read_table(engine: object, table_name: str, columns: Optional[List[str]] = None, where_clause: Optional[str] = None, params: Optional[Union[dict, tuple]] = None) -> pd.DataFrame:
+        """
+        Reads data from a database table into a Pandas DataFrame, with optional column selection and parameterized filtering.
         
-        Args:
-            engine: SQLAlchemy engine
-            table_name (str): Name of the table to read ie 'prices'
-            columns (List[str], optional): Specific columns to read ie ['column1', 'column2']
-            where_clause (str, optional): SQL WHERE clause ie "column1 = 'value1'" or "column1 in ('value1', 'value2')"
-            
+        Parameters:
+            table_name (str): Name of the table to read.
+            columns (List[str], optional): List of columns to select; selects all columns if not specified.
+            where_clause (str, optional): SQL WHERE clause with placeholders for parameter binding.
+            params (Union[dict, tuple], optional): Parameters to bind to the WHERE clause.
+        
         Returns:
-            pd.DataFrame: Table data
+            pd.DataFrame: DataFrame containing the query results.
+        
+        Raises:
+            ValueError: If an error occurs during query execution or data retrieval.
         """
         try:
             # Construct query
             select_clause = "*" if not columns else ", ".join(columns)
-            query = f"SELECT {select_clause} FROM {table_name}"
+            query_str = f"SELECT {select_clause} FROM {table_name}"
             if where_clause:
-                query += f" WHERE {where_clause}"
-                
-            # Read data
+                query_str += f" WHERE {where_clause}"
+            
+            # Create a SQLAlchemy TextClause
+            query = text(query_str)
+            
+            # Execute the query and convert to DataFrame
             with engine.connect() as conn:
-                df = pd.read_sql(text(query), conn)
+                result = conn.execute(query, params or {})
+                df = pd.DataFrame(result.fetchall(), columns=result.keys())
                 return df
+            
         except Exception as e:
             raise ValueError(f"Error reading table {table_name}: {str(e)}")
 
     @staticmethod
-    def write_table(engine: Engine, df: pd.DataFrame, table_name: str, 
+    def write_table(engine: object, df: pd.DataFrame, table_name: str, 
                     if_exists: str = 'append', index: bool = False) -> None:
-        """Write DataFrame to database table, this method is used to write data to a table. 
-        Args:
-            engine: SQLAlchemy engine
-            df (pd.DataFrame): Data to write
-            table_name (str): Target table name
-            if_exists (str): How to behave if table exists ('fail', 'replace', 'append'), default is 'append'
-            index (bool): Whether to write DataFrame index, default is False
         """
+                    Writes a Pandas DataFrame to a database table using batch insertion.
+                    
+                    If `if_exists` is set to 'replace', the target table is dropped and recreated with the DataFrame's schema before insertion. Batch insertion is performed using parameterized SQL statements for efficiency. Duplicate entry errors are caught and reported as warnings.
+                    
+                    Parameters:
+                        df (pd.DataFrame): The data to write to the database.
+                        table_name (str): The name of the target table.
+                        if_exists (str): Behavior when the table exists ('fail', 'replace', 'append'). Defaults to 'append'.
+                        index (bool): Whether to include the DataFrame index as a column. Defaults to False.
+                    
+                    Raises:
+                        ValueError: If an error occurs during insertion.
+                    """
         try:
-            df.to_sql(table_name, engine, if_exists=if_exists, index=index)
+            # For SQLAlchemy 1.4.54 compatibility, use raw SQL insertion
+            columns = df.columns.tolist()
+            
+            # Create INSERT statement
+            placeholders = ', '.join([f":{col}" for col in columns])
+            column_names = ', '.join(columns)
+            
+            insert_stmt = text(f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})")
+
+            with engine.begin() as conn:
+                if if_exists == 'replace':
+                    # Drop and recreate table
+                    conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+                    # Create table with appropriate schema
+                    df.head(0).to_sql(table_name, engine, if_exists='fail', index=index)
+                
+                # Convert DataFrame to list of dictionaries for batch insertion
+                data_to_insert = df.to_dict('records')
+                
+                # Use executemany for batch insertion
+                conn.execute(insert_stmt, data_to_insert)
+                
         except Exception as e:
+            if "Duplicate entry" in str(e):
+                print(f"Warning: Duplicate entries detected in {table_name}. Consider using 'replace' or handling duplicates before insertion.")
             raise ValueError(f"Error writing to table {table_name}: {str(e)}")
 
     @staticmethod
-    def update_table(engine, df: pd.DataFrame, table_name: str, key_columns: List[str]) -> None:
+    def update_table(engine: object, df: pd.DataFrame, table_name: str, key_columns: List[str]) -> None:
         """
-        Update existing records in a table without dropping it
+        Batch updates existing records in a database table using values from a DataFrame.
         
-        Args:
-            engine: SQLAlchemy engine
-            df (pd.DataFrame): DataFrame containing update data
-            table_name (str): Name of table to update
-            key_columns (List[str]): Columns to match for updates
+        Parameters:
+            df (pd.DataFrame): DataFrame containing the new values for the update.
+            table_name (str): Name of the table to update.
+            key_columns (List[str]): List of column names used to match records for updating.
+        
+        Raises:
+            ValueError: If an error occurs during the update operation.
         """
         try:
-            with engine.connect() as conn:
-                for _, row in df.iterrows():
-                    # Build WHERE clause from key columns
-                    where_conditions = " AND ".join(
-                        f"{col} = :{col}" for col in key_columns
-                    )
-                    
-                    # Build SET clause from non-key columns
-                    update_columns = [col for col in df.columns if col not in key_columns]
-                    set_clause = ", ".join(
-                        f"{col} = :{col}" for col in update_columns
-                    )
-                    
-                    # Create update statement
-                    sql = f"UPDATE {table_name} SET {set_clause} WHERE {where_conditions}"
-                    
-                    # Execute update with parameters from row
-                    conn.execute(sqlalchemy.text(sql), row.to_dict())
+            update_columns = [col for col in df.columns if col not in key_columns]
+            set_clause = ", ".join(
+                f"{col} = :{col}" for col in update_columns
+            )
+            where_conditions = " AND ".join(
+                f"{col} = :{col}" for col in key_columns
+            )
+            
+            # Create update statement
+            sql = f"UPDATE {table_name} SET {set_clause} WHERE {where_conditions}"
+            update_stmt = text(sql)
+            
+            with engine.begin() as conn:
+                # Convert DataFrame to list of dictionaries for batch update
+                data_to_update = df.to_dict('records')
                 
-                conn.commit()
+                # Use executemany for batch updates
+                conn.execute(update_stmt, data_to_update)
                 
         except Exception as e:
             raise ValueError(f"Error updating table {table_name}: {str(e)}")
@@ -135,16 +182,19 @@ class DuckDBUtils:
         self.con = self._connect()
 
     def _connect(self):
-        """Establishes the DuckDB connection."""
+        """
+        Establishes and returns a DuckDB connection to the specified database file or an in-memory instance.
+        
+        Returns:
+            duckdb.DuckDBPyConnection: The established DuckDB connection.
+        
+        Raises:
+            Exception: If the connection to DuckDB fails.
+        """
         print(f"Connecting to DuckDB {'at ' + self.db_path if self.db_path else 'in-memory'}...")
         try:
             # Connect, allowing unsigned extensions like httpfs if needed for remote data
             con = duckdb.connect(database=self.db_path if self.db_path else ':memory:', read_only=False)
-            # Example: Install and load httpfs if querying remote files (e.g., S3)
-            # con.execute("INSTALL httpfs;")
-            # con.execute("LOAD httpfs;")
-            # Configure settings like memory limit if needed
-            # con.execute("SET memory_limit='1GB';")
             return con
         except Exception as e:
             print(f"Error connecting to DuckDB: {e}")
@@ -264,7 +314,11 @@ class DuckDBUtils:
         self.close()
 
 def example_usage():
-    """Example usage of the DatabaseUtils class"""
+    """
+    Demonstrates how to use the DatabaseUtils class for writing and updating database tables with Pandas DataFrames.
+    
+    Shows the difference between replacing a table (which may drop columns) and updating specific columns while preserving existing data.
+    """
     engine = DatabaseUtils.create_engine("example")
     # Example: Updating daily energy prices
 
@@ -296,6 +350,20 @@ def example_usage():
     # 2024-03-19 | 2    | 51.0  | 200                               
 
 if __name__ == "__main__":
-    engine = DatabaseUtils.create_engine("pruebas_BT")
-    df = DatabaseUtils.read_table(engine, "Mercados")
-    print(df)
+    try:
+        # Create engine
+        engine = DatabaseUtils.create_engine("pruebas_BT")
+        print("Database engine created successfully")
+        
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            print("Database connection test successful")
+        
+        # Try reading the table
+        df = DatabaseUtils.read_table(engine, "Mercados")
+        print("Successfully read Mercados table")
+        print(df.head())
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
