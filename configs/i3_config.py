@@ -18,7 +18,7 @@ class I3Config:
         load_dotenv()
         self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date (adapt if needed for i3)
         self._bbdd_engine = None
-        self.id_mercado_map, self.precios_sheet, self.volumenes_sheet, self.sentido_map = self.get_id_mercado_sheet_mapping()
+        self.id_mercado_map, self.volumenes_sheet, self.sentido_map = self.get_id_mercado_sheet_mapping()
         self.temporary_download_path = Path(os.getenv('DATA_LAKE_PATH')) / 'temporary'
         self.tech_map = self._get_technology_map()
 
@@ -38,41 +38,33 @@ class I3Config:
             print(f"Error in engine setting: {e}")
             raise e
     
-    def get_id_mercado_sheet_mapping(self) -> Tuple[Dict[str, str], Dict[str, Optional[str]], Dict[str, Optional[str]], Dict[str, str]]:
+    def get_id_mercado_sheet_mapping(self) -> Tuple[Dict[str, str], Dict[str, Optional[str]], Dict[str, str]]:
         """
         Similar to i90, but using sheet_i3_* columns.
-        Assumes DB has sheet_i3_volumenes and sheet_i3_precios.
+        Only handles volumenes sheets since no precios are downloaded for i3.
         """
         self.bbdd_engine = DatabaseUtils.create_engine('energy_tracker')
         df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'mercados_mapping',
-                                               columns=['id', 'mercado', 'sheet_i3_precios', 'sheet_i3_volumenes', 'is_quinceminutal', 'sentido'],
-                                               where_clause='(sheet_i3_volumenes != 0 OR sheet_i3_precios != 0)')
+                                               columns=['id', 'mercado', 'sheet_i3_volumenes', 'is_quinceminutal', 'sentido'],
+                                               where_clause='(sheet_i3_volumenes != 0)')
 
         indicator_map_raw = dict(zip(df_mercados['mercado'], df_mercados['id']))
         volumenes_id_map_raw = {}
-        precios_id_map_raw = {}
 
         for index, row in df_mercados.iterrows():
             market_id: int = row['id']
             sheet_vol = row['sheet_i3_volumenes']
-            sheet_pre = row['sheet_i3_precios']
 
             if pd.notna(sheet_vol) and sheet_vol != 0:
                 volumenes_id_map_raw[market_id] = str(int(sheet_vol)).zfill(2)
             else:
                 volumenes_id_map_raw[market_id] = None
 
-            if pd.notna(sheet_pre) and sheet_pre != 0:
-                precios_id_map_raw[market_id] = str(int(sheet_pre)).zfill(2)
-            else:
-                precios_id_map_raw[market_id] = None
-
         id_mercado_map = {str(key): str(value) for key, value in indicator_map_raw.items()}
         volumenes_id_map = {str(key): value for key, value in volumenes_id_map_raw.items()}
-        precios_id_map = {str(key): value for key, value in precios_id_map_raw.items()}
         sentido_map = {str(key): value for key, value in dict(zip(df_mercados['id'], df_mercados['sentido'])).items()}
 
-        return id_mercado_map, precios_id_map, volumenes_id_map, sentido_map
+        return id_mercado_map, volumenes_id_map, sentido_map
     
     def _get_technology_map(self) -> Dict[int, str]:
         """Map from tecnologias_generacion table for energy programs by technology."""
@@ -83,22 +75,17 @@ class I3Config:
     def get_technologies(self) -> Dict[int, str]:
         return self.tech_map
 
-    def _get_sheet_num(self, market_id: str, sheet_type: str) -> Optional[str]:
+    def _get_sheet_num(self, market_id: str) -> Optional[str]:
         try:
-            if sheet_type == "precios":
-                return self.precios_sheet[market_id]
-            elif sheet_type == "volumenes":
-                return self.volumenes_sheet[market_id]
-            else:
-                raise ValueError(f"Invalid sheet_type: {sheet_type}")
+            return self.volumenes_sheet[market_id]
         except KeyError:
-            print(f"Warning: No {sheet_type} sheet found for market ID {market_id}")
+            print(f"Warning: No volumenes sheet found for market ID {market_id}")
             return None
     
-    def _get_sheets(self, market_ids: List[str], sheet_type: str) -> List[str]:
+    def _get_sheets(self, market_ids: List[str]) -> List[str]:
         sheet_nums = []
         for id in market_ids:
-            sheet_num = self._get_sheet_num(id, sheet_type)
+            sheet_num = self._get_sheet_num(id)
             if sheet_num is not None:
                 sheet_nums.append(sheet_num)
         return list(set(sheet_nums))
@@ -107,28 +94,18 @@ class I3Config:
         """Base method - overridden in subclasses."""
         return None
 
-    def get_sheets_of_interest(self) -> Tuple[List[str], List[str], List[str]]:
+    def get_sheets_of_interest(self) -> List[str]:
         if not hasattr(self, 'market_ids'):
-            print("Warning: 'market_ids' not found. Returning empty lists.")
+            print("Warning: 'market_ids' not found. Returning empty list.")
             self.market_ids = []
-        volumenes_sheets = self._get_sheets(self.market_ids, "volumenes")
-        precios_sheets = self._get_sheets(self.market_ids, "precios")
-        sheets_of_interest = list(set(volumenes_sheets + precios_sheets))
-        return volumenes_sheets, precios_sheets, sheets_of_interest
+        volumenes_sheets = self._get_sheets(self.market_ids)
+        return volumenes_sheets
 
     @classmethod
     def has_volumenes_sheets(cls) -> bool:
         try:
             instance = cls()
-            return bool(instance.volumenes_sheets)
-        except:
-            return False
-    
-    @classmethod
-    def has_precios_sheets(cls) -> bool:
-        try:
-            instance = cls()
-            return bool(instance.precios_sheets)
+            return bool(instance.volumenes_sheet)
         except:
             return False
 
@@ -136,8 +113,8 @@ class DiarioConfig(I3Config):
     def __init__(self):
         super().__init__()
         self.diario_id = self.id_mercado_map.get("Diario")
-        self.market_ids: List[str] = [self.diaria_id] if self.diaria_id else []
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.market_ids: List[str] = [self.diario_id] if self.diario_id else []
+        self.volumenes_sheets = self.get_sheets_of_interest()
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
         return super().get_redespacho_filter(market_id)  # Returns None
@@ -191,8 +168,7 @@ class IntraConfig(I3Config):
         self.market_ids = [id for id in self.market_ids if id]
         
         # Get sheets of interest based on the selected markets
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
-
+        self.volumenes_sheets = self.get_sheets_of_interest()
 
         self.phf_intra_map = {
             'Intra 1': 'PHF-1',
@@ -213,7 +189,7 @@ class SecundariaConfig(I3Config):
         self.secundaria_subir_id = self.id_mercado_map.get("Secundaria a subir")
         self.secundaria_bajar_id = self.id_mercado_map.get("Secundaria a bajar")
         self.market_ids: List[str] = [id for id in [self.secundaria_subir_id, self.secundaria_bajar_id] if id]
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets = self.get_sheets_of_interest()
         self.redespacho_filter = ['RR']
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
@@ -227,7 +203,7 @@ class TerciariaConfig(I3Config):
         self.terciaria_subir_id = self.id_mercado_map.get("Terciaria a subir")
         self.terciaria_bajar_id = self.id_mercado_map.get("Terciaria a bajar")
         self.market_ids: List[str] = [id for id in [self.terciaria_subir_id, self.terciaria_bajar_id] if id]
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets = self.get_sheets_of_interest()
         # No filter list defined (handle exclusion in processing)
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
@@ -241,7 +217,7 @@ class RRConfig(I3Config):
         self.rr_subir_id = self.id_mercado_map.get("RR a subir")
         self.rr_bajar_id = self.id_mercado_map.get("RR a bajar")
         self.market_ids: List[str] = [id for id in [self.rr_subir_id, self.rr_bajar_id] if id]
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets = self.get_sheets_of_interest()
         self.redespacho_filter = ['RR']
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
@@ -255,7 +231,7 @@ class CurtailmentConfig(I3Config):
         self.curtailment_id = self.id_mercado_map.get("Curtailment")
         self.curtailment_demanda_id = self.id_mercado_map.get("Curtailment demanda")
         self.market_ids: List[str] = [id for id in [self.curtailment_id, self.curtailment_demanda_id] if id]
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets = self.get_sheets_of_interest()
         self.redespacho_filter = ['UPLPVPV', 'UPLPVPCBN', 'UPOPVPB']
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
@@ -268,7 +244,7 @@ class P48Config(I3Config):
         super().__init__()
         self.p48_id = self.id_mercado_map.get("P48")
         self.market_ids: List[str] = [self.p48_id] if self.p48_id else []
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets = self.get_sheets_of_interest()
         # Removed redespacho_filter - not needed for this market
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
@@ -279,7 +255,7 @@ class IndisponibilidadesConfig(I3Config):
         super().__init__()
         self.indisponibilidades_id = self.id_mercado_map.get("Indisponibilidades")
         self.market_ids: List[str] = [self.indisponibilidades_id] if self.indisponibilidades_id else []
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets = self.get_sheets_of_interest()
         self.redespacho_filter = ['Indisponibilidad']
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
@@ -303,7 +279,7 @@ class RestriccionesConfig(I3Config):
             self.restricciones_rt2_subir_id, self.restricciones_rt2_bajar_id
         ]
         
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets = self.get_sheets_of_interest()
         self.redespacho_filter_md = ['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB']
         self.redespacho_filter_tr = ['Restricciones Técnicas']
         self.redespacho_filter_rt = ['ECOBSO', 'ECOBCBSO']
@@ -317,12 +293,10 @@ class RestriccionesConfig(I3Config):
             return self.redespacho_filter_rt
         return super().get_redespacho_filter(market_id)
 
-# Add print_config_info similar to i90 for testing
 def print_config_info():
     base_config = I3Config()
     print("\n=== BASE I3CONFIG INFORMATION ===")
     print("\nID -> Mercado Map:", base_config.id_mercado_map)
-    print("\nID -> Precios Sheet Map:", base_config.precios_sheet)
     print("\nID -> Volumenes Sheet Map:", base_config.volumenes_sheet)
     print("\nID -> Sentido Map:", base_config.sentido_map)
     print("\nTechnology Map:", base_config.get_technologies())
@@ -339,12 +313,8 @@ def print_config_info():
         print(f"\n{config_name}")
         market_ids = getattr(config_instance, 'market_ids', [])
         volumenes_sheets = getattr(config_instance, 'volumenes_sheets', 'N/A')
-        precios_sheets = getattr(config_instance, 'precios_sheets', 'N/A')
-        sheets_of_interest = getattr(config_instance, 'sheets_of_interest', 'N/A')
         print(f"  Market IDs: {market_ids}")
         print(f"  Volume Sheets: {volumenes_sheets}")
-        print(f"  Price Sheets: {precios_sheets}")
-        print(f"  All Sheets: {sheets_of_interest}")
         for mid in market_ids:
             filter_list = config_instance.get_redespacho_filter(mid)
             print(f"  Filter for {mid}: {filter_list}")
