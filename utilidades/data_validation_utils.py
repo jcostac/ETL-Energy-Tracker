@@ -30,7 +30,7 @@ class DataValidationUtils:
         Args:
             df (pd.DataFrame): Input DataFrame.
             type (str): Type of data ('raw' or 'processed').
-            validation_schema_type (str): Specific dataset type ('precios', 'volumenes_i90', etc.).
+            validation_schema_type (str): Specific dataset type ("precios_esios", 'volumenes_i90', etc.).
 
         Returns:
             pd.DataFrame: Validated DataFrame.
@@ -47,7 +47,7 @@ class DataValidationUtils:
 
         Args:
             df (pd.DataFrame): Input DataFrame with processed data.
-            validation_schema_type (str): The type of validation schema that will be used to validate the data (e.g., 'precios', 'volumenes_i90').
+            validation_schema_type (str): The type of validation schema that will be used to validate the data (e.g., "precios_esios", 'volumenes_i90').
 
         Returns:
             pd.DataFrame: Validated DataFrame.
@@ -60,7 +60,7 @@ class DataValidationUtils:
 
         Args:
             df (pd.DataFrame): Input DataFrame with raw data.
-            validation_schema_type (str): The type of validation schema that will be used to validate the data (e.g., 'precios', 'volumenes_i90').
+            validation_schema_type (str): The type of validation schema that will be used to validate the data (e.g., "precios_esios", 'volumenes_i90').
 
         Returns:
             pd.DataFrame: Validated DataFrame.
@@ -76,7 +76,7 @@ class DataValidationUtils:
         Parameters:
             df (pd.DataFrame): The input DataFrame to validate.
             type (str): Indicates whether the data is 'raw' or 'processed'.
-            validation_schema_type (str): Specifies the schema type (e.g., 'precios', 'volumenes_i90', 'volumenes_omie').
+            validation_schema_type (str): Specifies the schema type (e.g., 'precios_esios', 'precios_i90', 'volumenes_i90', 'volumenes_omie').
         
         Returns:
             pd.DataFrame: The DataFrame with validated and converted data types.
@@ -96,7 +96,7 @@ class DataValidationUtils:
             #for processed data
             if type == "processed":
                 #for precios related datasets
-                if validation_schema_type in ["precios", "precios_i90"]:
+                if validation_schema_type in ["precios_esios", "precios_i90"]:
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
                     df['precio'] = df['precio'].astype('float32')
                 
@@ -121,7 +121,7 @@ class DataValidationUtils:
             #for raw data
             elif type == "raw":
                 #for precios datasets coming from ESIOS
-                if validation_schema_type == "precios":
+                if validation_schema_type == "precios_esios":
                     df['value'] = df['value'].astype('float32')
                     df['indicador_id'] = df['indicador_id'].astype('str')
                     
@@ -167,7 +167,7 @@ class DataValidationUtils:
         required_cols = None
         
         if type == "processed":
-            if validation_schema_type == "precios" or validation_schema_type == "precios_i90":
+            if validation_schema_type == "precios_esios" or validation_schema_type == "precios_i90":
                 required_cols = self.processed_price_required_cols
             elif validation_schema_type == "volumenes_i90":
                 required_cols = self.processed_volumenes_i90_required_cols
@@ -179,7 +179,7 @@ class DataValidationUtils:
                 required_cols = self.processed_volumenes_mic_required_cols
 
         elif type == "raw":
-            if validation_schema_type == "precios":
+            if validation_schema_type == "precios_esios":
                 required_cols = self.raw_precios_esios_required_cols
             elif validation_schema_type == "precios_i90":
                 required_cols = self.raw_precios_i90_required_cols

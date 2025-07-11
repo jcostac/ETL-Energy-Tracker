@@ -217,7 +217,7 @@ class ESIOSProcessor:
         # Convert hourly data if present
         if not df_hourly.empty:
             print("\n🔄 Converting hourly to 15-min...")
-            df_hourly_converted = DateUtilsETL.convert_hourly_to_15min(df_hourly, "precios")
+            df_hourly_converted = DateUtilsETL.convert_hourly_to_15min(df_hourly, "precios_esios")
             print(f"✅ Conversion complete: {len(df_hourly)} → {len(df_hourly_converted)}")
             
             # Combine data
@@ -285,11 +285,11 @@ class ESIOSProcessor:
         try:
             if type == "processed":
                 print("Validating processed data structure...")
-                df = self.data_validatior.validate_processed_data(df, validation_schema_type="precios")
+                df = self.data_validatior.validate_processed_data(df, validation_schema_type="precios_esios")
                 print("✅ Processed data validation passed")
             elif type == "raw":
                 print("Validating raw data structure...")
-                df = self.data_validatior.validate_raw_data(df, validation_schema_type="precios")
+                df = self.data_validatior.validate_raw_data(df, validation_schema_type="precios_esios")
                 print("✅ Raw data validation passed")
         except Exception as e:
             print(f"❌ Validation failed: {str(e)}")

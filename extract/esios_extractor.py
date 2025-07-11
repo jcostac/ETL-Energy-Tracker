@@ -126,13 +126,13 @@ class ESIOSPreciosExtractor:
                         environment = "DEVELOPMENT "
                         self.raw_file_utils.write_raw_csv(
                             year=year, month=month, df=df,
-                            dataset_type='precios', mercado=mercado
+                            dataset_type="precios_esios", mercado=mercado
                         )
                     else:
                         environment = "PRODUCTION "
                         self.raw_file_utils.write_raw_parquet(
                             year=year, month=month, df=df,
-                            dataset_type='precios', mercado=mercado
+                            dataset_type="precios_esios", mercado=mercado
                         )
                     print(f"✅ Successfully  saved raw {mercado} prices for {day_str} in {environment} environment")
                 else:

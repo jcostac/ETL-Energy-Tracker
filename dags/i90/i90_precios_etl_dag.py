@@ -63,7 +63,7 @@ def transform_i90_prices_func(start_date, end_date, dataset_types, transform_typ
     Parameters:
         start_date (str): The start date for the data transformation period.
         end_date (str): The end date for the data transformation period.
-        dataset_types (str): The type of dataset to transform (e.g., "precios_i90").
+        dataset_types (str): The type of dataset to transform (e.g., "precios").
         transform_type (str): The transformation mode to apply (e.g., "single").
     
     Returns:
