@@ -569,21 +569,3 @@ class ZRTracker:
             print(f"\n❌ Error during processing: {e}")
             raise
 
-    
-def main():
-    """
-    Runs the Regulation Zones update workflow using hardcoded file paths for ESIOS and BSP data sources.
-    
-    Instantiates the ZRTracker, sets the input file paths, and executes the full process to synchronize zones and mappings with the database.
-    """
-    tracker = ZRTracker()   
-        
-    esios_csv = "C:\\Users\\Usuario\\OneDrive - OPTIMIZE ENERGY\\Escritorio\\Optimize Energy\\Energy_tracker_scripts\\scripts\\Spain\\data\\export_unidades-de-programacion_2025-05-13_13_42.csv"
-    bsp_path = "C:\\Users\\Usuario\\OneDrive - OPTIMIZE ENERGY\\Escritorio\\Optimize Energy\\Energy_tracker_scripts\\scripts\\Spain\\data\\BSP-aFRR_ 01_03_2025.xlsx"
-
-    
-    tracker.process_zonas(esios_csv, bsp_path)
-
-if __name__ == "__main__":
-    main()
-

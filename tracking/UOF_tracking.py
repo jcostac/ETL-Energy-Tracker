@@ -566,21 +566,3 @@ class UOFTracker:
         print(f"- Total changes logged: {len(change_log)}")
 
         print("\n✅ UOF processing completed successfully.")
-
-def main():
-    """
-    Entry point for the UOF tracking script.
-    
-    Downloads the latest UOF data from OMIE, then processes and updates the database with new, obsolete, and changed UOFs.
-    """
-    print("--- UOF Tracker Script ---")
-    # Resolve the path properly using abspath
-    download_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "downloads", "tracking"))
-    download_uofs_from_omie(download_dir)
-    tracker = UOFTracker()
-    tracker.process_uofs(omie_path=os.path.join(download_dir, "listado_unidades.xlsx"))
-   
-   
-
-if __name__ == "__main__":
-    main()
