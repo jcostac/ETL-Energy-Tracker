@@ -19,6 +19,9 @@ class VinculacionOrchestrator:
     
     def __init__(self):
         
+        """
+        Initialize the VinculacionOrchestrator with configuration, linking algorithm, change monitoring, and database utility components.
+        """
         self.config = VinculacionConfig()
         self.linking_algorithm = UOFUPLinkingAlgorithm()
         self.change_monitor = UPChangeMonitor()
@@ -26,16 +29,23 @@ class VinculacionOrchestrator:
 
         
     def _create_engine(self, database_name: str):
-        """Create database engine"""
+        """
+        Create and return a database engine for the specified database.
+        
+        Parameters:
+            database_name (str): Name of the target database.
+        
+        Returns:
+            Engine object for database operations.
+        """
         return self.db_utils.create_engine(database_name)
         
     async def perform_full_linking(self) -> pd.DataFrame:
         """
-        Perform full UOF-UP linking for all active UPs
-        Target date is automatically set to 93 days back from today
+        Perform a full linking process between all active UPs and UOFs as of a target date 93 days prior to today.
         
         Returns:
-            pd.DataFrame: Complete linking results ready for database
+            pd.DataFrame: DataFrame containing the linked UP-UOF pairs with columns ['UP', 'UOF', 'date_updated']. Returns an empty DataFrame if linking fails or an error occurs.
         """
         target_date = self.config.get_linking_target_date()
         
@@ -76,10 +86,10 @@ class VinculacionOrchestrator:
             
     async def perform_new_ups_linking(self) -> Dict:
         """
-        Only matches UPs.
+        Performs incremental linking for newly enabled UPs as of the configured target date.
         
         Returns:
-            Dict: Results of incremental linking
+            dict: A dictionary containing the results of the incremental linking process, including success status, any new UPs found, and new links created.
         """
         return #TODO: Implement incremental linking
         check_date = self.config.get_linking_target_date() #93 days back from today|    
@@ -117,10 +127,10 @@ class VinculacionOrchestrator:
         
     async def perform_vinculacion_monitoring(self) -> Dict:
         """
-        Perform monitoring of existing UP-UOF links
+        Monitor existing UP-UOF links for changes and new associations.
         
         Returns:
-            Dict: Results of monitoring
+            dict: A dictionary containing the monitoring results, including detected changes and new links. On error, returns a dictionary with success status and error message.
         """
         print(f"\n🔄 STARTING EXISTING LINKS MONITORING")
         print("="*80)

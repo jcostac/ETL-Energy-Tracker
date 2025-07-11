@@ -8,7 +8,9 @@ import time
 
 def precios_download_multiple_days():
     """
-    Test the download of the precios for multiple days for all markets
+    Tests downloading "precios" data for all markets over a specified multi-day range using the I90PreciosExtractor.
+    
+    Raises an assertion error if the extraction is not successful, including details from the result.
     """
     extractor = I90PreciosExtractor()
     result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-02", fecha_fin_carga="2025-03-08")
@@ -18,7 +20,9 @@ def precios_download_multiple_days():
 
 def volumenes_download_multiple_days():
     """
-    Test the download of the volumenes for multiple days for all markets
+    Tests downloading volume data for all markets over a specified multi-day range using the I90VolumenesExtractor.
+    
+    Raises an assertion error if the extraction is not successful, including details from the result.
     """
     extractor = I90VolumenesExtractor()
     result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-02", fecha_fin_carga="2025-03-08")

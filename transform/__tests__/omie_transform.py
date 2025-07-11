@@ -8,7 +8,9 @@ import time
 
 def omie_transform_single_day():
     """
-    Test the transformation of the omie for a single day for all markets
+    Tests the OMIE data transformation process for a single day across all markets.
+    
+    Asserts that the transformation completes successfully and saves the resulting data to a CSV file for further inspection.
     """
     transformer = TransformadorOMIE()
     result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-19", fecha_fin="2025-03-19")
@@ -26,7 +28,9 @@ def omie_transform_single_day():
 
 def omie_transform_multiple_days():
     """
-    Test the transformation of the omie for multiple days for all markets
+    Test the OMIE data transformation process for multiple consecutive days across all markets.
+    
+    Asserts that the transformation completes successfully for the specified date range.
     """
     transformer = TransformadorOMIE()
     result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-19", fecha_fin="2025-03-20")
@@ -38,7 +42,9 @@ def omie_transform_multiple_days():
 
 def omie_transform_market_specific():
     """
-    Test the transformation of the omie for a specific market
+    Test the OMIE data transformation for a specific subset of markets on a single day.
+    
+    Runs the transformation for the markets "intradiario" and "continuo" on "2025-01-01" and asserts that the process completes successfully.
     """
     transformer = TransformadorOMIE()
     result = transformer.transform_data_for_all_markets(fecha_inicio="2025-01-01", fecha_fin="2025-01-01", mercados_lst=["intradiario", "continuo"])

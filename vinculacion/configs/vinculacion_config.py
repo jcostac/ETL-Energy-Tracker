@@ -6,6 +6,9 @@ class VinculacionConfig:
     
     def __init__(self):
         # Time windows
+        """
+        Initialize configuration parameters for the vinculacion module, including time windows, market types, database table names, and dataset type identifiers.
+        """
         self.DATA_DOWNLOAD_WINDOW = 93  # days back for data availability
         self.HISTORICAL_CHECK_WINDOW = 94  # days for ambiguous matches
         
@@ -26,10 +29,10 @@ class VinculacionConfig:
         
     def get_linking_target_date(self) -> str:
         """
-        Calculate the target date for linking (always 93 days back)
+        Return the target date for data linking, calculated as 93 days before the current date.
         
         Returns:
-            str: Target date in YYYY-MM-DD format
+            str: The target date formatted as 'YYYY-MM-DD'.
         """
         target_date = datetime.now() - timedelta(days=self.DATA_DOWNLOAD_WINDOW)
         return target_date.strftime('%Y-%m-%d')

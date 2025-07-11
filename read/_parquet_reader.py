@@ -25,6 +25,9 @@ class ParquetReader:
     Clase para leer datos de la base de datos o de un fichero parquet.
     """
     def __init__(self):
+        """
+        Initializes the ParquetReader by loading environment variables, setting up configuration, and determining valid markets from the processed data directory.
+        """
         load_dotenv()
         self.duckdb_engine = "implementar"
         self.esios_config = ESIOSConfig()

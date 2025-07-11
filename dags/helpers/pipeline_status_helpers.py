@@ -3,21 +3,19 @@ from helpers.pipeline_status import ETLPipelineStatus
 
 def update_pipeline_stage_status(stage_name: str, current_stage_task_id: str, **context) -> any:
     """
-    Processes the output of a pipeline stage, updates the overall pipeline status,
-    pushes it to XCom, and raises an error if the current stage failed.
-    Returns the relevant data from the current stage's output for the next task.
-
-    Args:
-        stage_name (str): The name of the current stage (e.g., 'extraction', 'transformation', 'load').
-        current_stage_task_id (str): The task_id of the Airflow operator that produced the output for this stage.
-        **context: Airflow context, providing access to XComs and task instance information.
-
+    Update the ETL pipeline status for a given stage, propagate the status via Airflow XCom, and raise an error if the stage failed.
+    
+    Processes the output of the specified pipeline stage, updates the cumulative pipeline status using an `ETLPipelineStatus` object, and pushes the updated status summary to XCom for downstream tasks. If the current stage fails, raises a `ValueError` with a detailed failure message. Returns the relevant data from the current stage's output for use by the next pipeline task.
+    
+    Parameters:
+        stage_name (str): The name of the current pipeline stage ("extraction", "transformation", or "load").
+        current_stage_task_id (str): The Airflow task ID that produced the output for this stage.
+    
     Returns:
-        any: The data output from the processed stage, intended for use by the next task in the pipeline.
-
+        The relevant data output from the processed stage, suitable for downstream pipeline tasks.
+    
     Raises:
-        ValueError: If the stage output is not found in XCom, if the stage_name is unknown,
-                    or if the processed stage itself reported a failure.
+        ValueError: If the stage output is missing from XCom, the stage name is unrecognized, or the current stage reports failure.
     """
     ti = context['ti']
     stage_output = ti.xcom_pull(task_ids=current_stage_task_id)
@@ -71,13 +69,12 @@ def update_pipeline_stage_status(stage_name: str, current_stage_task_id: str, **
 
 def _get_previous_pipeline_status(ti) -> ETLPipelineStatus:
     """
-    Retrieves the previous pipeline status from XCom and initializes an ETLPipelineStatus object.
-
-    Args:
-        ti: Airflow task instance.
-
+    Retrieve and initialize the ETL pipeline status from Airflow XCom.
+    
+    If a previous pipeline status summary exists in XCom, sets the extraction and transformation statuses on a new ETLPipelineStatus object accordingly.
+    
     Returns:
-        ETLPipelineStatus: An initialized ETLPipelineStatus object.
+        ETLPipelineStatus: The initialized pipeline status object reflecting any prior extraction and transformation results.
     """
     previous_pipeline_status_summary = ti.xcom_pull(key='pipeline_status')
     pipeline_status = ETLPipelineStatus()
@@ -96,14 +93,13 @@ def _get_previous_pipeline_status(ti) -> ETLPipelineStatus:
 
 def _handle_extraction_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) :
     """
-    Handles the logic for the extraction stage.
-
-    Args:
-        stage_output (dict): The output from the extraction task.
-        pipeline_status (ETLPipelineStatus): The current pipeline status object.
-
+    Update the pipeline status with the results of the extraction stage and return extraction outcome details.
+    
+    Parameters:
+    	stage_output (dict): Output dictionary from the extraction stage, expected to contain 'success' and 'details' keys.
+    
     Returns:
-        tuple[bool, dict, any]: A tuple containing the success status, details, and data to return.
+    	tuple: (success, details, stage_output), where success is a boolean indicating extraction success, details is a dictionary with extraction metadata, and stage_output is the original extraction output.
     """
     success = stage_output.get('success', False)
     details = stage_output.get('details', {})
@@ -113,14 +109,14 @@ def _handle_extraction_stage(stage_output: dict, pipeline_status: ETLPipelineSta
 
 def _handle_transformation_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) :
     """
-    Handles the logic for the transformation stage.
-
-    Args:
-        stage_output (dict): The output from the transformation task.
-        pipeline_status (ETLPipelineStatus): The current pipeline status object.
-
+    Update the pipeline status with the results of the transformation stage and extract transformation data.
+    
+    Parameters:
+        stage_output (dict): Output dictionary from the transformation stage, expected to contain a 'status' dict and optional 'data'.
+        pipeline_status (ETLPipelineStatus): Pipeline status object to be updated with transformation results.
+    
     Returns:
-        tuple[bool, dict, any]: A tuple containing the success status, details, and data to return.
+        tuple: (success (bool), details (dict), data_to_return (any)) where 'success' indicates if the transformation succeeded, 'details' provides additional information, and 'data_to_return' contains the transformation output data.
     """
     transform_status_dict = stage_output.get('status', {'success': False, 'details': {}})
     success = transform_status_dict.get('success', False)
@@ -132,15 +128,14 @@ def _handle_transformation_stage(stage_output: dict, pipeline_status: ETLPipelin
 
 def _handle_load_stage(stage_output: dict, pipeline_status: ETLPipelineStatus) :
     """
-    Handles the logic for the load stage.
-
-    Args:
-        stage_output (dict): The output from the load task.
-        pipeline_status (ETLPipelineStatus): The current pipeline status object.
-
+    Process the output of the load stage, update the pipeline status, and generate failure details if applicable.
+    
+    Parameters:
+        stage_output (dict): Output dictionary from the load stage, expected to include 'success', 'messages', and optionally 'market_status'.
+        pipeline_status (ETLPipelineStatus): The pipeline status object to update with load results.
+    
     Returns:
-        tuple[bool, list, any, str | None]: A tuple containing the success status, messages, data to return, 
-                                         and a specific failure error message if applicable.
+        tuple: (success, messages, stage_output, failure_error_message), where `failure_error_message` is a string describing failed markets or general failure, or None if the load succeeded.
     """
     success = stage_output.get('success', False)
     messages = stage_output.get('messages', [])

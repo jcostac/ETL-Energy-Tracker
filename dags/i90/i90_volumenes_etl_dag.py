@@ -40,6 +40,16 @@ dag = DAG(
 
 # Task functions to defer instantiation on load (which can cause issues with the DAG like SQL too many connections error)
 def extract_i90_volumes_func(fecha_inicio_carga, fecha_fin_carga):
+    """
+    Extracts I90 market volume data for all markets within the specified date range.
+    
+    Parameters:
+        fecha_inicio_carga (str): Start date for data extraction in 'YYYY-MM-DD' format.
+        fecha_fin_carga (str): End date for data extraction in 'YYYY-MM-DD' format.
+    
+    Returns:
+        dict: Extracted I90 volume data for all markets within the given date range.
+    """
     extractor = I90VolumenesExtractor()
     return extractor.extract_data_for_all_markets(
         fecha_inicio_carga=fecha_inicio_carga, 
@@ -47,6 +57,18 @@ def extract_i90_volumes_func(fecha_inicio_carga, fecha_fin_carga):
     )
 
 def transform_i90_volumes_func(start_date, end_date, dataset_types, transform_type):
+    """
+    Transforms I90 market volume data for all markets within the specified date range and parameters.
+    
+    Parameters:
+        start_date (str): The start date for the data transformation period.
+        end_date (str): The end date for the data transformation period.
+        dataset_types (list): List of dataset types to be transformed.
+        transform_type (str): The type of transformation to apply.
+    
+    Returns:
+        dict: A dictionary containing the transformed data for all markets.
+    """
     transformer = TransformadorI90()
     return transformer.transform_data_for_all_markets(
         start_date=start_date,
@@ -56,6 +78,15 @@ def transform_i90_volumes_func(start_date, end_date, dataset_types, transform_ty
     )
 
 def load_i90_volumes_func(transformed_data_dict):
+    """
+    Load transformed I90 volume data into the local data lake.
+    
+    Parameters:
+        transformed_data_dict (dict): Dictionary containing transformed I90 volume data to be loaded.
+    
+    Returns:
+        Any: The result of the data loading operation, as returned by the loader.
+    """
     loader = LocalDataLakeLoader()
     return loader.load_transformed_data_volumenes_i90(
         transformed_data_dict=transformed_data_dict

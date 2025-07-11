@@ -43,7 +43,12 @@ dag = DAG(
 
 # Task functions
 def check_up_files_func(**context):
-    """Check if UP files exist or download them"""
+    """
+    Checks whether recent UP export CSV files exist in the designated download directory.
+    
+    Returns:
+        dict: A dictionary indicating success status, the download directory path, and details about found or missing files.
+    """
     download_dir = setup_tracking_directories()
     
     # Check for existing UP export files
@@ -68,7 +73,11 @@ def check_up_files_func(**context):
         }
 
 async def download_up_files_func(**context):
-    """Download UP files from ESIOS"""
+    """
+    Download UP export files from ESIOS if they are missing or outdated.
+    
+    Checks if the required UP files are already present and recent; if so, skips downloading. Otherwise, downloads the files asynchronously to the specified directory. Returns a dictionary indicating success or failure, along with relevant details.
+    """
     ti = context['ti']
     check_result = ti.xcom_pull(task_ids='check_up_files')
     
@@ -103,7 +112,14 @@ async def download_up_files_func(**context):
         }
 
 def process_up_tracking_func(**context):
-    """Process UP tracking"""
+    """
+    Processes the UP tracking data by locating and handling the latest UP export file.
+    
+    This function retrieves the result of the UP file download task, raises an error if the download failed, and processes the most recent UP export CSV file using the UPTracker. Returns a dictionary indicating success or failure, along with relevant details.
+    
+    Returns:
+        dict: A dictionary containing the success status, processed file path (if successful), message, and error details if any.
+    """
     ti = context['ti']
     download_result = ti.xcom_pull(task_ids='download_up_files')
     
@@ -141,7 +157,11 @@ def process_up_tracking_func(**context):
         }
 
 def cleanup_up_files_func(**context):
-    """Cleanup downloaded files"""
+    """
+    Deletes the most recent UP export CSV file from the download directory if it exists.
+    
+    Removes the latest file matching the UP export pattern after pipeline execution, logging any errors encountered during deletion.
+    """
     ti = context['ti']
     download_result = ti.xcom_pull(task_ids='download_up_files')
     

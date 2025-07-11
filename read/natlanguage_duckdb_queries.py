@@ -21,6 +21,11 @@ class NLQueryGenerator:
     """
     def __init__(self, api_key: str):
         # Initialize Gemini API
+        """
+        Initializes the NLQueryGenerator with Gemini API configuration, in-memory DuckDB connection, market metadata, timezone settings, and dataset schema information.
+        
+        Configures the Gemini generative AI model for SQL translation, sets up the DuckDB environment for querying Parquet files, loads market mapping data from a local JSON file, defines relevant timezones, and prepares schema details for supported datasets. Also constructs lookup dictionaries for efficient market reference.
+        """
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel("gemini-2.0-flash")
         
@@ -49,8 +54,9 @@ class NLQueryGenerator:
         self._create_market_lookups()
         
     def _create_market_lookups(self):
-        """Create lookup dictionaries from market_map.json for market information stored as attributes, 
-        used to create the system prompt"""
+        """
+        Builds lookup dictionaries mapping market names to IDs, market IDs to folder names, and market IDs to available datasets based on the loaded market metadata. These mappings are stored as class attributes for use in prompt construction and query generation.
+        """
 
         # Map market names to IDs
         self.market_name_to_id = {}
@@ -82,7 +88,10 @@ class NLQueryGenerator:
 
     def _get_market_info_string(self):
         """
-        Build a string describing available markets, their IDs, folders, and datasets using lookup dictionaries.
+        Constructs a formatted string listing each available market with its name, ID, folder, and available datasets.
+        
+        Returns:
+            str: A multi-line string summarizing all markets and their associated metadata.
         """
         market_info = ""
         for market_name, market_id in self.market_name_to_id.items():
@@ -94,7 +103,7 @@ class NLQueryGenerator:
     
     def _get_available_dataschema_string(self):
         """
-        Build a string describing available datasets for each market using lookup dictionaries.
+        Constructs a descriptive string listing each available dataset type and its corresponding columns.
         """
         schema_info = ""
         for dataset_type, columns in self.schema_info.items():
@@ -103,7 +112,7 @@ class NLQueryGenerator:
     
     def _create_system_prompt(self):
         """
-        Create an enhanced system prompt for the Gemini API.
+        Constructs a comprehensive system prompt for the Gemini API, detailing all rules, schemas, market mappings, data storage structures, and SQL generation guidelines required to translate natural language energy market queries into optimized DuckDB SQL statements. The prompt includes instructions for timezone handling, partitioned Parquet file access, market and dataset selection, error handling, and query optimization, ensuring the generated SQL is accurate, efficient, and tailored to the underlying data architecture.
         """
         market_info = self._get_market_info_string()
         schema_info = self._get_available_dataschema_string()
@@ -329,13 +338,16 @@ class NLQueryGenerator:
         return prompt
 
     def translate_to_sql(self, query: str) -> Tuple[str, Dict[str, Any]]:
-        """Translate natural language query to SQL using Gemini
+        """
+        Translates a natural language query into an optimized DuckDB SQL query using the Gemini AI model.
         
-        Args:
-            query (str): The natural language query to translate
-            
+        The method constructs a detailed prompt with dataset schemas and market information, sends it along with the user query to Gemini, and processes the response to ensure correct file paths and partitioning parameters. Returns the generated SQL query and a context dictionary containing the original query, detected dataset type, and timestamp.
+        
+        Parameters:
+            query (str): The natural language query describing the desired data retrieval.
+        
         Returns:
-            Tuple[str, Dict[str, Any]]: A tuple containing the SQL query and context
+            Tuple[str, Dict[str, Any]]: The generated SQL query and a context dictionary with metadata.
         """
         system_prompt = self._create_system_prompt()
         
@@ -366,7 +378,12 @@ class NLQueryGenerator:
         return formatted_query, context
 
     def _detect_dataset_type(self, query: str) -> str:
-        """Attempt to detect which dataset type is being queried"""
+        """
+        Heuristically determines the dataset type referenced in a natural language query.
+        
+        Returns:
+            str: The detected dataset type ("precios", "volumenes_i3", "volumenes_i90"), or "unknown" if no match is found.
+        """
         query_lower = query.lower()
         
         if "precios" in query_lower or "price" in query_lower:
@@ -381,13 +398,14 @@ class NLQueryGenerator:
         return "unknown"
     
     def execute_query(self, natural_language_query: str) -> Any:
-        """Translate and execute the query
-        Returns the result of the query or None if an error occurs
-        Args:
-            natural_language_query (str): The natural language query to translate
-            
+        """
+        Translates a natural language query into SQL, executes it on the DuckDB connection, and returns the result.
+        
+        Parameters:
+            natural_language_query (str): The query to be translated and executed.
+        
         Returns:
-            Any: The result of the query
+            The result of the executed SQL query as a list of tuples, or None if an error occurs.
         """
         try:
             sql_query, context = self.translate_to_sql(natural_language_query)
@@ -400,13 +418,10 @@ class NLQueryGenerator:
             return None
         
     def result_to_df(self, natural_language_query: str) -> pd.DataFrame:
-        """Execute the query and convert the result to a pandas DataFrame
+        """
+        Translates a natural language query into SQL, executes it, and returns the result as a pandas DataFrame.
         
-        Args:
-            natural_language_query (str): The natural language query to translate
-            
-        Returns:
-            pd.DataFrame: The result as a pandas DataFrame
+        If an error occurs during translation or execution, returns an empty DataFrame.
         """
         try:
             sql_query, _ = self.translate_to_sql(natural_language_query)

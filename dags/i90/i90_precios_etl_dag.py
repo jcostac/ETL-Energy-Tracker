@@ -40,6 +40,16 @@ dag = DAG(
 
 # Task functions to defer instantiation on load
 def extract_i90_prices_func(fecha_inicio_carga, fecha_fin_carga):
+    """
+    Extracts I90 market price data for all markets within the specified date range.
+    
+    Parameters:
+        fecha_inicio_carga: Start date for data extraction.
+        fecha_fin_carga: End date for data extraction.
+    
+    Returns:
+        Extracted data for all I90 markets within the given date range.
+    """
     extractor = I90PreciosExtractor()
     return extractor.extract_data_for_all_markets(
         fecha_inicio_carga=fecha_inicio_carga,
@@ -47,6 +57,18 @@ def extract_i90_prices_func(fecha_inicio_carga, fecha_fin_carga):
     )
 
 def transform_i90_prices_func(start_date, end_date, dataset_types, transform_type):
+    """
+    Transforms I90 price data for all markets within the specified date range and dataset configuration.
+    
+    Parameters:
+        start_date (str): The start date for the data transformation period.
+        end_date (str): The end date for the data transformation period.
+        dataset_types (str): The type of dataset to transform (e.g., "precios_i90").
+        transform_type (str): The transformation mode to apply (e.g., "single").
+    
+    Returns:
+        dict: A dictionary containing the transformed data for all markets.
+    """
     transformer = TransformadorI90()
     return transformer.transform_data_for_all_markets(
         start_date=start_date,
@@ -56,6 +78,15 @@ def transform_i90_prices_func(start_date, end_date, dataset_types, transform_typ
     )
 
 def load_i90_prices_func(transformed_data_dict):
+    """
+    Load transformed I90 price data into the local data lake.
+    
+    Parameters:
+        transformed_data_dict (dict): Dictionary containing transformed I90 price data to be loaded.
+    
+    Returns:
+        Any: The result of the data loading operation, as returned by the loader.
+    """
     loader = LocalDataLakeLoader()
     return loader.load_transformed_data_precios_i90(
         transformed_data_dict=transformed_data_dict

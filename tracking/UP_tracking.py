@@ -20,10 +20,9 @@ class UPTracker:
     """
     def __init__(self):
         """
-        Initialize UPTracker with database connection
+        Initialize a UPTracker instance with default database connection attributes and table names.
         
-        Args:
-            bbdd_name (str): Name of the database to connect to
+        Sets up internal variables for database name, URL, SQLAlchemy engine, and the names of the UP listing and change log tables.
         """
         self._bbdd_name = None
         self._bbdd_url = None
@@ -33,27 +32,56 @@ class UPTracker:
 
     @property
     def bbdd_name(self):
+        """
+        Get the name of the database currently configured for the tracker.
+        
+        Returns:
+            str: The name of the database.
+        """
         return self._bbdd_name
     
     @bbdd_name.setter
     def bbdd_name(self, bbdd_name):
+        """
+        Set the database name and initialize the database engine connection.
+        """
         self._bbdd_name = bbdd_name
         self._engine = DatabaseUtils.create_engine(self._bbdd_name)
 
     @property
     def bbdd_url(self):
+        """
+        Get the current database URL used for connecting to the database.
+        
+        Returns:
+            str: The database connection URL.
+        """
         return self._bbdd_url
     
     @bbdd_url.setter
     def bbdd_url(self, bbdd_url):
+        """
+        Set the database URL for the tracker.
+        
+        Assigns the provided database URL to the internal variable for establishing database connections.
+        """
         self._bbdd_url = bbdd_url
 
     @property
     def engine(self):
+        """
+        Returns the current SQLAlchemy engine instance used for database connections.
+        """
         return self._engine
     
     @engine.setter
     def engine(self, engine):
+        """
+        Sets the SQLAlchemy engine for database connections and verifies connectivity.
+        
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: If the database connection cannot be established.
+        """
         try:
             self._engine = engine
             with self.engine.connect() as connection:
@@ -65,19 +93,21 @@ class UPTracker:
     
     def load_csv_ups(self, csv_path: str) -> pd.DataFrame:
         """
-        Load and process UPs from CSV file
+        Load and process UP (Unidad de Programación) data from a CSV file.
         
-        Args:
-            csv_path (str): Path to csv file containing UP data
-            
+        Reads a CSV file containing UP data, validates required columns, filters for generation-type UPs, converts and cleans data types, and adds metadata columns for obsolescence and update date.
+        
+        Parameters:
+            csv_path (str): Path to the CSV file containing UP data.
+        
         Returns:
-            pd.DataFrame: Processed DataFrame with required columns
-            
+            pd.DataFrame: Processed DataFrame with columns: UP, potencia, tipo_produccion, zona_regulacion, obsoleta, and date_updated.
+        
         Raises:
-            FileNotFoundError: If the CSV file does not exist
-            pd.errors.EmptyDataError: If the CSV file is empty
-            pd.errors.ParserError: If the CSV file cannot be parsed
-            ValueError: If required columns are missing
+            FileNotFoundError: If the CSV file does not exist.
+            pd.errors.EmptyDataError: If the CSV file is empty.
+            pd.errors.ParserError: If the CSV file cannot be parsed.
+            ValueError: If required columns are missing.
         """
         try:
             # Check if file exists
@@ -142,13 +172,13 @@ class UPTracker:
     
     def load_db_ups(self) -> pd.DataFrame:
         """
-        Load UPs from database
-    
+        Load UP data from the `up_listado` table in the `energy_tracker` database.
+        
         Returns:
-            pd.DataFrame: DataFrame containing UP data from database
-            
+            pd.DataFrame: DataFrame containing UP records from the database.
+        
         Raises:
-            sqlalchemy.exc.SQLAlchemyError: If there is a database error
+            Exception: If an error occurs while accessing the database.
         """
         try:
             self.bbdd_name = "energy_tracker"
@@ -166,14 +196,14 @@ class UPTracker:
     
     def load_tecnologias(self) -> pd.DataFrame:
         """
-        Load technology mapping (tipo tecnolgia/id table) from database
+        Load technology mappings from the 'Tecnologias_generacion' table in the 'Optimize_Energy' database.
         
         Returns:
-            pd.DataFrame: DataFrame containing technology mappings
-            
+            pd.DataFrame: DataFrame containing technology mappings.
+        
         Raises:
-            sqlalchemy.exc.SQLAlchemyError: If there is a database error
-            ValueError: If the technology mapping table is empty
+            ValueError: If the technology mapping table is empty.
+            Exception: If an unexpected error occurs during loading.
         """
         try:
             self.bbdd_name = "Optimize_Energy"
@@ -190,13 +220,10 @@ class UPTracker:
     
     def load_change_log(self) -> pd.DataFrame:
         """
-        Load UP historical data from database
+        Load the UP change log data from the database.
         
         Returns:
-            pd.DataFrame: DataFrame containing UP historical data
-            
-        Raises:
-            sqlalchemy.exc.SQLAlchemyError: If there is a database error
+            pd.DataFrame: A DataFrame containing historical change log entries for UPs.
         """
         try:
             self.bbdd_name = "energy_tracker"
@@ -211,17 +238,17 @@ class UPTracker:
 
     def map_tecnologia_id(self, csv_df: pd.DataFrame, tecnologias_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Map tipo_produccion to tecnologia_id using the Tecnologias_generacion table
+        Maps the `tipo_produccion` field in the UP DataFrame to `tecnologia_id` using the provided technology mapping DataFrame.
         
-        Args:
-            csv_df (pd.DataFrame): DataFrame containing UP data from csv
-            tecnologias_df (pd.DataFrame): DataFrame containing technology mappings
-            
+        Parameters:
+        	csv_df (pd.DataFrame): DataFrame containing UP data with a `tipo_produccion` column.
+        	tecnologias_df (pd.DataFrame): DataFrame containing technology names and their corresponding IDs.
+        
         Returns:
-            pd.DataFrame: DataFrame with tecnologia_id mapped
-            
+        	pd.DataFrame: DataFrame with `tecnologia_id` mapped and the original `tipo_produccion` column removed.
+        
         Raises:
-            ValueError: If all technologies cannot be mapped
+        	ValueError: If any `tipo_produccion` values cannot be mapped to a technology ID.
         """
         try:
             # Create mapping dictionary from tecnologias_df
@@ -254,17 +281,16 @@ class UPTracker:
     
     def extract_new_and_obsolete_ups(self, csv_df: pd.DataFrame, db_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
         """
-        Compare UPs between csv and database, identify new and obsolete UPs
-        and add new UPs to the database
-
-        Args:
-            csv_df (pd.DataFrame): DataFrame from csv
-            db_df (pd.DataFrame): DataFrame from database
-            
+        Identify new UPs to add and existing UPs to mark as obsolete by comparing UP codes between the CSV data and the database.
+        
+        Parameters:
+            csv_df (pd.DataFrame): DataFrame containing UP data loaded from the CSV file.
+            db_df (pd.DataFrame): DataFrame containing UP data loaded from the database.
+        
         Returns:
-            tuple: (new_ups_df, obsolete_ups)
-                - new_ups_df: DataFrame containing new UPs to be added
-                - obsolete_ups: List of UPs to be marked as obsolete
+            tuple: A tuple containing:
+                - new_ups_df (pd.DataFrame): DataFrame of UPs present in the CSV but not in the database (to be added).
+                - obsolete_ups (list): List of UP codes present in the database but not in the CSV and not already marked as obsolete (to be marked obsolete).
         """
         try:
             # Get sets of UPs from both sources
@@ -294,16 +320,16 @@ class UPTracker:
     
     def add_new_ups(self, new_ups_df: pd.DataFrame) -> bool:
         """
-        Add new UPs to database
+        Adds new UP records to the database from the provided DataFrame.
         
-        Args:
-            new_ups_df (pd.DataFrame): DataFrame containing new UPs to add
-            
+        Parameters:
+            new_ups_df (pd.DataFrame): DataFrame containing new UPs to be added.
+        
         Returns:
-            bool: True if operation was successful, False if it failed with a duplicate entry error
-            
+            bool: True if the operation succeeds, or False if a duplicate entry error occurs.
+        
         Raises:
-            sqlalchemy.exc.SQLAlchemyError: If there is a database error (except for IntegrityError with duplicate entry)
+            sqlalchemy.exc.SQLAlchemyError: If a database error occurs, except for duplicate entry integrity errors.
         """
         try:
             if not new_ups_df.empty:
@@ -331,13 +357,13 @@ class UPTracker:
     
     def mark_obsolete_ups(self, delta_obsolete_ups: list) -> None:
         """
-        Mark obsolete UPs in database
+        Marks the specified UP codes as obsolete in the database by setting their `obsoleta` field to 1 and updating the modification date.
         
-        Args:
-            obsolete_ups (list): List of UP codes to mark as obsolete
-            
+        Parameters:
+        	delta_obsolete_ups (list): List of UP codes to be marked as obsolete.
+        
         Raises:
-            sqlalchemy.exc.SQLAlchemyError: If there is a database error
+        	Exception: If an error occurs during the database update operation.
         """
         try:
             if delta_obsolete_ups:
@@ -361,18 +387,20 @@ class UPTracker:
     
     def check_up_changes(self, csv_df: pd.DataFrame, new_ups_df: pd.DataFrame, delta_obsolete_ups: list, db_df: pd.DataFrame) -> tuple[pd.DataFrame, list]:
         """
-        Check for changes in potencia and zona_regulacion fields for existing UPs
+        Detects and logs changes in 'potencia' and 'zona_regulacion' fields for existing UPs, and records additions and obsoletions.
         
-        Args:
-            csv_df (pd.DataFrame): DataFrame from CSV with UPs to check
-            new_ups_df (pd.DataFrame): DataFrame with the list of new UPs
-            delta_obsolete_ups (list): List of UPs to be marked as obsolete
-            db_df (pd.DataFrame): DataFrame from database
-            
+        Compares UP records present in both the CSV and database (excluding new and obsolete UPs) to identify updates in the 'potencia' and 'zona_regulacion' fields. Generates change log entries for each detected change, as well as for newly added UPs (logged as 'habilitada') and newly marked obsolete UPs (logged as 'obsoleta').
+        
+        Parameters:
+            csv_df (pd.DataFrame): DataFrame containing UP data loaded from the CSV file.
+            new_ups_df (pd.DataFrame): DataFrame of UPs identified as new additions.
+            delta_obsolete_ups (list): List of UP codes to be marked as obsolete.
+            db_df (pd.DataFrame): DataFrame containing UP data loaded from the database.
+        
         Returns:
-            tuple: (updated_ups_df, change_log_entries)
-                - updated_ups_df: DataFrame containing UPs with updated fields
-                - change_log_entries: List of dictionaries with change log entries
+            tuple:
+                updated_ups_df (pd.DataFrame): DataFrame of UPs with updated 'potencia' or 'zona_regulacion' fields.
+                change_log_entries (list): List of dictionaries detailing each detected change for logging.
         """
         try:
             # Get common UPs that exist in both CSV and database (not new or obsolete)
@@ -467,13 +495,13 @@ class UPTracker:
     
     def save_change_log(self, change_log_entries: list) -> None:
         """
-        Save change log entries to UP_change_log table
+        Saves a list of UP change log entries to the database and prints a summary of changes by UP and by field.
         
-        Args:
-            change_log_entries (list): List of dictionaries with change log entries
-            
+        Parameters:
+            change_log_entries (list): List of dictionaries representing change log entries to be saved.
+        
         Raises:
-            sqlalchemy.exc.SQLAlchemyError: If there is a database error
+            Exception: If an error occurs while saving the change log to the database.
         """
         try:
             if change_log_entries:
@@ -515,13 +543,13 @@ class UPTracker:
     
     def update_up_changes(self, updated_ups_df: pd.DataFrame) -> None:
         """
-        Update existing UPs with new values for potencia and/or zona_regulacion
+        Update existing UP records in the database with new values for `potencia` and/or `zona_regulacion`.
         
-        Args:
-            updated_ups_df (pd.DataFrame): DataFrame containing UPs with updated fields
-            
+        Parameters:
+            updated_ups_df (pd.DataFrame): DataFrame containing UPs and their updated field values.
+        
         Raises:
-            sqlalchemy.exc.SQLAlchemyError: If there is a database error
+            Exception: If an error occurs during the database update operation.
         """
         try:
             self.bbdd_name = "energy_tracker"
@@ -542,10 +570,12 @@ class UPTracker:
 
     def process_ups(self, csv_path: str) -> None:
         """
-        Main method to process and update UPs.
+        Processes and synchronizes UP data between a CSV file and the database, updating records, marking obsolete entries, logging changes, and printing operation summaries.
         
-        Args:
-            csv_path (str): Path to csv file containing UP data
+        Parameters:
+            csv_path (str): Path to the CSV file containing UP data.
+        
+        This method orchestrates the workflow of loading UP data from both CSV and database, mapping technology IDs, identifying new and obsolete UPs, detecting changes in existing UPs, applying all updates to the database, saving change logs, and printing before-and-after statistics. Errors encountered during processing are reported and re-raised.
         """
         try:
             
@@ -635,7 +665,9 @@ class UPTracker:
 
 def main():
     """
-    Main execution function
+    Runs the UP synchronization workflow using a specified CSV file.
+    
+    This function instantiates the UPTracker, sets the path to the ESIOS UP list CSV file, and initiates the process to synchronize and update UP data between the CSV source and the database.
     """
 
     # Example usage

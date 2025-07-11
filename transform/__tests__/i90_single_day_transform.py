@@ -8,7 +8,9 @@ import time
 
 def test_single_day_precios():
     """
-    Test the transformation of a single day  for all markets
+    Test the transformation of single-day price data for the "restricciones" market using the TransformadorI90 class.
+    
+    Asserts that the transformation completes successfully for the specified date and market.
     """
     transformer = TransformadorI90()
     result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-02", fecha_fin="2025-03-02", dataset_type="precios_i90", mercados_lst=["restricciones"])
@@ -18,7 +20,9 @@ def test_single_day_precios():
 
 def test_single_day_volumenes():
     """
-    Test the transformation of a single day (latest day) for all markets
+    Test the transformation of volume data for the latest day in the "intra" market using the TransformadorI90 class.
+    
+    Asserts that the transformation completes successfully.
     """
     transformer = TransformadorI90()
     result = transformer.transform_data_for_all_markets(dataset_type="volumenes_i90", mercados_lst=["intra"])

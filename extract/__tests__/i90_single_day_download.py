@@ -8,7 +8,9 @@ import time
 
 def volumenes_download_single_day():
     """
-    Test the download of the volumenes for a single day for all markets
+    Tests downloading volume data for all markets for a single day using the I90VolumenesExtractor.
+    
+    Raises an AssertionError if the extraction is unsuccessful.
     """
     extractor = I90VolumenesExtractor()
     result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-01", fecha_fin_carga="2025-03-01")
@@ -16,7 +18,9 @@ def volumenes_download_single_day():
 
 def precios_download_single_day():
     """
-    Test the download of the precios for a single day for all markets
+    Tests downloading price data for all markets for a single day using the I90PreciosExtractor.
+    
+    Asserts that the extraction is successful and raises an error with details if it fails.
     """
     extractor = I90PreciosExtractor()
     result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-01", fecha_fin_carga="2025-03-01")

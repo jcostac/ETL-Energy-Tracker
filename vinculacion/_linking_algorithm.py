@@ -23,6 +23,12 @@ class UOFUPLinkingAlgorithm:
     """Core algorithm for linking UOFs to UPs based on volume matching"""
     
     def __init__(self, database_name: str = None):
+        """
+        Initialize the UOFUPLinkingAlgorithm with configuration, data extraction, database utilities, and raw file utilities.
+        
+        Parameters:
+            database_name (str, optional): Name of the database to use. If not provided, defaults to the configured database name.
+        """
         self.config = VinculacionConfig()
         self.data_extractor = VinculacionDataExtractor()
         self.db_utils = DatabaseUtils()
@@ -30,6 +36,12 @@ class UOFUPLinkingAlgorithm:
         self.raw_file_utils = RawFileUtils()
     
     def _get_engine(self):
+        """
+        Create and return a database engine for the configured database.
+        
+        Raises:
+            ValueError: If the engine creation fails.
+        """
         try:
             return self.db_utils.create_engine(self.database_name)
         except Exception as e:
@@ -37,10 +49,10 @@ class UOFUPLinkingAlgorithm:
         
     def _get_active_ups(self) -> pd.DataFrame:
         """
-        Get all non-obsolete UPs from up_listado table
+        Retrieve all active (non-obsolete) UPs from the database.
         
         Returns:
-            pd.DataFrame: Active UPs
+            pd.DataFrame: DataFrame containing unique active UPs from the `up_listado` table.
         """
         try:
             engine = self._get_engine()
@@ -70,16 +82,18 @@ class UOFUPLinkingAlgorithm:
     def _prepare_volume_data(self, omie_data: pd.DataFrame, 
                           i90_data: pd.DataFrame, target_date: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Prepares volume data for comparison by standardizing structure and filtering by target date. 
-        
-        Args:
-            omie_data: OMIE processed data
-            i90_data: I90 processed data
-            target_date: Target date for filtering (YYYY-MM-DD)
-            
-        Returns:
-            Tuple of prepared dataframes (omie_prepared, i90_prepared)
-        """
+                          Prepare OMIE and I90 volume data for a specific date by filtering, standardizing, and aggregating records for comparison.
+                          
+                          The function filters both OMIE (UOF) and I90 (UP) datasets to the target date (using Madrid local time), removes zero or missing volume entries, standardizes data types, and aggregates volumes by entity, hour, and market. It raises an exception if required columns are missing in either dataset.
+                          
+                          Parameters:
+                              omie_data (pd.DataFrame): OMIE dataset containing UOF volume records.
+                              i90_data (pd.DataFrame): I90 dataset containing UP volume records.
+                              target_date (str): Date to filter records by, in 'YYYY-MM-DD' format.
+                          
+                          Returns:
+                              Tuple[pd.DataFrame, pd.DataFrame]: Prepared OMIE and I90 DataFrames, filtered and aggregated for the target date.
+                          """
         print("\n🔧 PREPARING VOLUME DATA FOR COMPARISON")
         print("-"*45)
 
@@ -160,13 +174,13 @@ class UOFUPLinkingAlgorithm:
     
     def _compute_hourly_hash(self, volume_list: List[float]) -> str:
         """
-        Compute hash for a 24-hour volume profile
+        Compute an MD5 hash representing a 24-hour volume profile.
         
-        Args:
-            volume_list: List of hourly volumes (should be 24 values)
-            
+        Parameters:
+        	volume_list (List[float]): List of 24 hourly volume values.
+        
         Returns:
-            str: MD5 hash of the volume profile
+        	str: Hexadecimal MD5 hash string of the concatenated volume profile.
         """
         try:
             volume_str = ','.join(map(str, volume_list))
@@ -178,18 +192,18 @@ class UOFUPLinkingAlgorithm:
     @with_progress(message="Creating combined volume profiles...", interval=2)
     async def _create_combined_volume_profiles(self, df: pd.DataFrame, up_or_uof: str) -> Tuple[Dict[str, List[float]], Dict[str, str]]:
         """
-        Creates combined volume profiles for data across all markets (diario and intra).
-        Each profile combines volumes from markets 1(diario), 2, 3, 4 into a single list,
-        which is then hashed.
+        Asynchronously generates combined volume profiles and their hashes for each entity across all markets.
         
-        Args:
-            df: DataFrame containing volume data with 'id_mercado' and 'hour' columns
-            up_or_uof: Column name for the entity ('uof' or 'up')
-            
+        For each unique entity (UOF or UP), concatenates hourly volumes from markets 1 to 4 into a single profile list and computes its hash. Returns dictionaries mapping each entity to its combined profile and corresponding hash value.
+        
+        Parameters:
+            df (pd.DataFrame): DataFrame containing volume data with 'id_mercado' and 'hour' columns.
+            up_or_uof (str): Column name specifying the entity type ('uof' or 'up').
+        
         Returns:
-            Tuple containing:
-            - Dict mapping entity names to combined market volume profiles
-            - Dict mapping entity names to their hash values
+            Tuple[Dict[str, List[float]], Dict[str, str]]: 
+                - Dictionary mapping entity names to their combined volume profiles.
+                - Dictionary mapping entity names to their profile hash values.
         """
         profiles = {}
         hashes = {}
@@ -225,15 +239,15 @@ class UOFUPLinkingAlgorithm:
 
     async def _process_single_entity(self, df: pd.DataFrame, up_or_uof: str, entity_name: str) -> Tuple[str, List[float], str]:
         """
-        Process a single entity to create its volume profile and hash.
+        Asynchronously generates the combined volume profile and hash for a single entity across all markets.
         
-        Args:
-            df: DataFrame containing volume data
-            up_or_uof: Column name for the entity ('uof' or 'up')
-            entity_name: Name of the entity to process ie "ZABU"
-            
+        Parameters:
+            df (pd.DataFrame): DataFrame containing volume data.
+            up_or_uof (str): Column name specifying the entity type ('uof' or 'up').
+            entity_name (str): Name of the entity to process.
+        
         Returns:
-            Tuple of (entity_name, volume_profile, hash_value)
+            tuple: (entity_name, combined_volume_profile, hash_value), where combined_volume_profile is a list of nonzero hourly volumes across markets 1 to 4, and hash_value is the MD5 hash of this profile.
         """
         # Filter data for current entity
         entity_data = df[df[up_or_uof] == entity_name]
@@ -268,8 +282,16 @@ class UOFUPLinkingAlgorithm:
     @with_progress(message="Creating combined volume profiles...", interval=2)
     async def _run_matching_round(self, omie_df: pd.DataFrame, i90_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Runs one round of matching using prepared volume data.
-        Assumes input dataframes are already prepared and filtered.
+        Performs a single asynchronous matching round between UOFs and UPs using their prepared volume profiles.
+        
+        Given OMIE (UOF) and I90 (UP) DataFrames, this method generates combined volume profiles and hashes for each entity, then compares these hashes to identify exact and ambiguous matches. Returns two DataFrames: one with unique exact matches and another with ambiguous matches requiring further resolution.
+        
+        Parameters:
+            omie_df (pd.DataFrame): Prepared OMIE data for UOFs.
+            i90_df (pd.DataFrame): Prepared I90 data for UPs.
+        
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame]: DataFrames of exact matches and ambiguous matches, each with columns ['up', 'uof', 'match_type'].
         """
         if omie_df.empty or i90_df.empty:
             print("⚠️  No data available for this matching round.")
@@ -309,14 +331,16 @@ class UOFUPLinkingAlgorithm:
     @with_progress(message="Finding hash matches...", interval=2)
     def _find_hash_matches(self, up_hashes: Dict[str, str], hash_to_uofs: Dict[str, List[str]]) -> List[Dict[str, str]]:
         """
-        Finds matches based on identical hashes for UOFs and UPs
+        Finds exact and ambiguous matches between UPs and UOFs based on identical volume profile hashes.
         
-        Args:
-            up_hashes: Dict mapping UP names to their hash values ex: {'UP1': 'hash1', 'UP2': 'hash2'}
-            hash_to_uofs: Dict mapping hash values to lists of UOF names ex: {'hash1': ['UOF1', 'UOF2'], 'hash2': ['UOF3', 'UOF4']}
-            
+        Compares UP hashes to UOF hashes to identify unique (1:1) matches and ambiguous cases where multiple UPs or UOFs share the same hash.
+        
+        Parameters:
+            up_hashes (Dict[str, str]): Mapping of UP names to their hash values.
+            hash_to_uofs (Dict[str, List[str]]): Mapping of hash values to lists of UOF names.
+        
         Returns:
-            List of match dictionaries, i.e. exact_matches and ambiguous_matches
+            Tuple[List[Dict[str, str]], List[Dict[str, str]]]: Two lists of match dictionaries: exact unique matches and ambiguous matches.
         """
         exact_matches = list()
         ambiguous_matches = list()
@@ -355,13 +379,13 @@ class UOFUPLinkingAlgorithm:
         
     def _resolve_name_matches(self, ambiguous_matches_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Resolves ambiguous matches by prioritizing exact name matches between UP and UOF
+        Resolve ambiguous UP-UOF matches by selecting pairs where the UP and UOF names are identical.
         
-        Args:
-            ambiguous_matches_df: DataFrame with ambiguous matches
-            
+        Parameters:
+            ambiguous_matches_df (pd.DataFrame): DataFrame containing ambiguous UP-UOF matches.
+        
         Returns:
-            Tuple of (name_resolved_matches_df, remaining_ambiguous_matches_df)
+            Tuple[pd.DataFrame, pd.DataFrame]: A tuple containing a DataFrame of matches resolved by name and a DataFrame of remaining ambiguous matches.
         """
         if ambiguous_matches_df.empty:
             return pd.DataFrame(), ambiguous_matches_df
@@ -401,13 +425,13 @@ class UOFUPLinkingAlgorithm:
     
     def _resolve_uof_conflicts(self, matches_df: pd.DataFrame) -> Tuple[pd.DataFrame, list]:
         """
-        Resolves conflicts where the same UOF is matched to multiple UPs
+        Remove matches where a UOF is linked to multiple UPs, returning only conflict-free matches.
         
-        Args:
-            matches_df: DataFrame with potential UOF conflicts
-            
+        Parameters:
+        	matches_df (pd.DataFrame): DataFrame containing UOF-UP match pairs.
+        
         Returns:
-            Tuple of (clean_matches_df, conflicted_ups)
+        	Tuple[pd.DataFrame, list]: A tuple with the cleaned matches DataFrame (excluding conflicted UOFs) and a list of UPs involved in conflicts.
         """
         if matches_df.empty:
             return matches_df, []
@@ -443,13 +467,13 @@ class UOFUPLinkingAlgorithm:
 
     def _create_final_matches_df(self, matches_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Creates final matches DataFrame with only UP and UOF columns
+        Create a DataFrame of final UP-UOF matches with only the essential columns and a date stamp.
         
-        Args:
-            matches_df: DataFrame with all matches including metadata
-            
+        Parameters:
+            matches_df (pd.DataFrame): DataFrame containing matched UP-UOF pairs and metadata.
+        
         Returns:
-            pd.DataFrame: Final matches with columns [up, uof]
+            pd.DataFrame: DataFrame with columns ['up', 'uof', 'date_updated'] representing the final matches.
         """
         if matches_df.empty:
             return pd.DataFrame(columns=['up', 'uof'])
@@ -467,7 +491,10 @@ class UOFUPLinkingAlgorithm:
 
     def _check_raw_data_exists_for_date(self, target_date: str, market: str, dataset_type: str, source: str) -> bool:
         """
-        Checks if raw data for a specific date, market, and dataset type already exists.
+        Check if a raw CSV data file exists for a given date, market, dataset type, and source.
+        
+        Returns:
+            bool: True if the file exists and contains data for the specified date; otherwise, False.
         """
         try:
             
@@ -514,13 +541,27 @@ class UOFUPLinkingAlgorithm:
     ### MAIN METHOD TO LINK UOFs TO UPs FOR A GIVEN DATE ###
     async def link_uofs_to_ups(self, target_date: str, ups_to_link: List[str] = None, save_to_db: bool = False) -> Dict:
         """
-        Main method to link UOFs to UPs for a given date using a two-round matching process.
+        Links UOFs to UPs for a specified date using a two-round volume profile matching process with ambiguity and conflict resolution.
         
-        Args:
-            target_date: Target date for linking (YYYY-MM-DD)
-            ups_to_link: List of UPs to link (optional), if not provided, all active UPs will be linked
+        This asynchronous method orchestrates the full pipeline for linking UOFs (units of operation) to UPs (units of production) by:
+        - Preparing and validating required raw data for the target date (and previous day if needed).
+        - Extracting and transforming OMIE and I90 datasets.
+        - Matching UOFs to UPs based on combined hourly volume profiles across multiple markets.
+        - Resolving ambiguous matches by name and, if necessary, using historical data from the previous day.
+        - Handling conflicts where a UOF is matched to multiple UPs.
+        - Optionally saving the resulting links to the database.
+        
+        Parameters:
+            target_date (str): The date for which to perform the linking (format: YYYY-MM-DD).
+            ups_to_link (List[str], optional): List of UPs to restrict the linking process to. If not provided, all active UPs are considered.
+            save_to_db (bool, optional): If True, saves the resulting links to the database.
+        
         Returns:
-            Dict: Results of the linking process, including success status, a message, and the resulting dataframe.
+            Dict: A dictionary containing:
+                - 'target_date': The date for which linking was performed.
+                - 'links_df': DataFrame of final UOF-UP links.
+                - 'success': Boolean indicating if the process completed successfully.
+                - 'message': Status or error message.
         """
         print(f"\n🚀 STARTING UOF-UP LINKING PROCESS")
         print(f"Target Date: {target_date}")
@@ -688,10 +729,10 @@ class UOFUPLinkingAlgorithm:
         
     def _save_links_to_database(self, links_df: pd.DataFrame):
         """
-        Saves the links DataFrame to the database.
-
-        Args:
-            links_df: DataFrame with the links to save
+        Save the provided links DataFrame to the configured database table.
+        
+        Parameters:
+            links_df (pd.DataFrame): DataFrame containing the UP-UOF links to be saved.
         """
         try:
 

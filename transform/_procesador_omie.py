@@ -25,7 +25,7 @@ class OMIEProcessor:
     """
     def __init__(self):
         """
-        Initialize the transformer with OMIE processing utilities.
+        Initialize the OMIEProcessor with date/time and data validation utilities.
         """
         self.date_utils = DateUtilsETL()
         self.data_validator = DataValidationUtils()
@@ -33,13 +33,10 @@ class OMIEProcessor:
     # === 1. CLEANING ===
     def _clean_empty_rows(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Remove rows that are completely empty or have only NaN values in critical columns.
+        Remove rows from the DataFrame that are entirely empty or have NaN values in all critical columns ('Fecha', 'Hora', 'Unidad').
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            
         Returns:
-            pd.DataFrame: Cleaned DataFrame
+            pd.DataFrame: The DataFrame with empty or invalid rows removed.
         """
         print("\n🧹 CLEANING EMPTY ROWS")
         print("-"*30)
@@ -68,14 +65,12 @@ class OMIEProcessor:
     # === 2. PROCESSING ENERGY, PRICE, UOF, GRANULARITY COLUMNS ===
     def _add_granularity_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Add granularity column based on the unique values in the 'Hora' column.
-        Now that columns are standardized, we always check 'Hora' column.
+        Add a 'granularity' column to the DataFrame based on the format of the 'Hora' column.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame with 'Hora' column
-            
+        Determines whether the data is at 15-minute intervals ('Quince minutos') or hourly ('Hora') by inspecting the 'Hora' column. Raises an exception if 'Hora' is missing.
+        
         Returns:
-            pd.DataFrame: DataFrame with added 'granularity' column
+            pd.DataFrame: DataFrame with the added 'granularity' column.
         """
         print("\n⏱️ ADDING GRANULARITY COLUMN")
         print("-"*30)
@@ -101,16 +96,12 @@ class OMIEProcessor:
     
     def _process_and_filter_energy_column(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Process energy columns and apply filtering/multipliers based on market type.
-        Now that column names are standardized in extract phase, we always expect 'Energía Compra/Venta'.
-        Division by 4 only occurs when we detect 15-minute granularity (H2Q4 format).
+        Processes and filters the energy column in the DataFrame according to the specified market type.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            mercado (str): Market type ('diario', 'intra', 'continuo')
-            
+        For 'diario' and 'intra' markets, filters for matched units, cleans and converts the energy column to numeric, adjusts for 15-minute granularity if needed, renames the column to 'volumenes', and applies a buy/sell multiplier. For 'continuo' market, processes and renames the 'Cantidad' column to 'volumenes'.
+        
         Returns:
-            pd.DataFrame: DataFrame with processed energy column and applied filters
+            pd.DataFrame: DataFrame with processed and filtered energy values.
         """
         print("\n⚡ PROCESSING ENERGY AND FILTERS")
         print("-"*30)
@@ -119,6 +110,11 @@ class OMIEProcessor:
         
         # Helper function to clean numeric column
         def clean_numeric_column(column_series):
+            """
+            Cleans and converts a pandas Series to numeric type, handling European number formatting.
+            
+            If the input Series is not already numeric, removes thousand separators (dots), replaces decimal commas with dots, and converts the result to float.
+            """
             if pd.api.types.is_numeric_dtype(column_series):
                 return column_series
             else:
@@ -172,13 +168,10 @@ class OMIEProcessor:
 
     def _standardize_price_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Standardize the price column for continuo market data.
+        Standardizes the 'Precio' column in continuo market data by removing thousand separators, converting decimal commas to dots, casting to float, and renaming the column to 'precio'.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            
         Returns:
-            pd.DataFrame: DataFrame with standardized price column
+            pd.DataFrame: DataFrame with the standardized 'precio' column.
         """
         if 'Precio' in df.columns:
             df['Precio'] = df['Precio'].str.replace('.', '')
@@ -190,15 +183,15 @@ class OMIEProcessor:
 
     def _process_uof_columns(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Process unit columns based on market type. For diairo and intra markets, rename Unidad to uof. 
-        For continuo markets, handle buy and sell units separately, making sell volumes positive and buy volumes negative.
+        Process unit columns according to the specified market type.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            mercado (str): Market type ('diario', 'intra', 'continuo')
-            
+        For 'diario' and 'intra' markets, renames the 'Unidad' column to 'uof'. For the 'continuo' market, separates buy and sell units into distinct rows, assigning negative volumes to buy units and positive volumes to sell units, then combines them into a single DataFrame.
+        
+        Parameters:
+            mercado (str): The market type, one of 'diario', 'intra', or 'continuo'.
+        
         Returns:
-            pd.DataFrame: DataFrame with processed unit columns
+            pd.DataFrame: DataFrame with standardized unit columns and adjusted volume signs for the 'continuo' market.
         """
         print("\n🏭 PROCESSING UNIT COLUMNS")
         print("-"*30)
@@ -243,15 +236,12 @@ class OMIEProcessor:
     # === 3. PROCESSING DATETIME COLUMN ===
     def _preprocess_datetime_column(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Standardize datetime columns (Fecha and Hora) for all market types.
-        This is the first step before UTC conversion.
+        Standardizes the 'Fecha' and 'Hora' columns for all OMIE market types in preparation for UTC conversion.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            mercado (str): Market type ('diario', 'intra', 'continuo')
-            
+        For the 'continuo' market, extracts date and hour information from the 'Contrato' column and adds a 'fecha_fichero' column. For 'diario' and 'intra' markets with 15-minute granularity, parses the 'Periodo' column to compute a 1-based 15-minute interval index for 'Hora'. Ensures 'Fecha' is in datetime format and 'Hora' is an integer.
+        
         Returns:
-            pd.DataFrame: DataFrame with standardized Fecha and Hora columns
+            pd.DataFrame: DataFrame with standardized 'Fecha' and 'Hora' columns.
         """
         print("\n🕐 STANDARDIZING DATETIME COLUMNS")
         print("-"*30)
@@ -306,15 +296,16 @@ class OMIEProcessor:
     
     def _standardize_datetime(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Ensures a standard UTC datetime column with proper granularity handling.
-        Handles different input formats and properly processes DST transitions.
+        Standardizes the datetime information in the DataFrame to a UTC-based column, handling both hourly and 15-minute granularities and accounting for DST transitions.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            mercado (str): Market type ('diario', 'intra', 'continuo')
-            
+        Splits the data by granularity and whether the date is a DST transition day, applies specialized parsing and localization logic for each subset, and combines the results into a unified DataFrame with a `datetime_utc` column. Removes intermediate columns and invalid datetimes before returning the processed DataFrame.
+        
+        Parameters:
+            df (pd.DataFrame): Input DataFrame containing OMIE market data.
+            mercado (str): Market type, one of 'diario', 'intra', or 'continuo'.
+        
         Returns:
-            pd.DataFrame: DataFrame with standardized datetime_utc column
+            pd.DataFrame: DataFrame with standardized UTC datetime column (`datetime_utc`), sorted and cleaned of invalid entries.
         """
         if df.empty: 
             return df
@@ -393,15 +384,14 @@ class OMIEProcessor:
     @with_progress(message="Processing OMIE hourly DST data")
     def _process_omie_hourly_dst_data(self, df: pd.DataFrame, transition_dates: Dict) -> pd.DataFrame:
         """
-        Process OMIE hourly data for DST transition days.
-        Handles spring forward (23 hours: 1-23, skip hour 2) and fall back (25 hours: repeat hour 2).
+        Processes OMIE hourly market data for days with daylight saving time (DST) transitions, correctly handling the unique hour patterns of spring forward and fall back days.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame with DST transition days
-            transition_dates (Dict): Dictionary of DST transition dates
-            
+        Parameters:
+            df (pd.DataFrame): DataFrame containing OMIE hourly data for DST transition days.
+            transition_dates (Dict): Mapping of DST transition dates and their types.
+        
         Returns:
-            pd.DataFrame: DataFrame with processed datetime_utc
+            pd.DataFrame: DataFrame with standardized UTC datetimes and converted to 15-minute intervals.
         """
         try:
             result_df = df.copy()
@@ -428,13 +418,12 @@ class OMIEProcessor:
     @with_progress(message="Processing OMIE hourly normal data (vectorized)")
     def _process_omie_hourly_normal_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Process OMIE hourly data for normal (non-DST transition) days using vectorized operations.
+        Process OMIE hourly data for non-DST transition days by localizing datetimes and converting to UTC.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame with normal days
-            
+        The function combines date and hour columns to create naive datetimes, localizes them to the Europe/Madrid timezone with DST inference, converts them to UTC, and then expands the data to 15-minute intervals.
+        
         Returns:
-            pd.DataFrame: DataFrame with processed datetime_utc
+            pd.DataFrame: DataFrame with standardized UTC datetimes and 15-minute frequency.
         """
         try:
             result_df = df.copy()
@@ -459,15 +448,12 @@ class OMIEProcessor:
     @with_progress(message="Processing OMIE 15-minute DST data")
     def _process_omie_15min_dst_data(self, df: pd.DataFrame, transition_dates: Dict) -> pd.DataFrame:
         """
-        Process OMIE 15-minute data for DST transition days.
-        Handles spring forward (92 intervals) and fall back (100 intervals).
+        Processes OMIE 15-minute interval data for days with daylight saving time (DST) transitions.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame with DST transition days
-            transition_dates (Dict): Dictionary of DST transition dates
-            
+        Handles the unique interval counts and time anomalies present during spring forward (92 intervals) and fall back (100 intervals) DST changes. Generates a timezone-aware local datetime for each row, converts it to UTC, and returns the updated DataFrame with a standardized `datetime_utc` column.
+        
         Returns:
-            pd.DataFrame: DataFrame with processed datetime_utc
+            pd.DataFrame: DataFrame with a new `datetime_utc` column representing the standardized UTC timestamps for each interval.
         """
         try:
             result_df = df.copy()
@@ -491,13 +477,9 @@ class OMIEProcessor:
     @with_progress(message="Processing OMIE 15-minute normal data (vectorized)")
     def _process_omie_15min_normal_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Process OMIE 15-minute data for normal (non-DST transition) days using vectorized operations.
+        Process OMIE 15-minute interval data for non-DST transition days and generate UTC datetimes.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame with normal days
-            
-        Returns:
-            pd.DataFrame: DataFrame with processed datetime_utc
+        Combines date and 15-minute interval index to create localized Europe/Madrid datetimes, then converts them to UTC. Returns the DataFrame with an added `datetime_utc` column. If an error occurs, returns an empty DataFrame.
         """
         try:
             result_df = df.copy()
@@ -519,18 +501,17 @@ class OMIEProcessor:
 
     def _parse_omie_hourly_datetime_local(self, fecha, hora_int, transition_dates: Dict) -> pd.Timestamp:
         """
-        Parse OMIE hourly data into timezone-aware datetime in Europe/Madrid timezone.
-        Handles DST transitions:
-        - Spring forward: 23 hours (1-23), hour 2 doesn't exist
-        - Fall back: 25 hours (1-25), hour 2 is repeated (first occurrence and second occurrence)
+        Parse an OMIE hourly data row into a timezone-aware datetime in the Europe/Madrid timezone, correctly handling daylight saving time (DST) transitions.
         
-        Args:
-            fecha: Date object or datetime object
-            hora_int: Hour integer (1-based indexing: 1=00:00, 2=01:00, etc.)
-            transition_dates: Dictionary of DST transition dates
-            
+        On spring forward days (23-hour days), skips the non-existent hour (2:00 AM). On fall back days (25-hour days), distinguishes between the repeated hour (2:00 AM) occurrences. For normal days, returns the localized datetime without special handling.
+        
+        Parameters:
+            fecha: Date or datetime representing the day of the data row.
+            hora_int: Hour as a 1-based integer (1=00:00, 2=01:00, etc.).
+            transition_dates: Dictionary mapping dates to DST transition types (0=normal, 1=fall back, 2=spring forward).
+        
         Returns:
-            Timezone-aware pd.Timestamp in Europe/Madrid timezone
+            pd.Timestamp: Timezone-aware datetime localized to Europe/Madrid, with DST transitions handled appropriately.
         """
         # Ensure fecha is a date object
         if isinstance(fecha, pd.Timestamp):
@@ -614,16 +595,15 @@ class OMIEProcessor:
     
     def _parse_omie_15min_datetime_local(self, fecha, hora_index, transition_dates: Dict) -> pd.Timestamp:
         """
-        Parse OMIE 15-minute format data into a timezone-aware datetime in Europe/Madrid timezone.
-        Handles DST transitions correctly.
+        Parse a 15-minute OMIE interval into a timezone-aware datetime in Europe/Madrid, correctly handling DST transitions.
         
-        Args:
-            fecha: Date object or datetime object
-            hora_index: 15-minute interval index (1-96 for normal days, 1-92 for spring forward, 1-100 for fall back)
-            transition_dates: Dictionary of DST transition dates
-            
+        Parameters:
+            fecha: The date of the interval, as a date, datetime, or string.
+            hora_index: The 1-based index of the 15-minute interval (range depends on DST: 1–96 normal, 1–92 spring forward, 1–100 fall back).
+            transition_dates: Dictionary mapping dates to DST transition types (1 for fall back, 2 for spring forward).
+        
         Returns:
-            Timezone-aware pd.Timestamp in Europe/Madrid timezone
+            pd.Timestamp: Timezone-aware datetime in Europe/Madrid for the specified interval, with DST ambiguity and non-existence handled.
         """
         # Ensure fecha is a date object
         if isinstance(fecha, pd.Timestamp):
@@ -699,14 +679,12 @@ class OMIEProcessor:
     # === 4. AGGREGATION ===
     def _aggregate_data(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Aggregate data by grouping columns based on market type.
+        Aggregates OMIE market data by grouping and summing volumes for 'diario' and 'intra' markets.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            mercado (str): Market type ('diario', 'intra', 'continuo')
-            
+        For 'diario' and 'intra' markets, groups data by unit ('uof'), UTC datetime ('datetime_utc'), and market ID ('id_mercado'), summing the 'volumenes' column. For 'continuo' market, returns the data unchanged as each row represents an individual trade.
+        
         Returns:
-            pd.DataFrame: Aggregated DataFrame
+            pd.DataFrame: Aggregated DataFrame for 'diario' and 'intra', or unchanged DataFrame for 'continuo'.
         """
         print("\n📊 AGGREGATING DATA")
         print("-"*30)
@@ -729,14 +707,16 @@ class OMIEProcessor:
     # === 5. SELECT AND FINALIZE COLUMNS ===
     def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Select final columns based on dataset type and validation requirements.
+        Selects and returns only the required columns for the specified dataset type, ensuring the output DataFrame matches validation requirements.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            dataset_type (str): Type of dataset ('volumenes_omie' or 'volumenes_mic')
-            
+        Parameters:
+            dataset_type (str): The type of dataset, either 'volumenes_omie' or 'volumenes_mic'.
+        
         Returns:
-            pd.DataFrame: DataFrame with final columns
+            pd.DataFrame: DataFrame containing only the required columns for the given dataset type.
+        
+        Raises:
+            ValueError: If an unknown dataset type is provided.
         """
         print("\n📋 FINALIZING COLUMNS")
         print("-"*30)
@@ -759,15 +739,18 @@ class OMIEProcessor:
     # === 6. DATA VALIDATION ===
     def _validate_final_data(self, df: pd.DataFrame, dataset_type: str, validation_type: str = "processed") -> pd.DataFrame:
         """
-        Validate data structure and types. Deffault for omie is processed (we dont check for raw data validation)
+        Validates the structure and data types of the DataFrame according to the specified dataset and validation type.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            validation_type (str): 'raw' or 'processed'
-            dataset_type (str): Dataset type for validation
-            
+        Parameters:
+            df (pd.DataFrame): The DataFrame to validate.
+            dataset_type (str): The type of dataset to use for validation.
+            validation_type (str): Specifies whether to perform 'processed' or 'raw' validation. Defaults to 'processed'.
+        
         Returns:
-            pd.DataFrame: Validated DataFrame
+            pd.DataFrame: The validated DataFrame. If the input DataFrame is empty, it is returned unchanged.
+        
+        Raises:
+            Exception: If validation fails, an exception is raised with details.
         """
         print(f"\n🔍 DATA VALIDATION ({validation_type.upper()})")
         print("-"*30)
@@ -793,13 +776,15 @@ class OMIEProcessor:
     # === MAIN PIPELINE FUNCTIONS ===
     def transform_omie_diario(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Transform OMIE diario market data.
+        Transforms raw OMIE diario market data into a validated, standardized DataFrame.
         
-        Args:
-            df (pd.DataFrame): Raw diario market data
-            
+        This method applies a multi-step ETL pipeline to clean, process, standardize datetimes (with DST handling), aggregate, select required columns, and validate OMIE diario market data. Returns an empty DataFrame with required columns if input is empty.
+        
+        Parameters:
+            df (pd.DataFrame): Raw OMIE diario market data to be transformed.
+        
         Returns:
-            pd.DataFrame: Processed diario market data
+            pd.DataFrame: Processed and validated OMIE diario market data.
         """
         print("\n" + "="*80)
         print("🔄 STARTING OMIE DIARIO TRANSFORMATION")
@@ -830,13 +815,12 @@ class OMIEProcessor:
 
     def transform_omie_intra(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Transform OMIE intra market data.
+        Transforms raw OMIE intra market data through a multi-step ETL pipeline.
         
-        Args:
-            df (pd.DataFrame): Raw intra market data
-            
+        The transformation includes cleaning, granularity detection, energy and unit processing, datetime standardization with DST handling, aggregation, column selection, and validation. Returns a processed DataFrame with standardized structure for intra market data.
+        
         Returns:
-            pd.DataFrame: Processed intra market data
+            pd.DataFrame: The processed intra market data, or an empty DataFrame with required columns if input is empty.
         """
         print("\n" + "="*80)
         print("🔄 STARTING OMIE INTRA TRANSFORMATION")
@@ -867,13 +851,12 @@ class OMIEProcessor:
 
     def transform_omie_continuo(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Transform OMIE continuo market data.
+        Transforms raw OMIE continuo market data into a validated, standardized DataFrame.
         
-        Args:
-            df (pd.DataFrame): Raw continuo market data
-            
+        This method applies a multi-step ETL pipeline to OMIE continuo market data, including cleaning, energy and unit processing, datetime standardization with DST handling, aggregation, column selection, and validation. Returns a processed DataFrame with the required structure for downstream analysis. If the input DataFrame is empty, returns an empty DataFrame with the expected columns.
+        
         Returns:
-            pd.DataFrame: Processed continuo market data
+            pd.DataFrame: The processed and validated OMIE continuo market data.
         """
         print("\n" + "="*80)
         print("🔄 STARTING OMIE CONTINUO TRANSFORMATION")
@@ -903,15 +886,19 @@ class OMIEProcessor:
 
     def _execute_pipeline(self, df: pd.DataFrame, pipeline: List, market_name: str) -> pd.DataFrame:
         """
-        Execute a processing pipeline with error handling and progress tracking printouts.
+        Executes a sequence of data processing steps on a DataFrame, providing progress updates and halting if the DataFrame becomes empty before validation.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame
-            pipeline (List): List of (function, kwargs) tuples
-            market_name (str): Market name for logging
-            
+        Parameters:
+            df (pd.DataFrame): The input DataFrame to process.
+            pipeline (List): A list of (function, kwargs) tuples representing the processing steps.
+            market_name (str): Name of the market, used for error reporting.
+        
         Returns:
-            pd.DataFrame: Processed DataFrame
+            pd.DataFrame: The processed DataFrame after all pipeline steps are applied.
+        
+        Raises:
+            ValueError: If the DataFrame becomes empty before the validation step.
+            Exception: Propagates any exception encountered during processing.
         """
         try:
             df_processed = df.copy()
@@ -946,6 +933,11 @@ class OMIEProcessor:
 
 
 def example_usage():    
+    """
+    Demonstrates how to use the OMIEProcessor class to transform OMIE market data for intra, diario, and continuo markets.
+    
+    This function loads sample CSV files for each market type, applies the corresponding transformation methods, and prints the processed DataFrames. Breakpoints are included for interactive inspection of results.
+    """
     processor = OMIEProcessor()
     df_intra = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/intra/2024/03/volumenes_omie.csv")
     df_diario = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/diario/2024/10/volumenes_omie.csv")

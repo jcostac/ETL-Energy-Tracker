@@ -21,6 +21,9 @@ class OMIEDownloader:
     """
  
     def __init__(self):
+        """
+        Initializes the OMIEDownloader base class with a default temporary tracking folder and a placeholder for configuration.
+        """
         self.tracking_folder = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "data_lake", "temporary")
         )
@@ -28,9 +31,12 @@ class OMIEDownloader:
            
     def descarga_datos_omie_mensuales(self, month: int = None, year: int = None, months_ago: int = 4) -> pd.DataFrame:
         """
-        Downloads the 'curva agregada de oferta y demanda' for the latest available full month (current month - 4).
-        The file is saved with a prefix indicating the type (e.g., 'diario_' or 'intradiario_').
-        Returns processed data as a dataframe.
+        Download and process the aggregated supply and demand curve data for a specified or default month from OMIE.
+        
+        Downloads the monthly ZIP file containing aggregated curve data for the given market type, extracts and processes all contained CSV files, and returns the combined data as a pandas DataFrame. The target month defaults to four months prior to the current date if not specified. Raises an exception if the download fails or file processing encounters an error.
+        
+        Returns:
+            pd.DataFrame: Combined and processed data for the specified month.
         """
  
         #get the date for which we have a complete month of data (check if it is at least todays month -4)
@@ -95,7 +101,17 @@ class OMIEDownloader:
   
     def descarga_datos_omie_latest_day(self, month: int = None, year: int = None, months_ago: int = 3) -> pd.DataFrame:
         """
-        Downloads the 'curva agregada de oferta y demanda' for the latest available day of the last available day of the month (current month - 3).
+        Download and return OMIE aggregated supply and demand curve data for the latest available day of a specified or recent month.
+        
+        This method retrieves the ZIP archive for the given month (default: three months ago), identifies the most recent day's data within the archive, and processes the relevant CSV files. For the intraday market, it collects all session files for the latest date; for other markets, only the latest file is processed. Files corresponding to known error dates are skipped.
+        
+        Parameters:
+        	month (int, optional): Target month (1-12). If not provided, determined by `months_ago`.
+        	year (int, optional): Target year. If not provided, determined by `months_ago`.
+        	months_ago (int, optional): Number of months before the current month to use if `month` and `year` are not specified. Default is 3.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing the processed data for the latest available day, or an empty DataFrame if no valid data is found.
         """
  
         target_date = self._date_validation(month, year, months_ago)
@@ -189,14 +205,17 @@ class OMIEDownloader:
     ####// MAIN DOWNLOADER METHOD //####
     def descarga_omie_datos(self, fecha_inicio_carga: str, fecha_fin_carga: str, intras: list = None) -> dict:
         """
-        Descarga los datos diarios de OMIE para un rango de fechas.
-       
-        Args:
-            fecha_inicio (str): Start date in format YYYY-MM-DD
-            fecha_fin (str): End date in format YYYY-MM-DD
-            intras (list): List of intras to download, default None is all available intras, in format 1, 2, etc
+        Download and process daily OMIE market data files for a specified date range.
+        
+        Downloads monthly ZIP archives containing daily CSV files from OMIE, filters and processes files within the specified date range, and optionally restricts to specific intraday sessions. Excludes files with known error dates. Returns a dictionary mapping each year-month to a list of processed dataframes for the matching days.
+        
+        Parameters:
+            fecha_inicio_carga (str): Start date in 'YYYY-MM-DD' format.
+            fecha_fin_carga (str): End date in 'YYYY-MM-DD' format.
+            intras (list, optional): List of intraday session numbers to include; if None, includes all available sessions.
+        
         Returns:
-            dict: Dictionary with monthly data containing files for the specified days with format {year_month: [dataframes]}
+            dict: Dictionary with keys as 'YYYYMM' strings and values as lists of processed pandas DataFrames for each matching file.
         """
         # Validate dates
         start_date, end_date = self._date_validation(fecha_inicio=fecha_inicio_carga, fecha_fin=fecha_fin_carga)
@@ -309,7 +328,16 @@ class OMIEDownloader:
    
     def _parse_intra_list(self, intras: list) -> list:
         """
-        Check if the intras are valid. If they pass an int convert to str ie 1-> "1"
+        Validate and convert a list of intraday session numbers to strings.
+        
+        Parameters:
+            intras (list): List of session numbers to validate and convert.
+        
+        Returns:
+            list: List of session numbers as strings.
+        
+        Raises:
+            ValueError: If any session number is not in the range 1 to 7.
         """
         if intras is None:
             return None
@@ -323,13 +351,16 @@ class OMIEDownloader:
     
     def _process_df(self, df: pd.DataFrame, file_name: str = None) -> pd.DataFrame:
         """
-        Process the OMIE dataframe to standardize column names and data types.
-       
-        Args:
-            df (pd.DataFrame): Raw dataframe from OMIE CSV file
-            file_name (str): Optional filename to extract session info for intraday market
+        Processes and standardizes an OMIE data DataFrame, converting columns to appropriate types and handling intraday session and duplicates.
+        
+        For intraday market data, extracts the session number from the filename, adds it as a column, and aggregates duplicate rows by summing energy and averaging price values.
+        
+        Parameters:
+            df (pd.DataFrame): Raw DataFrame from an OMIE CSV file.
+            file_name (str, optional): Filename used to extract session information for intraday data.
+        
         Returns:
-            pd.DataFrame: Processed dataframe with standardized columns
+            pd.DataFrame: The processed DataFrame with standardized columns and, for intraday data, session and aggregated duplicates.
         """
         # Drop any completely empty rows and columns
         df = df.dropna(axis=0, how='all')
@@ -417,18 +448,26 @@ class OMIEDownloader:
     def _date_validation(self, month: int = None, year: int = None, months_ago: int = 4,
                          fecha_inicio: str = None, fecha_fin: str = None) -> datetime:
         """
-        Validate the date provided by the user.
-       
-        Args:
-            month (int, optional): Month number (1-12)
-            year (int, optional): Year (e.g., 2025)
-            months_ago (int, optional): Number of months ago to check against
-            fecha_inicio (str, optional): Start date in format YYYY-MM-DD
-            fecha_fin (str, optional): End date in format YYYY-MM-DD
-           
-        Returns:
-            datetime: Validated target date
-        """
+                         Validates and returns appropriate date(s) based on user input for OMIE data downloads.
+                         
+                         Depending on the provided arguments, this method:
+                         - Validates a start and end date range, ensuring the end date is not before the start date and is at least 93 days before today.
+                         - Validates a specific month and year, ensuring the month is at least 93 days before today.
+                         - If neither is provided, returns the date corresponding to a specified number of months ago from today.
+                         
+                         Parameters:
+                             month (int, optional): Target month (1-12).
+                             year (int, optional): Target year (e.g., 2025).
+                             months_ago (int, optional): Number of months to subtract from today if no explicit date is given.
+                             fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format.
+                             fecha_fin (str, optional): End date in 'YYYY-MM-DD' format.
+                         
+                         Returns:
+                             datetime or tuple: A single datetime object for month/year or months_ago cases, or a tuple (start_date, end_date) if a date range is provided.
+                         
+                         Raises:
+                             ValueError: If the provided dates are invalid or do not meet the minimum allowed date criteria.
+                         """
         # Set minimum allowed date (93 days before current date)
         min_allowed_date = datetime.today() - relativedelta(days=93)
        
@@ -461,8 +500,9 @@ class OMIEDownloader:
  
     def _save_file(self, filename, content, directory):
         """
-        Save the file to the specified directory.
-        If directory is not provided, use the default directory.
+        Save content to a file in the specified directory, creating the directory if it does not exist.
+        
+        Supports saving bytes as binary files, pandas DataFrames as CSV files, and strings as text files. Returns the full path to the saved file.
         """
  
         # Create the directory if it doesn't exist
@@ -492,16 +532,16 @@ class OMIEDownloader:
  
     def _extract_date_from_filename(self, filename: str) -> datetime:
         """
-        Extract date from OMIE filename based on market type.
-       
-        Args:
-            filename (str): The filename to extract date from (e.g., 'curva_pbc_uof_20250105.1' or 'curva_pbc_uof_2025010503')
-           
+        Extracts the date from an OMIE data filename according to the market type.
+        
+        Parameters:
+            filename (str): OMIE data filename containing the date segment.
+        
         Returns:
-            datetime: The extracted date
-           
+            datetime: The date extracted from the filename.
+        
         Raises:
-            ValueError: If the date cannot be extracted from the filename
+            ValueError: If the filename does not contain a valid date segment.
         """
         # Get the last part after underscore which contains the date
         date_str = filename.split('_')[-1]
@@ -530,18 +570,16 @@ class OMIEDownloader:
 
     def _check_latest_file(self, files: list, zip_ref: zipfile.ZipFile = None) -> list:
         """
-        Check if the files are the latest version of the file.
-        For intra-day market, it filters for the latest version of a file for each session.
-        It groups files by date and session, then picks the one with the latest
-        modification time from the zip archive.
-        For other markets, it returns the files as is.
-
-        Args:
-            files (list): List of files to check
-            zip_ref (zipfile.ZipFile): Zip file reference
-
+        Return only the latest version of each session file for the intraday market, based on modification time in the ZIP archive.
+        
+        For the intraday market, groups files by session and selects the most recently modified file per session. For other markets or if no ZIP reference is provided, returns the input file list unchanged.
+        
+        Parameters:
+        	files (list): List of file names to filter.
+        	zip_ref (zipfile.ZipFile, optional): Reference to the ZIP archive containing the files.
+        
         Returns:
-            list: List of latest files
+        	list: List of file names representing the latest version per session (intraday) or the original list (other markets).
         """
         if self.mercado != "intra" or zip_ref is None:
             return files
@@ -575,6 +613,11 @@ class DiarioOMIEDownloader(OMIEDownloader):
     """
  
     def __init__(self):
+        """
+        Initializes the DiarioOMIEDownloader with configuration settings for the daily OMIE market.
+        
+        Sets up the downloader with the appropriate base URL, market identifier, and filename pattern for downloading daily aggregated supply and demand curve data.
+        """
         super().__init__()
         self.config = DiarioConfig()
         self.base_url = self.config.base_url
@@ -587,6 +630,9 @@ class IntraOMIEDownloader(OMIEDownloader):
     """
  
     def __init__(self):
+        """
+        Initializes the intraday OMIE downloader with configuration settings for the intradiario market.
+        """
         super().__init__()
         self.config = IntraConfig()
         self.base_url = self.config.base_url
@@ -598,6 +644,9 @@ class ContinuoOMIEDownloader(OMIEDownloader):
     "Downloader for OMIE Continuo data curvas agregadas de oferta y demanda mensuales."
  
     def __init__(self):
+        """
+        Initializes the downloader for the continuous OMIE market using the IntraContinuoConfig settings.
+        """
         super().__init__()
         self.config = IntraContinuoConfig()
         self.base_url = self.config.base_url

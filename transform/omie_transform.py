@@ -25,7 +25,7 @@ class TransformadorOMIE:
     
     def __init__(self):
         """
-        Initialize the OMIE transformer with required utilities and configurations.
+        Initialize the TransformadorOMIE instance with utility classes, supported transformation modes, OMIE market types, and market configuration mappings.
         """
         # Initialize core components
         self.processor = OMIEProcessor()
@@ -50,16 +50,18 @@ class TransformadorOMIE:
 
     def _filter_data_by_mode(self, raw_df: pd.DataFrame, transform_type: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:
         """
-        Transform the dataframe based on the transform type.
+        Filter a DataFrame of OMIE market data according to the specified transformation mode and date parameters.
         
-        Args:
-            raw_df (pd.DataFrame): The dataframe to transform
-            transform_type (str): The type of transformation to perform ('latest',   'single', 'multiple')
-            fecha_inicio (str): The start date to process (required for single and multiple modes)
-            fecha_fin (str): The end date to process (required for multiple transform_type)
-            
+        Depending on the `transform_type`, this method selects rows for the latest available date, a single specified date, or a date range. It ensures the 'Fecha' column is present and valid, removing rows with missing or invalid dates before filtering. Returns an empty DataFrame if filtering is not possible due to missing data or errors.
+        
+        Parameters:
+            raw_df (pd.DataFrame): Input DataFrame containing OMIE market data with a 'Fecha' column.
+            transform_type (str): Transformation mode; one of 'latest', 'single', or 'multiple'.
+            fecha_inicio (str, optional): Start date for filtering (required for 'single' and 'multiple' modes).
+            fecha_fin (str, optional): End date for filtering (required for 'multiple' mode).
+        
         Returns:
-            pd.DataFrame: The filtered dataframe
+            pd.DataFrame: Filtered DataFrame containing only the rows matching the specified date criteria, or an empty DataFrame if filtering fails.
         """
         # Validate inputs
         if transform_type == 'multiple' and (fecha_inicio is None or fecha_fin is None):
@@ -147,14 +149,14 @@ class TransformadorOMIE:
 
     def _transform_market_data(self, raw_df: pd.DataFrame, mercado: str) -> Optional[pd.DataFrame]:
         """
-        Transforms data for a specific market and returns the processed DataFrame.
+        Transforms raw OMIE market data for the specified market type and returns the processed DataFrame.
         
-        Args:
-            raw_df (pd.DataFrame): Raw market data
-            mercado (str): Market name ('diario', 'intra', 'continuo')
-            
+        Parameters:
+        	raw_df (pd.DataFrame): Raw input data to be transformed.
+        	mercado (str): Market type to process ('diario', 'intra', or 'continuo').
+        
         Returns:
-            Optional[pd.DataFrame]: Processed DataFrame or None if transformation fails
+        	pd.DataFrame or None: The transformed DataFrame if successful; otherwise, None if transformation fails or results in empty data.
         """
         try:
             print("\n" + "="*80)
@@ -213,14 +215,16 @@ class TransformadorOMIE:
 
     def _process_single_day(self, mercado: str, date: str) -> Optional[pd.DataFrame]:
         """
-        Processes data for a single specified day and returns the processed DataFrame.
+        Process and transform OMIE market data for a single specified date.
         
-        Args:
-            mercado (str): Market name
-            date (str): Date in YYYY-MM-DD format
-            
+        Attempts to locate and read the raw data file for the given market and date, filters the data to the target day, and applies the appropriate market transformation. Returns the processed DataFrame, or `None` if the data is unavailable, the date is invalid, or processing fails.
+        
+        Parameters:
+        	mercado (str): The market name ('diario', 'intra', or 'continuo').
+        	date (str): The target date in 'YYYY-MM-DD' format.
+        
         Returns:
-            Optional[pd.DataFrame]: Processed DataFrame or None if processing fails
+        	Optional[pd.DataFrame]: The processed DataFrame for the specified date, or `None` if processing is unsuccessful.
         """
         print("\n" + "="*80)
         print(f"🔄 STARTING SINGLE DAY TRANSFORM")
@@ -313,16 +317,10 @@ class TransformadorOMIE:
 
     def _check_raw_file_exists(self, mercado: str, year: int, month: int, dataset_type: str = "volumenes_omie") -> bool:
         """
-        Check if a raw file exists for the given market, year, month, and dataset type.
+        Determine whether a raw data file exists and contains data for the specified market, year, month, and dataset type.
         
-        Args:
-            mercado (str): Market name
-            year (int): Year
-            month (int): Month
-            dataset_type (str): Dataset type (default: "volumenes_omie")
-            
         Returns:
-            bool: True if file exists and is readable, False otherwise
+            True if the file exists and is non-empty; otherwise, False.
         """
         try:
             # Try to read the file - if it succeeds, the file exists and is valid
@@ -333,14 +331,13 @@ class TransformadorOMIE:
 
     def _find_latest_available_file(self, mercado: str, dataset_type: str = "volumenes_omie") -> Optional[tuple]:
         """
-        Find the latest year/month combination that has an actual volumenes_omie file.
+        Searches for the most recent year and month combination that contains a valid raw data file for the specified market and dataset type.
         
-        Args:
-            mercado (str): Market name
-            dataset_type (str): Dataset type (default: "volumenes_omie")
-            
+        Parameters:
+        	mercado (str): The market name to search within.
+        
         Returns:
-            Optional[tuple]: (year, month) tuple if found, None otherwise
+        	A tuple (year, month) of the latest available file if found, or None if no valid file exists.
         """
         print("🔍 SEARCHING FOR LATEST AVAILABLE FILE")
         print("-"*50)
@@ -377,13 +374,13 @@ class TransformadorOMIE:
 
     def _process_latest_day(self, mercado: str) -> Optional[pd.DataFrame]:
         """
-        Processes the most recent day's data and returns the processed DataFrame.
+        Processes and transforms the most recent available day's data for the specified OMIE market.
         
-        Args:
-            mercado (str): Market name
-            
+        Parameters:
+        	mercado (str): The market type to process ('diario', 'intra', or 'continuo').
+        
         Returns:
-            Optional[pd.DataFrame]: Processed DataFrame or None if processing fails
+        	pd.DataFrame or None: The processed DataFrame for the latest day, or None if no data is available or processing fails.
         """
         print("\n" + "="*80)
         print(f"🔄 STARTING LATEST DAY TRANSFORM")
@@ -465,15 +462,15 @@ class TransformadorOMIE:
 
     def _process_date_range(self, mercado: str, fecha_inicio: str, fecha_fin: str) -> Optional[pd.DataFrame]:
         """
-        Processes data for a specified date range and returns a single combined processed DataFrame.
+        Processes and transforms OMIE market data for a specified date range, returning a combined DataFrame.
         
-        Args:
-            mercado (str): Market name
-            fecha_inicio (str): Start date in YYYY-MM-DD format
-            fecha_fin (str): End date in YYYY-MM-DD format
-            
+        Parameters:
+        	mercado (str): The market type to process ('diario', 'intra', or 'continuo').
+        	fecha_inicio (str): Start date in 'YYYY-MM-DD' format.
+        	fecha_fin (str): End date in 'YYYY-MM-DD' format.
+        
         Returns:
-            Optional[pd.DataFrame]: Combined processed DataFrame or None if processing fails
+        	pd.DataFrame or None: The processed DataFrame containing data within the specified date range, or None if processing fails or no data is found.
         """
         print("\n" + "="*80)
         print(f"🔄 STARTING MULTIPLE DAY TRANSFORM (Date Range)")
@@ -593,26 +590,20 @@ class TransformadorOMIE:
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None,
                                       mercados_lst: List[str] = None) -> Dict:
         """
-        A function that transforms data for specified markets and returns status along with results.
-
-        Args:
-            fecha_inicio (str): Start date in YYYY-MM-DD format
-            fecha_fin (str): End date in YYYY-MM-DD format
-            mercados_lst (List[str]): List of market names to process
-            transform_type (str): Mode to process data ('single', 'multiple', 'latest')
-                                  If None, will be auto-detected based on date parameters
-
-        Returns:
-            Dict: Dictionary containing:
-                - 'data': Dictionary of processed dataframes for each market
-                - 'status': Dictionary with:
-                    - 'success': Boolean indicating if the transformation was successful
-                    - 'details': Dictionary with:
-                        - 'markets_processed': List of markets that were processed
-                        - 'markets_failed': List of markets that failed to process
-                        - 'transform_type': The transform transform_type used
-                        - 'date_range': The date range processed
-        """
+                                      Transforms OMIE market data for specified markets and date parameters, returning processed results and detailed status.
+                                      
+                                      Parameters:
+                                          fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format. Determines the transformation mode if provided.
+                                          fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. Used for date range transformations.
+                                          mercados_lst (List[str], optional): List of OMIE market names to process. If not provided, all supported markets are processed.
+                                      
+                                      Returns:
+                                          Dict: A dictionary with:
+                                              - 'data': Processed DataFrames for each market (or None if processing failed).
+                                              - 'status': Dictionary containing:
+                                                  - 'success': Boolean indicating if at least one market was processed successfully.
+                                                  - 'details': Dictionary with lists of processed and failed markets, the transformation type used, the date range, and error details if any.
+                                      """
         # Auto-infer transform type based on date parameters
         if fecha_inicio is None and fecha_fin is None:
             transform_type = 'latest'
@@ -733,13 +724,37 @@ class TransformadorOMIE:
         }
 
     def process_diario_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """Transforms data for the 'diario' market."""
+        """
+        Transform raw OMIE data for the 'diario' market.
+        
+        Parameters:
+        	raw_df (pd.DataFrame): Raw input DataFrame containing OMIE market data.
+        
+        Returns:
+        	Optional[pd.DataFrame]: Processed DataFrame for the 'diario' market, or None if transformation fails or results in empty data.
+        """
         return self._transform_market_data(raw_df, 'diario')
 
     def process_intra_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """Transforms data for the 'intra' market."""
+        """
+        Transforms raw OMIE data for the 'intra' market and returns the processed DataFrame.
+        
+        Parameters:
+        	raw_df (pd.DataFrame): Raw input data for the 'intra' market.
+        
+        Returns:
+        	Optional[pd.DataFrame]: Processed DataFrame for the 'intra' market, or None if transformation fails or results in empty data.
+        """
         return self._transform_market_data(raw_df, 'intra')
 
     def process_continuo_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """Transforms data for the 'continuo' market."""
+        """
+        Transforms raw OMIE data for the 'continuo' market and returns the processed DataFrame.
+        
+        Parameters:
+        	raw_df (pd.DataFrame): Raw market data to be transformed.
+        
+        Returns:
+        	Optional[pd.DataFrame]: Processed DataFrame for the 'continuo' market, or None if transformation fails or results in empty data.
+        """
         return self._transform_market_data(raw_df, 'continuo')

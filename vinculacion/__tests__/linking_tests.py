@@ -14,6 +14,11 @@ from vinculacion._vinculacion_monitoring import UPChangeMonitor
 async def linking_algorithm_test():
 
     # Initialize the algorithm
+    """
+    Test the UOF to UP linking algorithm by attempting to link specified UPs for a target date.
+    
+    Runs the linking process for the UPs "ZABU" and "TERE" using the configured target date. Prints and saves the resulting links to a CSV file if successful; otherwise, prints an error message.
+    """
     algorithm = UOFUPLinkingAlgorithm()
     # Get the target date
     target_date = algorithm.config.get_linking_target_date()
@@ -28,11 +33,21 @@ async def linking_algorithm_test():
         print(f"Linking process failed: {results['message']}")
 
 async def change_monitor_test():
+    """
+    Run a test to monitor changes in existing organizational links using the UPChangeMonitor.
+    """
     change_monitor = UPChangeMonitor()
     await change_monitor.monitor_existing_links()
 
 async def full_linking_test(initial_linking: bool = False):
-    """Main execution function"""
+    """
+    Runs the full Vinculacion linking workflow, optionally performing initial linking and always monitoring for changes.
+    
+    Parameters:
+        initial_linking (bool): If True, performs a full initial linking of UOFs to UPs before monitoring.
+    
+    This function orchestrates the main Vinculacion process: it can create initial links between organizational units and positions, then monitors for changes or de-linking in existing links. Progress and completion messages are printed for clarity.
+    """
     orchestrator = VinculacionOrchestrator()
     
     print("="*100)

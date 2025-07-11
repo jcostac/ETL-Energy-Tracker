@@ -43,6 +43,16 @@ dag_esios_precios = DAG(
 
 # Task functions to defer instantiation on load
 def extract_esios_prices_func(fecha_inicio_carga, fecha_fin_carga):
+    """
+    Extracts electricity price data for all markets from ESIOS between the specified start and end dates.
+    
+    Parameters:
+        fecha_inicio_carga: Start date for data extraction.
+        fecha_fin_carga: End date for data extraction.
+    
+    Returns:
+        dict: Extracted data for all markets within the given date range.
+    """
     extractor = ESIOSPreciosExtractor()
     return extractor.extract_data_for_all_markets(
         fecha_inicio_carga=fecha_inicio_carga,
@@ -50,6 +60,17 @@ def extract_esios_prices_func(fecha_inicio_carga, fecha_fin_carga):
     )
 
 def transform_esios_prices_func(fecha_inicio, fecha_fin, mode):
+    """
+    Transforms ESIOS electricity price data for all markets within the specified date range and mode.
+    
+    Parameters:
+        fecha_inicio (str): Start date for the transformation period.
+        fecha_fin (str): End date for the transformation period.
+        mode (str): Transformation mode to apply.
+    
+    Returns:
+        dict: Transformed data for all markets within the given date range.
+    """
     transformer = TransformadorESIOS()
     return transformer.transform_data_for_all_markets(
         fecha_inicio=fecha_inicio,
@@ -58,6 +79,15 @@ def transform_esios_prices_func(fecha_inicio, fecha_fin, mode):
     )
 
 def load_esios_prices_func(transformed_data_dict):
+    """
+    Load transformed ESIOS electricity price data into the local data lake.
+    
+    Parameters:
+        transformed_data_dict (dict): Dictionary containing transformed ESIOS price data to be loaded.
+    
+    Returns:
+        dict: Result of the load operation, typically including status and metadata.
+    """
     loader = LocalDataLakeLoader()
     return loader.load_transformed_data_esios(
         transformed_data_dict=transformed_data_dict

@@ -31,7 +31,7 @@ class I90Processor:
     """
     def __init__(self):
         """
-        Initialize the processor.
+        Initializes the I90Processor with utilities for date handling, data validation, and raw file operations.
         """
         self.date_utils = DateUtilsETL()
         self.data_validation_utils = DataValidationUtils()
@@ -40,17 +40,12 @@ class I90Processor:
     # === FILTERING ===
     def _apply_market_filters_and_id(self, df: pd.DataFrame, market_config: I90Config) -> pd.DataFrame:
         """
-        Filters the DataFrame based on market config and adds id_mercado.
+        Filter the input DataFrame according to the provided market configuration and assign the appropriate market ID.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame (potentially pre-processed by extractor).
-                               Expected columns might include 'Sentido', 'Redespacho', 'UP', 'hora', 'volumen'/'precio', 'fecha'/'datetime_utc'.
-            market_config (I90Config): The configuration object instance for the specific market
-                                     (e.g., SecundariaConfig(), RestriccionesConfig()).
-            
+        If the DataFrame contains the 'sheet_i90_volumenes' column (for intra market data), maps it directly to 'id_mercado' using the configuration mapping. Otherwise, applies filters for each market ID based on 'Sentido' and 'Redespacho' columns as specified in the market configuration, assigns 'id_mercado', and concatenates the results. Returns the filtered DataFrame with the 'id_mercado' column, or an empty DataFrame if no data matches.
+         
         Returns:
-            pd.DataFrame: DataFrame filtered and augmented with 'id_mercado',
-                          or an empty DataFrame if no data matches.
+            pd.DataFrame: Filtered DataFrame with 'id_mercado' assigned, or empty if no rows match the filters.
         """
         if df.empty:
             return pd.DataFrame() # Return empty if input is empty
@@ -138,9 +133,15 @@ class I90Processor:
     # === DATETIME HANDLING ===
     def _standardize_datetime(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Ensures a standard UTC datetime column with 15-minute granularity.
-        Handles different input formats ('hora' column can be numeric index or HH-HH+1 format)
-        and properly processes DST transitions.
+        Standardizes and converts input datetimes to a UTC column with 15-minute granularity, handling DST transitions and multiple input formats.
+        
+        Splits the input DataFrame by granularity and DST transition days, applies appropriate datetime parsing and conversion methods for each subset, and combines the results into a single DataFrame with a standardized `datetime_utc` column. Drops intermediate columns and invalid datetimes before returning the processed DataFrame.
+        
+        Parameters:
+            dataset_type (str): Specifies the type of dataset being processed, affecting downstream datetime conversion logic.
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute intervals.
         """
         if df.empty: 
             return df
@@ -220,8 +221,12 @@ class I90Processor:
     @with_progress(message="Processing hourly data...", interval=2)
     def _process_hourly_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix for fall-back DST).
-        Creates timezone-aware datetime_local series and converts to UTC.
+        Processes hourly market data with possible DST suffixes, generating UTC datetimes at 15-minute intervals.
+        
+        Converts "HH-HH+1" formatted time strings (including 'a'/'b' suffixes for DST fall-back) into timezone-aware local datetimes, then to UTC. Expands each hourly entry into four 15-minute intervals for downstream analysis.
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute granularity, or an empty DataFrame on error.
         """
         try:
             # Create a copy to avoid modifying the original
@@ -343,8 +348,9 @@ class I90Processor:
     @with_progress(message="Processing hourly data (vectorized)...", interval=2)
     def _process_hourly_data_vectorized(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Process hourly data ("HH-HH+1" format, possibly with 'a'/'b' suffix) using vectorized operations.
-        Creates timezone-aware UTC datetime series and converts to 15-min intervals.
+        Vectorized processing of hourly data with possible DST suffixes, converting to UTC and expanding to 15-minute intervals.
+        
+        This method parses hourly time strings (e.g., "02-03a", "02-03b"), handles daylight saving time transitions using suffixes, localizes datetimes to Europe/Madrid, converts them to UTC, and expands each hour to four 15-minute intervals. Returns a DataFrame with standardized UTC datetimes and 15-minute granularity.
         """
         try:
             result_df = df.copy()
@@ -503,8 +509,17 @@ class I90Processor:
 
     def _parse_15min_datetime_local(self, fecha, hora_index_str) -> pd.Timestamp:
         """
-        Parse 15-minute format data ) into a timezone-aware
-        datetime in Europe/Madrid timezone, handling DST transitions correctly.
+        Parse a 15-minute interval index for a given date into a timezone-aware datetime in Europe/Madrid, correctly handling daylight saving time transitions.
+        
+        Parameters:
+            fecha: The date of the interval, as a string, pandas Timestamp, or date object.
+            hora_index_str: The 1-based index (as string or integer) of the 15-minute interval within the day.
+        
+        Returns:
+            pd.Timestamp: The corresponding timezone-aware datetime in Europe/Madrid.
+        
+        Raises:
+            ValueError: If the interval index is less than 1 or exceeds the number of intervals for the given date.
         """
         # Ensure fecha is a date object
         if isinstance(fecha, pd.Timestamp):
@@ -631,7 +646,11 @@ class I90Processor:
 
     # === COLUMN FINALIZATION ===
     def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """Selects, orders, and standardizes final columns, filtering by required columns."""
+        """
+        Standardizes and filters DataFrame columns to match the required schema for the specified dataset type.
+        
+        Renames columns for consistency (e.g., "Unidad de Programación" to "up", "precios" to "precio", "Tipo Transacción" to "tipo_transaccion") and selects only the columns required for the given dataset type ("volumenes_i90" or "precios_i90"). If the "Tipo Transacción" column is present, it is included in the output.
+        """
      
         if "Unidad de Programación" in df.columns:
             df = df.rename(columns={"Unidad de Programación": "up"})
@@ -651,6 +670,15 @@ class I90Processor:
         return df
 
     def _get_value_col(self, dataset_type: str) -> Optional[str]:
+        """
+        Return the name of the value column corresponding to the specified dataset type.
+        
+        Parameters:
+            dataset_type (str): The type of dataset, either 'volumenes_i90' or 'precios_i90'.
+        
+        Returns:
+            str or None: The column name ('volumenes' or 'precios') for the given dataset type, or None if not recognized.
+        """
         if dataset_type == 'volumenes_i90':
             return 'volumenes'
         elif dataset_type == 'precios_i90':
@@ -696,7 +724,13 @@ class I90Processor:
     # === UTILITY ===
     def _empty_output_df(self, dataset_type: str) -> pd.DataFrame:
         """
-        Returns an empty DataFrame with the expected columns for the dataset_type.
+        Create an empty DataFrame with the appropriate columns for the specified dataset type.
+        
+        Parameters:
+            dataset_type (str): The type of dataset, such as 'volumenes_i90' or 'precios_i90'.
+        
+        Returns:
+            pd.DataFrame: An empty DataFrame with columns matching the expected schema for the given dataset type.
         """
         value_col = self._get_value_col(dataset_type)
         cols = ['id_mercado', 'datetime_utc', value_col]
@@ -709,19 +743,16 @@ class I90Processor:
     # === INTRA DATA PROCESSING ===
     def _process_cumulative_volumenes_intra(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Process intra data by calculating cumulative differences with diario data.
+        Calculate actual intra-day volumes by computing differences between cumulative intra session data and baseline diario data.
         
-        For intra session data, volumes are aggregated and need to be "unwrapped":
-        - Session 1: actual_volume = intra_session_1 - diario_volume
-        - Session 2: actual_volume = intra_session_2 - intra_session_1
-        - Session 3: actual_volume = intra_session_3 - intra_session_2
+        For each intra session, the function subtracts the previous session's cumulative volumes (starting with diario as baseline) to obtain the actual volume for that session. Returns a DataFrame with the calculated differences for all intra sessions. Raises an error if required diario data is missing or if no sessions are processed.
         
-        Args:
-            df (pd.DataFrame): Input DataFrame with intra data
-            dataset_type (str): Type of dataset being processed (always 'volumenes_i90' for intra)
-            
+        Parameters:
+            df (pd.DataFrame): Intra session cumulative volume data with 'datetime_utc' and 'id_mercado' columns.
+            dataset_type (str): Dataset type, expected to be 'volumenes_i90' for intra processing.
+        
         Returns:
-            pd.DataFrame: Processed DataFrame with calculated differences
+            pd.DataFrame: DataFrame containing actual intra session volumes calculated as differences from previous sessions.
         """
         if df.empty:
             return df
@@ -800,16 +831,19 @@ class I90Processor:
 
     def _load_diario_data_for_intra(self, year: int, month: int, target_date, dataset_type: str) -> pd.DataFrame:
         """
-        Load diario data for the same date as the intra data for baseline calculations.
+        Loads and processes diario market data for a specific date to serve as a baseline for intra-day calculations.
         
-        Args:
-            year (int): Year of the target date
-            month (int): Month of the target date  
-            target_date: Date object for the target date
-            dataset_type (str): Type of dataset ('volumenes_i90' or 'precios_i90')
-            
+        Parameters:
+        	year (int): The year of the target date.
+        	month (int): The month of the target date.
+        	target_date: The date for which diario data is required.
+        	dataset_type (str): The type of dataset, either 'volumenes_i90' or 'precios_i90'.
+        
         Returns:
-            pd.DataFrame: Diario data for the target date
+        	pd.DataFrame: Processed diario data for the target date, filtered and standardized for use in intra-day baseline calculations.
+        
+        Raises:
+        	ValueError: If diario data is missing, the 'fecha' column is absent, or any error occurs during processing.
         """
         print("="*70)
         print(f"\n📂 Loading diario data for {target_date}")
@@ -850,19 +884,16 @@ class I90Processor:
 
     def _prepare_diario_baseline(self, diario_df: pd.DataFrame, target_date) -> pd.DataFrame:
         """
-        Prepare diario data as baseline for intra calculations.
+        Prepares diario market data as a baseline for intra-day cumulative volume calculations.
         
-        This method:
-        1. Filters diario data by tipo_transaccion = 'Mercado' (if column exists)
-        2. Ensures proper datetime and UP column structure
-        3. Aggregates by UP and datetime_utc to create baseline volumes
+        Filters the input DataFrame for 'Mercado' transactions if applicable, ensures required columns are present, fills missing values, and aggregates volumes by unit and UTC datetime. The resulting DataFrame is structured for use as the baseline in intra-session difference calculations.
         
-        Args:
-            diario_df (pd.DataFrame): Processed diario data
-            target_date: Target date for filtering
-            
+        Parameters:
+        	diario_df (pd.DataFrame): The processed diario market data.
+        	target_date: The date for which the baseline is prepared.
+        
         Returns:
-            pd.DataFrame: Prepared baseline data with columns [datetime_utc, up, volumenes, id_mercado]
+        	pd.DataFrame: Baseline DataFrame with columns ['datetime_utc', 'up', 'volumenes', 'id_mercado'].
         """
         if diario_df.empty:
             return pd.DataFrame()
@@ -911,16 +942,16 @@ class I90Processor:
                                      previous_session: pd.DataFrame, 
                                      session_id: int) -> pd.DataFrame:
         """
-        Calculate volume differences between current intra session and previous session.
-        
-        Args:
-            current_session (pd.DataFrame): Current intra session data
-            previous_session (pd.DataFrame): Previous session data (diario or previous intra)
-            session_id (int): Current session ID
-            
-        Returns:
-            pd.DataFrame: DataFrame with calculated differences
-        """
+                                     Compute the difference in volumes between the current intra session and the previous session for each unit and timestamp.
+                                     
+                                     Parameters:
+                                     	current_session (pd.DataFrame): Data for the current intra session.
+                                     	previous_session (pd.DataFrame): Data for the previous session (either diario or prior intra session).
+                                     	session_id (int): Identifier for the current session.
+                                     
+                                     Returns:
+                                     	pd.DataFrame: DataFrame containing the volume differences per unit and timestamp, with the current session ID assigned.
+                                     """
         try:
             print("="*70)
             print(f"\n🔧 Calculating differences for Session {session_id}")
@@ -961,13 +992,19 @@ class I90Processor:
     # === MAIN PIPELINE ===
     def transform_volumenes_or_precios_i90(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
         """
-        Wrapper method to orchestrate the I90 processing pipeline with formatted debug printouts.
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-            market_config (I90Config): Market configuration object.
-            dataset_type (str): 'volumenes_i90' or 'precios_i90'.
+        Executes the full I90 data transformation pipeline for volumes or prices, applying validation, filtering, datetime standardization, and optional intra cumulative processing.
+        
+        Parameters:
+            df (pd.DataFrame): The input DataFrame containing raw I90 data.
+            market_config (I90Config): Market configuration specifying filtering and processing rules.
+            dataset_type (str): The dataset type, either 'volumenes_i90' or 'precios_i90'.
+        
         Returns:
-            pd.DataFrame: Processed DataFrame or empty DataFrame with correct columns on error.
+            pd.DataFrame: The fully processed DataFrame, or an empty DataFrame with expected columns if input is empty or an error occurs during processing.
+        
+        Raises:
+            ValueError: If the DataFrame becomes empty at any pipeline step (except final validation).
+            Exception: For unexpected errors encountered during processing.
         """
       
         print("\n" + "="*80)

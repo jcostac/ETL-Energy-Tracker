@@ -177,7 +177,17 @@ class DescargadorESIOS:
                 raise Exception(f"Unexpected error during direct ESIOS request for indicator {indicator_id}: {e}")
 
     def _handle_response_error(self, response: requests.Response, indicator_id: str):
-        """Helper method to raise appropriate errors based on status code."""
+        """
+        Raises specific exceptions based on the HTTP status code of an ESIOS API response.
+        
+        Parameters:
+            response (requests.Response): The HTTP response object from the ESIOS API.
+            indicator_id (str): The ESIOS indicator ID relevant to the request.
+        
+        Raises:
+            ValueError: For authentication errors, forbidden access, missing indicators, or other HTTP errors.
+            ConnectionError: For rate limiting or server-side errors.
+        """
         if response.status_code == 401:
             raise ValueError(f"Authentication error (401): Invalid or expired ESIOS_API_KEY.")
         elif response.status_code == 403:

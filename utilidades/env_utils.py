@@ -6,14 +6,18 @@ class EnvUtils:
     _env_checked = False
 
     def __init__(self):
+        """
+        Initialize the EnvUtils instance by loading environment variables from a .env file and verifying that all required variables are set.
+        """
         load_dotenv() #load .env file
         self.check_env() #check that all variables needed are present in the environment on init
 
     def check_env(self):
         """
-        Check if all variables needed are present in the environment.
-        If not, raise an error.
-        If all variables are present, do nothing.
+        Verify that all required environment variables are set, raising an error if any are missing.
+        
+        Raises:
+            ValueError: If any of the required environment variables are not set.
         """
         if self._env_checked:
             return

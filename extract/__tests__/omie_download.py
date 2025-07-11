@@ -9,7 +9,9 @@ import time
 
 def omie_download_single_day():
     """
-    Test the download of the omie for a single day for all markets
+    Test OMIE data extraction for a single day across all markets.
+    
+    Asserts that extraction is successful and prints a confirmation message.
     """
     extractor = OMIEExtractor()
     result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-04-08", fecha_fin_carga="2025-04-08")
@@ -21,7 +23,9 @@ def omie_download_single_day():
 
 def omie_download_multiple_days():
     """
-    Test the download of the omie for multiple days for all markets
+    Test extraction of OMIE data for all markets over a specified date range.
+    
+    Asserts that data extraction from "2025-03-02" to "2025-03-08" completes successfully.
     """
     extractor = OMIEExtractor()
     result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-02", fecha_fin_carga="2025-03-08")
@@ -32,7 +36,9 @@ def omie_download_multiple_days():
 
 def omie_download_market_specific():
     """
-    Test the download of the omie for a specific market
+    Test OMIE data extraction for a specific market on a single day.
+    
+    Runs the extraction for the "continuo" market on "2025-01-01" and asserts that the operation succeeds.
     """
     extractor = OMIEExtractor()
     result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-01", fecha_fin_carga="2025-01-01", mercados_lst=["continuo"])

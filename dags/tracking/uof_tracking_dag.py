@@ -43,7 +43,12 @@ dag = DAG(
 
 # Task functions
 def check_uof_files_func(**context):
-    """Check if UOF files exist or download them"""
+    """
+    Checks for the presence and recency of required UOF Excel files in the download directory.
+    
+    Returns:
+        dict: A dictionary indicating whether the required files are present and recent (`success`), the download directory path, details about found files or missing patterns, and additional information.
+    """
     download_dir = setup_tracking_directories()
     
     # Check for existing UOF files
@@ -68,7 +73,14 @@ def check_uof_files_func(**context):
         }
 
 async def download_uof_files_func(**context):
-    """Download UOF files from OMIE"""
+    """
+    Asynchronously downloads UOF files from OMIE if they are missing or outdated.
+    
+    Checks for the presence and recency of required UOF files using the result from the previous task. If files are already present and up-to-date, the download is skipped. Otherwise, attempts to download the files and returns a structured result indicating success or failure.
+    
+    Returns:
+        dict: A dictionary with keys indicating success status, download directory, messages, and error details if applicable.
+    """
     ti = context['ti']
     check_result = ti.xcom_pull(task_ids='check_uof_files')
     
@@ -103,7 +115,11 @@ async def download_uof_files_func(**context):
         }
 
 def process_uof_tracking_func(**context):
-    """Process UOF tracking"""
+    """
+    Processes UOF tracking data by locating the latest downloaded UOF Excel file and invoking the UOFTracker to process its contents.
+    
+    Raises a ValueError if the download task failed or a FileNotFoundError if no UOF file is found. Returns a dictionary indicating success or failure, including the processed file path or error details.
+    """
     ti = context['ti']
     download_result = ti.xcom_pull(task_ids='download_uof_files')
     
@@ -141,7 +157,11 @@ def process_uof_tracking_func(**context):
         }
 
 def cleanup_uof_files_func(**context):
-    """Cleanup downloaded files"""
+    """
+    Removes the most recent downloaded UOF Excel file from the download directory if it exists.
+    
+    This function is intended to clean up temporary files after processing, ensuring that the latest UOF file is deleted regardless of upstream task outcomes.
+    """
     ti = context['ti']
     download_result = ti.xcom_pull(task_ids='download_uof_files')
     
