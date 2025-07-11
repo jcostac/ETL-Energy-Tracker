@@ -7,16 +7,9 @@ class DataValidationUtils:
     def __init__(self):
 
         #processed data structure requirements
-        """
-        Initialize required column lists for validating the structure of processed and raw price and volume datasets.
-        
-        Defines the expected columns for each dataset type and source, supporting multiple processed volume formats (I90, OMIE, MIC, I3) and raw data schemas.
-        """
-        self.processed_price_required_cols = ['datetime_utc', "id_mercado", "precio"]
-        self.processed_volumenes_i90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
-        self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
-        self.processed_volumenes_mic_required_cols = ['datetime_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
-        self.processed_volumenes_i3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
+        self.processed_price_required_cols = ['datetime_utc', 'precio', 'id_mercado']
+        self.processed_volumenesi90_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "up"]
+        self.processed_volumenesi3_required_cols = ['datetime_utc', 'volumenes', 'id_mercado', "tecnologia"]
 
         #raw data structure requirements
         self.raw_price_required_cols = ['datetime_utc', 'value', 'indicador_id']
@@ -69,17 +62,12 @@ class DataValidationUtils:
                
     def _validate_dtypes(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
         """
-        Validates and enforces correct data types for columns in raw or processed datasets based on the specified schema.
+        Validate data types for different datasets.
         
-        Depending on the dataset type and schema, converts date/time columns to pandas datetime (with UTC where applicable), and enforces appropriate numeric and string types for key columns such as prices, volumes, and categorical fields. Raises a ValueError if type conversion fails.
-        
-        Parameters:
-            df (pd.DataFrame): The input DataFrame to validate.
-            type (str): Indicates whether the data is 'raw' or 'processed'.
-            validation_schema_type (str): Specifies the schema type (e.g., 'precios', 'volumenes_i90', 'volumenes_omie').
-        
-        Returns:
-            pd.DataFrame: The DataFrame with validated and converted data types.
+        Args:
+            df: Input DataFrame with data
+            dataset_type: Either 'raw' or 'processed'
+            validation_schema_type: Type of data (precio, volumenes_i90, volumenes_i3)
         """
         try:
             
@@ -88,10 +76,8 @@ class DataValidationUtils:
             
             if 'datetime_utc' in df.columns:
                 df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
-            elif 'fecha' in df.columns:
+            else:
                 df['fecha'] = pd.to_datetime(df['fecha'])
-            elif 'delivery_period_utc' in df.columns: #for mic market
-                df['delivery_period_utc'] = pd.to_datetime(df['delivery_period_utc'], utc=True)
            
             #for processed data
             if type == "processed":
@@ -101,7 +87,7 @@ class DataValidationUtils:
                     df['precio'] = df['precio'].astype('float32')
                 
                 #for volumenes related datasets
-                elif validation_schema_type in ["volumenes_i90", "volumenes_i3", "volumenes_omie"]:
+                elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
                     df['volumenes'] = df['volumenes'].astype('float32')
 
@@ -109,12 +95,6 @@ class DataValidationUtils:
                         df['up'] = df['up'].astype('str')
                     if 'tecnologia' in df.columns:
                         df['tecnologia'] = df['tecnologia'].astype('str')
-                    if 'uof' in df.columns:
-                        df['uof'] = df['uof'].astype('str')
-                    if 'precio' in df.columns:
-                        df['precio'] = df['precio'].astype('float32')
-                    if 'tipo_transaccion' in df.columns:
-                        df['tipo_transaccion'] = df['tipo_transaccion'].astype('str')
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
             
@@ -137,7 +117,6 @@ class DataValidationUtils:
                     df['volumenes'] = df['volumenes'].astype('float32')
                     df['hora'] = df['hora'].astype('str')
                   
-
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
     
@@ -151,18 +130,12 @@ class DataValidationUtils:
 
     def _validate_columns(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
         """
-        Checks that all required columns for the specified data type and schema are present in the DataFrame.
+        Validate data structure to make sure all columns are present.
         
-        Parameters:
-            df (pd.DataFrame): The DataFrame to validate.
-            type (str): Indicates whether the data is 'raw' or 'processed'.
-            validation_schema_type (str): Specifies the dataset schema (e.g., 'precios', 'volumenes_i90', 'volumenes_omie').
-        
-        Returns:
-            pd.DataFrame: The validated DataFrame if all required columns are present.
-        
-        Raises:
-            ValueError: If any required column is missing from the DataFrame.
+        Args:
+            df: Input DataFrame with data
+            dataset_type: Either 'raw' or 'processed'
+            validation_schema_type: Type of data (precio, volumenes_i90, volumenes_i3)
         """
         required_cols = None
         
@@ -170,13 +143,9 @@ class DataValidationUtils:
             if validation_schema_type == "precios" or validation_schema_type == "precios_i90":
                 required_cols = self.processed_price_required_cols
             elif validation_schema_type == "volumenes_i90":
-                required_cols = self.processed_volumenes_i90_required_cols
+                required_cols = self.processed_volumenesi90_required_cols
             elif validation_schema_type == "volumenes_i3":
-                required_cols = self.processed_volumenes_i3_required_cols
-            elif validation_schema_type == "volumenes_omie":
-                required_cols = self.processed_volumenes_omie_required_cols
-            elif validation_schema_type == "volumenes_mic":
-                required_cols = self.processed_volumenes_mic_required_cols
+                required_cols = self.processed_volumenesi3_required_cols
 
         elif type == "raw":
             if validation_schema_type == "precios":
@@ -185,7 +154,6 @@ class DataValidationUtils:
                 required_cols = self.raw_precios_i90_required_cols
             elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
                 required_cols = self.raw_volumenes_required_cols
-            #TODO: add raw volumenes_omie and raw volumenes_mic required columns
             
         if not all(col in df.columns for col in required_cols):
             raise ValueError(f"Missing required columns. Expected: {required_cols}")

@@ -15,7 +15,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from utilidades.db_utils import DatabaseUtils
-from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntraConfig
+from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig
 
 class I90Downloader:
     """
@@ -29,12 +29,8 @@ class I90Downloader:
     """
     
     def __init__(self):
-        """
-        Initialize the I90Downloader with the ESIOS API token and configuration settings.
-        
-        Loads the API token from the environment, retrieves error data, and sets the temporary download path for file operations.
-        """
-        self.esios_token = os.getenv('ESIOS_TOKEN')
+        """Initialize the I90 downloader with ESIOS API token"""
+        self.esios_token = os.getenv('ESIOS_API_KEY')
         self.config = I90Config()
         self.lista_errores = self.config.get_error_data()
         self.temporary_download_path = self.config.temporary_download_path
@@ -155,17 +151,14 @@ class I90Downloader:
     
     def _make_i90_request(self, day: datetime) -> Tuple[str, str]:
         """
-        Downloads the I90 zip file for a given day from the ESIOS API, saves it locally, extracts the contained Excel file, and returns their base file names.
+        Download I90 file for a specific day from ESIOS API.
         
-        Parameters:
-            day (datetime): The date for which to download the I90 file.
-        
+        Args:
+            day (datetime): Day to download data for
+            
         Returns:
-            Tuple[str, str]: The base names of the downloaded zip file and the extracted Excel file.
+            Tuple[str, str]: File names for the downloaded and extracted files
         """
-        # Ensure temporary download directory exists
-        os.makedirs(self.temporary_download_path, exist_ok=True)
-        
         # Construct API URL for the I90 file
         address = f"https://api.esios.ree.es/archives/34/download?date_type\u003ddatos\u0026end_date\u003d{day.date()}T23%3A59%3A59%2B00%3A00\u0026locale\u003des\u0026start_date\u003d{day.date()}T00%3A00%3A00%2B00%3A00"
         
@@ -194,17 +187,6 @@ class I90Downloader:
     
     def _excel_file_to_df(self, fecha: datetime, volumenes_excel_file: pd.ExcelFile, precios_excel_file: pd.ExcelFile) -> pd.DataFrame:
       
-        """
-        Convert relevant sheets from an Excel file into a cleaned, standardized DataFrame for a given date.
-        
-        Processes each sheet in the provided Excel file (either volumes or prices), dynamically identifies the header row, melts hourly data into long format, adds granularity and date columns, and concatenates all results. Fully empty columns are dropped, and rows with missing or zero values in the main value column are removed. Remaining missing values in other columns are filled with zero, and the date column is formatted as 'YYYY-MM-DD'.
-        
-        Parameters:
-            fecha (datetime): The date associated with the data in the Excel file.
-        
-        Returns:
-            pd.DataFrame: A DataFrame containing the cleaned and standardized data from all relevant sheets.
-        """
         all_dfs = []
 
         if volumenes_excel_file is not None:
@@ -270,21 +252,6 @@ class I90Downloader:
 
         #concat and turn NaNs into 0s
         df_concat = pd.concat(all_dfs)
-        #drop all columns that are fully NaNs
-        df_concat = df_concat.dropna(axis=1, how='all')
-        
-        # Drop rows where the value column (volumenes/precios) is NA or 0
-        if value_col_name in df_concat.columns:
-            # Drop rows with NA values in the volume/price column
-            df_concat = df_concat.dropna(subset=[value_col_name])
-            # Also drop rows with 0 values to further reduce overhead
-            df_concat = df_concat[df_concat[value_col_name] != 0]
-            print(f"✅ Filtered out NA and zero values. Remaining rows: {len(df_concat)}")
-        else:
-            # If no value column, just drop completely empty rows
-            df_concat = df_concat.dropna(how='all')
-        
-        # Only fill remaining NAs with 0 for other columns (not the main value column)
         df_concat = df_concat.fillna(0).infer_objects()
 
         # Explicitly format the 'fecha' column to ensure consistency in the output
@@ -455,61 +422,22 @@ class DiarioDL(I90Downloader):
 
     def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Extracts daily market price data from the specified Excel file, excluding sheets with known errors.
+        Get diario (daily market) price data for a specific day.
         
-        Parameters:
-            excel_file_name (str): Path to the Excel file to process.
-            pestañas_con_error (List[str]): List of sheet names to exclude due to known errors.
+        Args:
+            day (datetime): The specific day to retrieve data for
+            precios_sheets (List[str]): List of sheet IDs to process for prices
         
         Returns:
-            pd.DataFrame: DataFrame containing the extracted price data for the specified day.
+            pd.DataFrame: Empty DataFrame as prices are obtained from ESIOS API
+            
+        Notes:
+            - This method is not implemented as price data is retrieved from ESIOS API instead
+            - The method exists for interface consistency with other market types
         """
         df_precios = super().extract_sheets_of_interest(excel_file_name, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class IntradiarioDL(I90Downloader):
-    """
-    Specialized class for downloading and processing intradiario volume data from I90 files.
-    """
-    def __init__(self, fecha: datetime = None):
-        """
-        Initialize the IntradiarioDL downloader for intraday market data.
-        
-        Parameters:
-            fecha (datetime, optional): Date used to configure which intraday market sheets to process. If not provided, defaults to the current date.
-        """
-        super().__init__()
-        #fecha is passed to the IntraConfig to determine which sheets to use for the corresponding intra markets  (all sheets before intra reduciton or sheets for the corresponding intra markets after intra reduction)
-        self.config = IntraConfig(fecha=fecha) 
-        self.precios_sheets = self.config.precios_sheets #not used for intra i90
-        self.volumenes_sheets = self.config.volumenes_sheets  
-
-    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
-        """
-        Extracts and concatenates intraday volume data from specified sheets in an I90 Excel file.
-        
-        Processes each configured volume sheet individually, adds a column indicating the sheet name, and returns a combined DataFrame with all available intraday volume data for the given day. Returns an empty DataFrame if no data is found.
-         
-        Parameters:
-            excel_file_name (str): Path to the I90 Excel file to process.
-            pestañas_con_error (List[str]): List of sheet names to exclude due to known errors.
-        
-        Returns:
-            pd.DataFrame: Combined DataFrame of intraday volume data from valid sheets, or an empty DataFrame if none are found.
-        """
-        all_dfs = []
-        for sheet in self.volumenes_sheets:
-            df_sheet = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=[sheet], precios_sheets=None)
-            if not df_sheet.empty:
-                df_sheet['sheet_i90_volumenes'] = sheet
-                all_dfs.append(df_sheet)
-
-        if not all_dfs:
-            return pd.DataFrame()
-
-        return pd.concat(all_dfs, ignore_index=True)
-    
-    
 class SecundariaDL(I90Downloader):
     """
     Specialized class for downloading and processing secundaria volume data from I90 files.

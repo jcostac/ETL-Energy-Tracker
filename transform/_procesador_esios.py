@@ -189,12 +189,18 @@ class ESIOSProcessor:
 
     def _handle_granularity(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Handles mixed time granularities by converting hourly records to 15-minute intervals and combining them with existing 15-minute data.
-        
-        If the DataFrame contains a 'granularidad' column, separates hourly and 15-minute records, converts hourly data to 15-minute intervals, and merges the results. If the column is absent, assumes all data shares the same granularity and returns the DataFrame unchanged.
-        
+        Convert hourly data to 15-minute intervals and combine with existing data if mixed granularities exist.
+
+        This method checks for the presence of the 'granularidad' column in the DataFrame. 
+        If the column exists, it separates the data into hourly and 15-minute intervals, 
+        converting the hourly data to 15-minute intervals using a utility function. 
+        If the 'granularidad' column is missing, it assumes uniform granularity.
+
+        Args:
+            df (pd.DataFrame): The input DataFrame containing the data to be processed.
+
         Returns:
-            pd.DataFrame: DataFrame with all records in 15-minute intervals if conversion was needed, otherwise the original DataFrame.
+            pd.DataFrame: The modified DataFrame with combined granularity data.
         """
         print("\n⏰ HANDLING TIME GRANULARITY")
         print("-"*30)
@@ -217,7 +223,7 @@ class ESIOSProcessor:
         # Convert hourly data if present
         if not df_hourly.empty:
             print("\n🔄 Converting hourly to 15-min...")
-            df_hourly_converted = DateUtilsETL.convert_hourly_to_15min(df_hourly, "precios")
+            df_hourly_converted = DateUtilsETL.convert_hourly_to_15min(df_hourly)
             print(f"✅ Conversion complete: {len(df_hourly)} → {len(df_hourly_converted)}")
             
             # Combine data

@@ -10,7 +10,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from extract._descargador_esios import DiarioPreciosDL, IntraPreciosDL, SecundariaPreciosDL, TerciariaPreciosDL, RRPreciosDL
 from utilidades.storage_file_utils import RawFileUtils
 from utilidades.env_utils import EnvUtils
-
 class ESIOSPreciosExtractor:
     """
     Wrapper class for extracting price data from ESIOS API.
@@ -18,11 +17,7 @@ class ESIOSPreciosExtractor:
     """
     
     def __init__(self):
-        """
-        Initialize the ESIOSPreciosExtractor with market-specific downloaders, file utilities, and configuration.
-        
-        Instantiates downloader objects for each electricity market segment, sets up utilities for raw file handling, and defines the maximum allowed download window for API requests.
-        """
+        """Initialize market extractors and raw file utils"""
 
         #initialize market extractors
         self.diario = DiarioPreciosDL()
@@ -36,18 +31,29 @@ class ESIOSPreciosExtractor:
 
         #initialize env utils
         env_utils = EnvUtils()
+        self.dev, self.prod = env_utils.check_dev_env()
 
         # Set the maximum download window (in days)
         self.download_window = 93  # ESIOS API typically limits requests to 3 months
 
     def fecha_input_validation(self, fecha_inicio_carga: str, fecha_fin_carga: str) -> tuple[str, str]:
         """
-        Validate and normalize the input date range for ESIOS API data extraction.
+        Validates the input date range for ESIOS API requests.
         
-        Ensures that both start and end dates are provided and that the start date is not after the end date. If no dates are given, defaults to a window ending yesterday. Raises a ValueError if the input is incomplete or invalid.
+        This method checks if the provided date range is valid according to ESIOS API limitations.
+        If no dates are provided, it sets default values. The method ensures that:
+        1. Start date is not greater than end date
+        2. Date range does not exceed the maximum allowed window (typically 93 days)
         
+        Args:
+            fecha_inicio_carga (str): Start date in 'YYYY-MM-DD' format
+            fecha_fin_carga (str): End date in 'YYYY-MM-DD' format
+            
         Returns:
-            tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format.
+            tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format
+            
+        Raises:
+            ValueError: If date range is invalid or incomplete
         """
 
         #check if fecha inicio < fecha fin, and if time range is valid
@@ -68,7 +74,7 @@ class ESIOSPreciosExtractor:
 
             #get datetitme range for 93 days ago to 92 days from now
             fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window) # 93 days ago
-            fecha_fin_carga_dt = fecha_inicio_carga_dt  # yesterday to avoid issues with today's data
+            fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window) + timedelta(days=1) # yesterday to avoid issues with today's data
             
             #convert to string format
             fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') 
@@ -83,16 +89,15 @@ class ESIOSPreciosExtractor:
     def _extract_and_save_prices(self, fecha_inicio_carga: Optional[str], fecha_fin_carga: Optional[str],
                                  mercado: str, downloader, **kwargs) -> None:
         """
-                                 Extracts and saves price data for a specified market segment over a given date range.
-                                 
-                                 For each day in the validated date range, retrieves price data using the provided downloader and saves it in CSV or Parquet format depending on the environment. Handles missing data and logs errors per day without interrupting the overall extraction process.
-                                 
-                                 Parameters:
-                                     fecha_inicio_carga (Optional[str]): Start date in 'YYYY-MM-DD' format.
-                                     fecha_fin_carga (Optional[str]): End date in 'YYYY-MM-DD' format.
-                                     mercado (str): Market segment name (e.g., 'diario', 'intra').
-                                     **kwargs: Additional arguments passed to the downloader's get_prices method.
-                                 """
+        Helper method to extract and save price data for a given market.
+
+        Args:
+            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format.
+            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format.
+            mercado (str): Name of the market (e.g., 'diario', 'intra').
+            downloader: The downloader instance for the specific market.
+            **kwargs: Additional arguments specific to the market downloader's get_prices method.
+        """
         # Validate input dates
         fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
 
@@ -123,117 +128,53 @@ class ESIOSPreciosExtractor:
                 if df is not None and not df.empty:
                     # Determine file format based on self.dev flag
                     if self.dev and not self.prod:
-                        environment = "DEVELOPMENT "
+                        status = "DEVELOPMEMT "
                         self.raw_file_utils.write_raw_csv(
                             year=year, month=month, df=df,
                             dataset_type='precios', mercado=mercado
                         )
                     else:
-                        environment = "PRODUCTION "
+                        status = "PRODUCTION "
                         self.raw_file_utils.write_raw_parquet(
                             year=year, month=month, df=df,
                             dataset_type='precios', mercado=mercado
                         )
-                    print(f"✅ Successfully  saved raw {mercado} prices for {day_str} in {environment} environment")
+                    print(f"  - Successfully processed and saved {status}{mercado} prices for {day_str}")
                 else:
-                    print(f" ⚠️ No {mercado} price data found for {day_str}. Nothing was saved to raw folder.")
+                    print(f"  - No {mercado} price data found or extracted for {day_str}")
 
             except Exception as e:
-                print(f"  ❌ Error downloading {mercado} prices for {day_str}: {e}")
+                print(f"  - Error downloading {mercado} prices for {day_str}: {e}")
 
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
+    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
-        Extracts and saves price data for all ESIOS electricity markets over a specified date range.
-        
-        Coordinates the extraction process for daily, intraday, secondary, tertiary, and replacement reserve markets, tracking the success or failure of each. Returns a summary dictionary with overall status and detailed results for integration with orchestration tools such as Airflow.
-        
-        Parameters:
-            fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to the maximum allowed window.
-            fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to the maximum allowed window.
-        
-        Returns:
-            dict: Dictionary containing overall success status and detailed extraction results for each market.
-        """
-        if (fecha_fin_carga is None and fecha_inicio_carga is None) or fecha_fin_carga == fecha_inicio_carga:
-            date_range_str = f"Single day download for {(datetime.now() - timedelta(days=self.download_window)).strftime('%Y-%m-%d')}"
-        else:
-            date_range_str = f"{fecha_inicio_carga} to {fecha_fin_carga}"
-
-        # Initialize status trackingS
-        status_details = {
-            "markets_downloaded": [],
-            "markets_failed": [],
-            "date_range": date_range_str
-        }
-
-        
-        try:
-            # Track success for each market
-            print ("\n--------- Diario ---------")
-            success_diario = self._extract_with_status("diario", self.extract_diario, 
-                                                     fecha_inicio_carga, fecha_fin_carga, status_details)
-        
-            print ("\n--------- Intra ---------")
-            success_intra = self._extract_with_status("intra", self.extract_intra, 
-                                                    fecha_inicio_carga, fecha_fin_carga, status_details)
-            print ("\n--------- Secundaria ---------")
-            success_secundaria = self._extract_with_status("secundaria", self.extract_secundaria, 
-                                                         fecha_inicio_carga, fecha_fin_carga, status_details)
-            print ("\n--------- Terciaria ---------")
-            success_terciaria = self._extract_with_status("terciaria", self.extract_terciaria, 
-                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
-            print ("\n--------- RR ---------")
-            success_rr = self._extract_with_status("rr", self.extract_rr, 
-                                                 fecha_inicio_carga, fecha_fin_carga, status_details)
-            print ("\n--------------------------------")
-            
-            # Overall success only if all markets succeeded
-            overall_success = (success_diario and success_intra and success_secundaria 
-                              and success_terciaria and success_rr)
-            
-        except Exception as e:
-            overall_success = False
-            status_details["error"] = str(e)
-        
-        print("ℹ️ Data extraction pipeline finished.")
-        
-        # Return status for Airflow task
-        return {"success": overall_success, "details": status_details}
-        
-    def _extract_with_status(self, market_name, extract_function, fecha_inicio_carga, fecha_fin_carga, status_details):
-        """
-        Runs a market extraction function and records its success or failure status.
-        
-        Parameters:
-            market_name: Name of the market being extracted.
-            extract_function: Function to call for extracting market data.
-            fecha_inicio_carga: Start date for extraction.
-            fecha_fin_carga: End date for extraction.
-            status_details: Dictionary to update with extraction results.
-        
-        Returns:
-            True if extraction succeeds; False if an exception occurs.
+        Extract data for all relevant markets from ESIOS API for a given date range.
+        Uses the environment setting (DEV/PROD) for file saving format.
         """
         try:
-            extract_function(fecha_inicio_carga, fecha_fin_carga)
-            status_details["markets_downloaded"].append(market_name)
-            return True
+            self.extract_diario(fecha_inicio_carga, fecha_fin_carga)
+            self.extract_intra(fecha_inicio_carga, fecha_fin_carga)
+            self.extract_secundaria(fecha_inicio_carga, fecha_fin_carga)
+            self.extract_terciaria(fecha_inicio_carga, fecha_fin_carga)
+            self.extract_rr(fecha_inicio_carga, fecha_fin_carga)
+
         except Exception as e:
-            status_details["markets_failed"].append({
-                "market": market_name,
-                "error": str(e)
-            })
-            return False
+            print(f"Error extracting data: {e}")
+
+        finally:
+            print("Data extraction pipeline finished.")
 
     def extract_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
-        Extracts daily electricity market prices from the ESIOS API for a specified date range and saves the results to file.
+        Extract daily market prices from ESIOS.
+        Uses the environment setting (DEV/PROD) for file saving format.
         
-        Parameters:
-            fecha_inicio_carga (Optional[str]): Start date in 'YYYY-MM-DD' format. If None, defaults to 93 days before yesterday.
-            fecha_fin_carga (Optional[str]): End date in 'YYYY-MM-DD' format. If None, defaults to yesterday.
-        
-        This method validates the date range and delegates extraction and saving to the appropriate downloader.
+        Args:
+            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
+            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
+            
+        Returns:
+            None
         """
         self._extract_and_save_prices(
             fecha_inicio_carga=fecha_inicio_carga,
@@ -336,9 +277,18 @@ class ESIOSPreciosExtractor:
 
     def extract_rr(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
         """
-        Extracts Replacement Reserve (RR) market prices from the ESIOS API for a specified date range.
+        Extract Replacement Reserve (RR) prices from ESIOS.
+        Uses the environment setting (DEV/PROD) for file saving format.
         
-        If no dates are provided, defaults are determined by internal validation logic. RR market uses a single price for both up and down regulation.
+        Args:
+            fecha_inicio_carga (Optional[str]): Start date in YYYY-MM-DD format, default None is 93 days ago
+            fecha_fin_carga (Optional[str]): End date in YYYY-MM-DD format, default None uses logic in fecha_input_validation
+            
+        Returns:
+            None
+            
+        Note:
+            RR uses a single price for both up and down regulation
         """
         self._extract_and_save_prices(
             fecha_inicio_carga=fecha_inicio_carga,
@@ -349,8 +299,7 @@ class ESIOSPreciosExtractor:
         return
 
 
-if __name__ == "__main__":
-    #--example usage
+def example_usage():
     esios_extractor = ESIOSPreciosExtractor()
     esios_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
 

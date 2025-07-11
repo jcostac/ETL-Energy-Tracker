@@ -13,63 +13,28 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
-from sqlalchemy import text
 
 class ESIOSConfig:
 
     def __init__(self):
-        """
-        Initialize ESIOSConfig with database engine placeholder, market-indicator mappings, and valid ESIOS price markets.
-        
-        Loads mappings between market names and ESIOS indicator IDs from the database, and sets the list of markets for which ESIOS price data is available.
-        """
-        self._bbdd_engine = None
+        self.bbdd_engine = DatabaseUtils.create_engine('pruebas_BT')
         self.indicator_id_map, self.market_id_map = self.get_market_id_mapping() #returns a tuple of two dictionaries
 
         #valid markets for which we get esios precios data --> useful to check if ESIOS data is available for a market in processing
         self.esios_precios_markets = ['diario', 'intra', 'secundaria', 'terciaria', 'rr']
 
-    @property
-    def bbdd_engine(self):
-        """
-        Returns the current database engine instance.
-        
-        Raises:
-            ValueError: If the database engine has not been set.
-        """
-        if not self._bbdd_engine:
-            raise ValueError("BBDD engine not set")
-        return self._bbdd_engine
-    
-    @bbdd_engine.setter
-    def bbdd_engine(self, engine):
-        """
-        Set the database engine and verify its connectivity.
-        
-        Raises:
-            Exception: If the engine cannot establish a connection or execute a simple query.
-        """
-        self._bbdd_engine = engine
-        #test if the engine is working
-        try:
-            with self._bbdd_engine.connect() as connection:
-                connection.execute(text("SELECT 1"))
-        except Exception as e:
-            print(f"Error in engine setting: {e}")
-            raise e
-
     def get_market_id_mapping(self) -> tuple[dict[str, str], dict[str, str]]:
         """
-        Retrieve mappings between market names and ESIOS indicator IDs from the database.
-        
+        Obtiene el mapping de los IDs de los mercados de ESIOS.
         Returns:
-            indicator_id_map (dict[str, str]): Maps market names to their corresponding ESIOS indicator IDs as strings.
-            market_id_map (dict[str, str]): Maps ESIOS indicator IDs to internal market IDs as strings.
+            dict: 1. indicator_id_map: Un diccionario con los nombres de los mercados y sus respectivos IDs de ESIOS.
+                        i.e {'Intra 4': 600, 'Intra 5': 612, 'Intra 6': 613, 'Intra 7': 614} (nombre de mercado como key, id de ESIOS como value)
+                    2. market_id_map: Un diccionario con los IDs de los mercados de ESIOS y sus IDs de mercado en la BBDD.
+                        i.e {600: 1, 612: 2, 613: 3, 614: 4} (id de ESIOS como key, id de mercado como value)
         """
-        self.bbdd_engine = DatabaseUtils.create_engine('energy_tracker')
 
         #get all market ids with indicator_esios_precios != 0
-        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'mercados_mapping', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
+        df_mercados = DatabaseUtils.read_table(self.bbdd_engine, 'Mercados', columns=['id', 'mercado', 'indicador_esios_precios as indicador', 'is_quinceminutal'], 
                                             where_clause='indicador_esios_precios != 0')
         
         
