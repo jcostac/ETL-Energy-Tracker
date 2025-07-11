@@ -132,7 +132,6 @@ class I3Config:
         except:
             return False
 
-
 class DiarioConfig(I3Config):
     def __init__(self):
         super().__init__()
@@ -193,6 +192,17 @@ class IntraConfig(I3Config):
         
         # Get sheets of interest based on the selected markets
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+
+        self.phf_intra_map = {
+            'Intra 1': 'PHF-1',
+            'Intra 2': 'PHF-2',
+            'Intra 3': 'PHF-3',
+            'Intra 4': 'PHF-4',
+            'Intra 5': 'PHF-5',
+            'Intra 6': 'PHF-6',
+            'Intra 7': 'PHF-7',
+        }
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
         return super().get_redespacho_filter(market_id)  # Returns None
