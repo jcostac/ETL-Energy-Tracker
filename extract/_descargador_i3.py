@@ -185,40 +185,59 @@ class I3Downloader:
         
         # Loop through each sheet
         for sheet_name in volumenes_excel_file.sheet_names:
-            # Read the sheet with header
-            df = pd.read_excel(volumenes_excel_file, sheet_name=sheet_name)
-
-            # Custom filtering logic as provided
-            if "Total" in df.columns:
-                last_col_to_drop = df.columns.get_loc("Total")
-            elif "Cuarto de Hora del dia" in df.columns:
-                last_col_to_drop = df.columns.get_loc("Cuarto de Hora del dia")
+            # Dynamically find the header row, similar to i90 logic
+            df_temp = pd.read_excel(volumenes_excel_file, sheet_name=sheet_name, header=None)
+            header_row = 0
+            for i, row in df_temp.iterrows():
+                # The header in I3 files contains 'Programa' or 'Concepto'
+                if 'Programa' in row.values or 'Concepto' in row.values:
+                    header_row = i
+                    break
+            
+            # Read the sheet again, skipping rows to the identified header
+            df = pd.read_excel(volumenes_excel_file, sheet_name=sheet_name, skiprows=header_row)
+            
+            # Dynamically determine granularity and the column to drop up to
+            if "Cuarto de Hora del dia" in df.columns:
+                granularity = "Quince minutos"
+                last_col_to_drop_name = "Cuarto de Hora del dia"
+            elif "Total" in df.columns:
+                granularity = "Hora"
+                last_col_to_drop_name = "Total"
             else:
-                # If neither column is found, skip this sheet
-                print(f"Warning: 'Total' or 'Cuarto de Hora del dia' not found in sheet {sheet_name}. Skipping.")
-                raise ValueError(f"Total or Cuarto de Hora del dia column not found in sheet {sheet_name}. Skipping.")
-                        
+                print(f"Warning: Neither 'Total' nor 'Cuarto de Hora del dia' not found in sheet {sheet_name}. Skipping.")
+                raise ValueError(f"Neither 'Total' nor 'Cuarto de Hora del dia' found in sheet {sheet_name}. Skipping.")
+            
+            last_col_to_drop = df.columns.get_loc(last_col_to_drop_name)
             cols_to_drop = list(range(0, last_col_to_drop + 1))
+            
+            id_vars = []
+            if "Programa" in df.columns:
+                prog_col = df.columns.get_loc("Programa")
+                if prog_col in cols_to_drop:
+                    cols_to_drop.remove(prog_col)
+                id_vars.append("Programa")
+
             if "Concepto" in df.columns:
                 tec_col = df.columns.get_loc("Concepto")
                 if tec_col in cols_to_drop:
                     cols_to_drop.remove(tec_col)
-            
+                id_vars.append("Concepto")
+
+            if not id_vars:
+                print(f"Warning: Neither 'Programa' nor 'Concepto' found in sheet {sheet_name} after filtering. Skipping.")
+                raise ValueError(f"Neither 'Programa' nor 'Concepto' found in sheet {sheet_name} after filtering. Skipping.")
+
             df = df.drop(df.columns[cols_to_drop], axis=1)
                     
             # Melting logic as provided
-            if "Concepto" not in df.columns:
-                print(f"Warning: 'Concepto' column not found in sheet {sheet_name} after filtering. Skipping.")
-                raise ValueError(f"Concepto column not found in sheet {sheet_name} after filtering. Skipping.")
+            df_melted = df.melt(id_vars=id_vars, var_name="hora", value_name=value_col_name)
+            
+            # Rename columns
+            df_melted = df_melted.rename(columns={'Programa': 'sesion', 'Concepto': 'tecnologia'})
 
-            hora_colname = df.columns[1] if len(df.columns) > 1 else None
-            df_melted = df.melt(id_vars=["Concepto"], var_name="hora", value_name=value_col_name)
-
-            # Add granularity column (adapted from i90 logic)
-            if hora_colname == 1:
-                df_melted['granularity'] = "Quince minutos"
-            else:
-                df_melted['granularity'] = "Hora"
+            # Add granularity column
+            df_melted['granularity'] = granularity
             
             # Add date column
             df_melted['fecha'] = fecha
@@ -500,8 +519,7 @@ class IntradiarioDL(I3Downloader):
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Intra download logic left empty as per instructions.
+        Get intradiario volume data for a specific day.
         """
-        # Return empty DataFrame for now
-        print("IntradiarioDL.get_i3_volumenes is not yet implemented.")
-        return pd.DataFrame() 
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
+        return df_volumenes 
