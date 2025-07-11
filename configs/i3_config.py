@@ -171,13 +171,13 @@ class IntraConfig(I3Config):
         self.volumenes_sheets = self.get_sheets_of_interest()
 
         self.phf_intra_map = {
-            'Intra 1': 'PHF-1',
-            'Intra 2': 'PHF-2',
-            'Intra 3': 'PHF-3',
-            'Intra 4': 'PHF-4',
-            'Intra 5': 'PHF-5',
-            'Intra 6': 'PHF-6',
-            'Intra 7': 'PHF-7',
+            1 : 'PHF-1',
+            2 : 'PHF-2',
+            3 : 'PHF-3',
+            4 : 'PHF-4',
+            5 : 'PHF-5',
+            6 : 'PHF-6',
+            7 : 'PHF-7',
         }
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
