@@ -22,6 +22,8 @@ class DataValidationUtils:
         self.raw_precios_esios_required_cols = ['datetime_utc', 'value', 'indicador_id']
         self.raw_precios_i90_required_cols = ["fecha", "precios", "Redespacho", "Sentido", "Unidad de Programación", "hora", "granularity"]
         self.raw_volumenes_required_cols = ["Unidad de Programación", "fecha", "volumenes", "hora", "granularity"]
+        self.raw_volumenes_omie_required_cols = ["Fecha", "Unidad", "id_mercado", "Energía Compra/Venta", "Ofertada (O)/Casada (C)"]
+        self.raw_volumenes_mic_required_cols = ["Fecha", "Contrato", "Precio", "Cantidad", "id_mercado"]
 
     def _validate_data_common(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
         """
@@ -131,12 +133,18 @@ class DataValidationUtils:
                     df['Unidad de Programación'] = df['Unidad de Programación'].astype('str')
                     df['hora'] = df['hora'].astype('str')
                 
-                
                 #for volumenes datasets coming from I90 or I3
                 elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
                     df['volumenes'] = df['volumenes'].astype('float32')
                     df['hora'] = df['hora'].astype('str')
-                  
+
+                elif validation_schema_type == "volumenes_omie":
+                    df['Unidad'] = df['Unidad'].astype('str')
+                    df["Energía Compra/Venta"] = df["Energía Compra/Venta"].astype('float32')
+
+                elif validation_schema_type == "volumenes_mic":
+                    df['Cantidad'] = df['Cantidad'].astype('float32')
+                    df['Precio'] = df['Precio'].astype('float32')
 
                 
                 print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
@@ -185,8 +193,11 @@ class DataValidationUtils:
                 required_cols = self.raw_precios_i90_required_cols
             elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
                 required_cols = self.raw_volumenes_required_cols
-            #TODO: add raw volumenes_omie and raw volumenes_mic required columns
-            
+            elif validation_schema_type == "volumenes_omie":
+                required_cols = self.raw_volumenes_omie_required_cols
+            elif validation_schema_type == "volumenes_mic":
+                required_cols = self.raw_volumenes_mic_required_cols
+
         if not all(col in df.columns for col in required_cols):
             raise ValueError(f"Missing required columns. Expected: {required_cols}")
         
