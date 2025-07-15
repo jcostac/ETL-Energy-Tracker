@@ -27,7 +27,7 @@ def test_i3_download_latest_day():
     """
     try:
         i3_volumenes_extractor = I3VolumenesExtractor()
-        results = i3_volumenes_extractor.extract_data_for_all_markets(fecha_inicio_carga=None, fecha_fin_carga=None, mercados_lst=["diario"])
+        results = i3_volumenes_extractor.extract_data_for_all_markets(fecha_inicio_carga=None, fecha_fin_carga=None)
         assert results["success"] == True, "i3 latest day download failed"
         
     except Exception as e:

@@ -306,7 +306,10 @@ class I90Config:
             bool: True if the class instance has volume sheets; False otherwise or if instantiation fails.
         """
         try:
-            instance = cls()
+            if cls.__name__ == "IntraConfig":
+                instance = cls(fecha=datetime.today())
+            else:
+                instance = cls()
             return bool(instance.volumenes_sheets)
         except TypeError:
             # If instantiation fails due to missing parameters, return False
@@ -325,6 +328,8 @@ class I90Config:
         """
         try:
             instance = cls()
+            if cls.__name__ == "IntraConfig":
+                instance = cls(fecha=datetime.today())
             return bool(instance.precios_sheets)
         except TypeError:
             # If instantiation fails due to missing parameters, return False

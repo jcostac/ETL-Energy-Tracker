@@ -105,9 +105,15 @@ class I3Config:
     @classmethod
     def has_volumenes_sheets(cls) -> bool:
         try:
-            instance = cls()
-            return bool(instance.volumenes_sheet)
-        except:
+            if cls.__name__ == "IntraConfig":
+                from datetime import datetime
+                instance = cls(fecha=datetime.today())
+            else:
+                instance = cls()
+            return bool(instance.volumenes_sheets)
+        except TypeError:
+            return False
+        except Exception:
             return False
 
 class DiarioConfig(I3Config):

@@ -5,8 +5,9 @@ import pretty_errors
 import sys
 from pathlib import Path
 from typing import Optional, List, Type, Dict
-import numpy as np # Add numpy import for np.where
+import numpy as np 
 import re
+import traceback
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -21,7 +22,6 @@ from configs.i90_config import (
         DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, IntraConfig,
         CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
     )
-import traceback
 
 
 class TransformadorI90:
@@ -552,7 +552,6 @@ class TransformadorI90:
              print(f"Configuration or Value Error during multiple transform: {ve}")
         except Exception as e:
             print(f"An unexpected error occurred during multiple transform: {e}")
-            import traceback
             print(traceback.format_exc())
 
     def _extract_dataset_type_from_filename(self, filename: str) -> str:
