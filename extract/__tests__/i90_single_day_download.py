@@ -28,7 +28,7 @@ def precios_download_single_day():
 
 if __name__ == "__main__":
     volumenes_download_single_day()
-    time.sleep(10)
+    time.sleep(5)
     precios_download_single_day()
     print("🎉 All tests passed successfully!")
 

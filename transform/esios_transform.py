@@ -34,7 +34,7 @@ class TransformadorESIOS:
         self.date_utils = DateUtilsETL()
 
         #global attributes
-        self.dataset_type = 'precios'
+        self.dataset_type = "precios_esios"
         self.transform_types = ['latest', 'batch', 'single', 'multiple']
     
     def _filter_data_by_mode(self, raw_df: pd.DataFrame, mode: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:

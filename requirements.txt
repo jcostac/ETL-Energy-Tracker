@@ -20,6 +20,6 @@ pyarrow
 python-dotenv
 pytz
 requests
-sqlalchemy==1.4.54 #this version is compatible with airflow 3.0.0, specially flask-appbuilder 4.5.3  whichrequires SQLAlchemy<1.5
+sqlalchemy==1.4.54 #this version is compatible with airflow 2.10.5 specially flask-appbuilder 4.5.3  whichrequires SQLAlchemy<1.5
 tqdm
 xlrd

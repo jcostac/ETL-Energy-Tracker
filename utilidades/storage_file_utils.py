@@ -447,7 +447,6 @@ class RawFileUtils(StorageFileUtils):
 
         return list(file_path.glob(f"*.{self.raw_file_extension}"))
     
-
 class ProcessedFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving processed parquet files.
@@ -903,8 +902,8 @@ class ProcessedFileUtils(StorageFileUtils):
         partition_path_str = os.path.join(*path_segments) #kwargs, join path segments ie> processed/mercado=BTC/id_mercado=BTC/year=2024/month=01
         os.makedirs(partition_path_str, exist_ok=True) #create directory if it doesn't exist
 
-        if dataset_type == "precios_i90":
-            print(" Naming file as precios.parquet to homogenize processed data naming convention for parquet files")
+        if dataset_type == "precios_i90" or dataset_type == "precios_esios":
+            print(" Naming file as precios.parquet to homogenize processed data naming convention for precios parquet files")
             dataset_type = "precios"
         
         return os.path.join(partition_path_str, f"{dataset_type}.parquet")

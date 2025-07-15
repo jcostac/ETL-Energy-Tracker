@@ -232,7 +232,7 @@ class I90Downloader:
 
             if header_row == 0:
                 print(f"Could not find header row in sheet {sheet_name}. Skipping this sheet.")
-                continue
+                raise ValueError(f"Could not find header row in sheet {sheet_name}. Skipping this sheet.")
 
             # Now read the sheet again, skipping the rows before the header
             df = pd.read_excel(excel_file, sheet_name=sheet_name, skiprows=header_row)

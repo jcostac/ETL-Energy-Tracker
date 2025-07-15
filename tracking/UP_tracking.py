@@ -662,19 +662,3 @@ class UPTracker:
             print(f"\n❌ Error during UP processing: {e}")
             print("Process terminated with errors")
             raise
-
-def main():
-    """
-    Runs the UP synchronization workflow using a specified CSV file.
-    
-    This function instantiates the UPTracker, sets the path to the ESIOS UP list CSV file, and initiates the process to synchronize and update UP data between the CSV source and the database.
-    """
-
-    # Example usage
-    tracker = UPTracker()
-    #use realtive path
-    csv_path = os.path.join(os.path.dirname(__file__), "..", "downloads", "tracking", "export_unidades-de-programacion_2025-03-12_16_16.csv")
-    tracker.process_ups(csv_path)
-
-if __name__ == "__main__":
-    main()
