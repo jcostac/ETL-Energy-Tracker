@@ -15,6 +15,7 @@ from utilidades.db_utils import DatabaseUtils
 
 class I3Config:
     def __init__(self):
+        # Load environment variables from .env file
         load_dotenv()
         self.dia_inicio_SRS = datetime(2024, 11, 20)  # Regulatory change date (adapt if needed for i3)
         self._bbdd_engine = None

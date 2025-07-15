@@ -28,6 +28,6 @@ def precios_download_market_specific():
 
 if __name__ == "__main__":
     volumenes_download_market_specific()
-    time.sleep(10)
+    time.sleep(5)
     precios_download_market_specific()  
     print("🎉 All tests passed successfully!")

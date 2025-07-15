@@ -181,7 +181,7 @@ class I3Downloader:
             pd.DataFrame: A DataFrame containing the cleaned and standardized data from all relevant sheets.
         """
         all_dfs = []
-        value_col_name = "valor"  # Adapted to i3 logic
+        value_col_name = "volumenes"  
         
         # Loop through each sheet
         for sheet_name in volumenes_excel_file.sheet_names:
@@ -190,80 +190,67 @@ class I3Downloader:
             header_row = 0
             for i, row in df_temp.iterrows():
                 # The header in I3 files contains 'Programa' or 'Concepto'
-                if 'Programa' in row.values or 'Concepto' in row.values:
+                if 'Total' in row.values or 'Concepto' in row.values:
                     header_row = i
                     break
             
-            # Read the sheet again, skipping rows to the identified header
+            if header_row == 0:
+                raise ValueError(f"Could not find header row in sheet {sheet_name}")
+
+            # Now read the sheet again, skipping the rows before the header
             df = pd.read_excel(volumenes_excel_file, sheet_name=sheet_name, skiprows=header_row)
+
+            # Identify the position of the 'Total' column
+            total_col_idx = df.columns.get_loc('Total')
+            #hora col name == column straight after total col (used for granularity check)
+            hora_col_name = df.columns[total_col_idx + 1]
             
-            # Dynamically determine granularity and the column to drop up to
-            if "Cuarto de Hora del dia" in df.columns:
-                granularity = "Quince minutos"
-                last_col_to_drop_name = "Cuarto de Hora del dia"
-            elif "Total" in df.columns:
-                granularity = "Hora"
-                last_col_to_drop_name = "Total"
+            # Split columns into identifier columns (before Total) and hour columns (after Total)
+            id_cols = df.columns[:total_col_idx + 1].tolist()  # Include 'Total'
+            hour_cols = df.columns[total_col_idx + 1:].tolist()  # Everything after 'Total'
+
+            
+            # Melt the DataFrame using the dynamic id_cols
+            df_melted = df.melt(
+                id_vars=id_cols,
+                value_vars=hour_cols,
+                var_name='hora',
+                value_name= value_col_name
+            )
+
+            #add granularity column to the dataframe based on the hour col name
+            if hora_col_name == 1:
+                df_melted['granularity'] = "Quince minutos"
             else:
-                print(f"Warning: Neither 'Total' nor 'Cuarto de Hora del dia' not found in sheet {sheet_name}. Skipping.")
-                raise ValueError(f"Neither 'Total' nor 'Cuarto de Hora del dia' found in sheet {sheet_name}. Skipping.")
+                df_melted['granularity'] = "Hora"
             
-            last_col_to_drop = df.columns.get_loc(last_col_to_drop_name)
-            cols_to_drop = list(range(0, last_col_to_drop + 1))
-            
-            id_vars = []
-            if "Programa" in df.columns:
-                prog_col = df.columns.get_loc("Programa")
-                if prog_col in cols_to_drop:
-                    cols_to_drop.remove(prog_col)
-                id_vars.append("Programa")
-
-            if "Concepto" in df.columns:
-                tec_col = df.columns.get_loc("Concepto")
-                if tec_col in cols_to_drop:
-                    cols_to_drop.remove(tec_col)
-                id_vars.append("Concepto")
-
-            if not id_vars:
-                print(f"Warning: Neither 'Programa' nor 'Concepto' found in sheet {sheet_name} after filtering. Skipping.")
-                raise ValueError(f"Neither 'Programa' nor 'Concepto' found in sheet {sheet_name} after filtering. Skipping.")
-
-            df = df.drop(df.columns[cols_to_drop], axis=1)
-                    
-            # Melting logic as provided
-            df_melted = df.melt(id_vars=id_vars, var_name="hora", value_name=value_col_name)
-            
-            # Rename columns
-            df_melted = df_melted.rename(columns={'Programa': 'sesion', 'Concepto': 'tecnologia'})
-
-            # Add granularity column
-            df_melted['granularity'] = granularity
-            
-            # Add date column
+            #add date column to the dataframe
             df_melted['fecha'] = fecha
+           
 
             all_dfs.append(df_melted)
 
-        # Concat and handle NaNs
-        if not all_dfs:
-            return pd.DataFrame()
-        
-        df_concat = pd.concat(all_dfs, ignore_index=True)
-        # Drop all columns that are fully NaNs
+
+        #concat and turn NaNs into 0s
+        df_concat = pd.concat(all_dfs)
+        #drop all columns that are fully NaNs
         df_concat = df_concat.dropna(axis=1, how='all')
         
-        # Drop rows where the value column is NA or 0
+        # Drop rows where the value column (volumenes/precios) is NA or 0
         if value_col_name in df_concat.columns:
+            # Drop rows with NA values in the volume/price column
             df_concat = df_concat.dropna(subset=[value_col_name])
+            # Also drop rows with 0 values to further reduce overhead
             df_concat = df_concat[df_concat[value_col_name] != 0]
             print(f"✅ Filtered out NA and zero values. Remaining rows: {len(df_concat)}")
         else:
+            # If no value column, just drop completely empty rows
             df_concat = df_concat.dropna(how='all')
         
-        # Fill remaining NAs with 0 for other columns
+        # Only fill remaining NAs with 0 for other columns (not the main value column)
         df_concat = df_concat.fillna(0).infer_objects()
 
-        # Format the 'fecha' column
+        # Explicitly format the 'fecha' column to ensure consistency in the output
         if not df_concat.empty and 'fecha' in df_concat.columns:
             df_concat['fecha'] = pd.to_datetime(df_concat['fecha']).dt.strftime('%Y-%m-%d')
 
