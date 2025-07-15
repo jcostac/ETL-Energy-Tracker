@@ -94,7 +94,6 @@ class I90Processor:
             # Apply sentido filter
             if sentido and 'Sentido' in filtered_df.columns:
                  # Ensure consistent comparison (e.g., handle case sensitivity if needed)
-                 # Assuming Sentido in DataFrame and config map are comparable (e.g., 'Subir', 'Bajar', None)
                 filtered_df = filtered_df[filtered_df['Sentido'] == sentido]
 
             elif sentido and 'Sentido' not in filtered_df.columns:
