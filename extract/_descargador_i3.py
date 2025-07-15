@@ -25,9 +25,9 @@ class I3Downloader:
     
     def __init__(self):
         """
-        Initialize the I3Downloader with the ESIOS API token and configuration settings.
+        Initialize the I3Downloader with ESIOS API credentials and configuration.
         
-        Loads the API token from the environment and sets the temporary download path for file operations.
+        Loads the API token from environment variables, sets up the configuration object, initializes an empty DataFrame for error tracking, and sets the temporary download path for file operations.
         """
         self.esios_token = os.getenv('ESIOS_TOKEN')
         self.config = I3Config()
@@ -38,20 +38,26 @@ class I3Downloader:
     @staticmethod
     def extract_date_from_file_name(excel_file_name: str) -> datetime:
         """
-        Extract the date from the Excel file name.
+        Extracts a date object from an Excel file name based on the '%Y%m%d' format.
+        
+        Parameters:
+            excel_file_name (str): Name of the Excel file, expected to start with a date in 'YYYYMMDD' format.
+        
+        Returns:
+            datetime: The extracted date as a datetime object.
         """
         date_str = excel_file_name.split('.')[0]
         return datetime.strptime(date_str, '%Y%m%d')
     
     def download_i3_file(self, day: datetime) -> Tuple[str, str, List[str]]:
         """
-        Get I3 data for a specific day.
+        Downloads the I3 ZIP file for a given day, extracts the Excel file, and identifies any sheets with known errors.
         
-        Args:
-            day (datetime): The specific day to retrieve data for
-            
+        Parameters:
+        	day (datetime): The date for which to download the I3 data.
+        
         Returns:
-            zip_file_name, excel_file_name, pestañas_con_error
+        	A tuple containing the ZIP file name, the extracted Excel file name, and a list of sheet names with errors (empty if none are recorded).
         """
         
         # Download the file
@@ -73,15 +79,17 @@ class I3Downloader:
         
     def extract_sheets_of_interest(self, excel_file_name: str, pestañas_con_error: List[str], volumenes_sheets: List[str]) -> pd.DataFrame:
         """
-        Process the Excel file by filtering, extracting valid sheets, and converting to a DataFrame.
+        Extracts and processes specified sheets from an Excel file, returning a cleaned DataFrame with standardized columns.
         
-        Args:
-            excel_file_name (str): Name of the Excel file to process
-            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
-            volumenes_sheets (List[str]): List of sheet IDs for volume data
+        Filters out sheets listed as erroneous, loads the relevant sheets, converts them into a unified DataFrame, and ensures proper resource cleanup. The resulting DataFrame contains only the requested volume data, formatted and cleaned for further analysis.
+        
+        Parameters:
+            excel_file_name (str): The name of the Excel file to process.
+            pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+            volumenes_sheets (List[str]): List of sheet names to extract and process.
         
         Returns:
-            pd.DataFrame: The final melted DataFrame containing the requested data.
+            pd.DataFrame: A cleaned DataFrame containing the extracted and standardized data from the specified sheets.
         """
         # Extract the date from the file name
         fecha = self.extract_date_from_file_name(excel_file_name)
@@ -121,13 +129,16 @@ class I3Downloader:
     
     def _make_i3_request(self, day: datetime) -> Tuple[str, str]:
         """
-        Downloads the I3 zip file for a given day from the ESIOS API, saves it locally, extracts the contained Excel file, and returns their base file names.
+        Download the I3 ZIP file for a specified date from the ESIOS API, extract the contained Excel file, and return their base file names.
         
         Parameters:
-            day (datetime): The date for which to download the I3 file.
+            day (datetime): The date for which to download and extract the I3 file.
         
         Returns:
-            Tuple[str, str]: The base names of the downloaded zip file and the extracted Excel file.
+            Tuple[str, str]: The base name of the downloaded ZIP file and the extracted Excel file (with identifying prefix and extension removed).
+        
+        Raises:
+            FileNotFoundError: If no Excel file is found in the downloaded ZIP archive.
         """
         # Ensure temporary download directory exists
         os.makedirs(self.temporary_download_path, exist_ok=True)
@@ -169,16 +180,16 @@ class I3Downloader:
     
     def _excel_file_to_df(self, fecha: datetime, volumenes_excel_file: pd.ExcelFile) -> pd.DataFrame:
         """
-        Convert relevant sheets from an Excel file into a cleaned, standardized DataFrame for a given date.
+        Convert all relevant sheets from an Excel file into a cleaned and standardized DataFrame for a specific date.
         
-        Processes each sheet in the provided Excel file, applies custom filtering and melting logic, adds granularity and date columns, and concatenates all results. Fully empty columns are dropped, and rows with missing or zero values in the main value column are removed. Remaining missing values in other columns are filled with zero, and the date column is formatted as 'YYYY-MM-DD'.
+        Processes each sheet by dynamically detecting the header row, reshaping the data to long format, adding granularity and date columns, and concatenating the results. Drops fully empty columns and removes rows with missing or zero values in the main value column. Remaining missing values in other columns are filled with zero, and the date column is formatted as 'YYYY-MM-DD'.
         
         Parameters:
             fecha (datetime): The date associated with the data in the Excel file.
-            volumenes_excel_file (pd.ExcelFile): The Excel file object containing volume data.
+            volumenes_excel_file (pd.ExcelFile): The Excel file object containing the sheets to process.
         
         Returns:
-            pd.DataFrame: A DataFrame containing the cleaned and standardized data from all relevant sheets.
+            pd.DataFrame: Cleaned and standardized data from all relevant sheets.
         """
         all_dfs = []
         value_col_name = "volumenes"  
@@ -258,7 +269,14 @@ class I3Downloader:
 
     def _get_valid_sheets(self, volumenes_sheets: List[str], pestañas_con_error: List[str]) -> List[str]:
         """
-        Get valid sheets from the I3 Excel file.
+        Return a list of valid sheet names by excluding those marked as erroneous.
+        
+        Parameters:
+        	volumenes_sheets (List[str]): List of sheet names to consider.
+        	pestañas_con_error (List[str]): List of sheet names identified as containing errors.
+        
+        Returns:
+        	List[str]: Sheet names that are not in the error list.
         """
         if not volumenes_sheets:
             return []
@@ -275,14 +293,14 @@ class I3Downloader:
     
     def _filter_sheets(self, excel_file_name: str, volumenes_sheets: List[str]) -> pd.ExcelFile:
         """
-        Process the I3 Excel file by filtering and keeping only specified sheets.
+        Filter and extract specified sheets from an I3 Excel file, returning a new ExcelFile containing only those sheets.
         
-        Args:
-            excel_file_name (str): The date part of the Excel file name (e.g., '20250401')
-            volumenes_sheets (List[str]): List of sheet IDs for volume data
-            
+        Parameters:
+            excel_file_name (str): The date portion of the Excel file name (e.g., '20250401').
+            volumenes_sheets (List[str]): List of sheet identifiers to retain.
+        
         Returns:
-            pd.ExcelFile: Filtered ExcelFile with volume data
+            pd.ExcelFile: An ExcelFile object containing only the filtered sheets. If none of the specified sheets are found, returns an empty ExcelFile.
         """
         full_excel_path = os.path.join(self.temporary_download_path, f"I3DIA_{excel_file_name}.xls")
         if not os.path.exists(full_excel_path):
@@ -314,11 +332,9 @@ class I3Downloader:
     
     def cleanup_files(self, zip_file_name: str, excel_file_name: str) -> None:
         """
-        Clean up temporary files after processing, only if they exist.
+        Delete temporary ZIP and Excel files associated with a download, retrying on permission errors.
         
-        Args:
-            zip_file_name (str): Base file name for the zip file (e.g., '2025-04-01.zip')
-            excel_file_name (str): Base file name for the Excel file (e.g., '20250401')
+        Attempts to remove all relevant temporary files for the specified ZIP and Excel base names, retrying up to five times if a file is in use.
         """
         # List of files to potentially remove (adapted for i3 naming)
         files_to_cleanup = [
@@ -349,14 +365,25 @@ class DiarioDL(I3Downloader):
     """
     
     def __init__(self):
-        """Initialize the diario downloader"""
+        """
+        Initialize the DiarioDL downloader with the DiarioConfig settings.
+        
+        Sets up the configuration and list of volume sheets specific to diario market data extraction.
+        """
         super().__init__()
         self.config = DiarioConfig()
         self.volumenes_sheets = self.config.volumenes_sheets
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get diario volume data for a specific day.
+        Extracts and returns the diario volume data from the specified Excel file, excluding sheets listed as having errors.
+        
+        Parameters:
+            excel_file_name (str): Path to the Excel file to process.
+            pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+            pd.DataFrame: DataFrame containing the cleaned diario volume data.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
@@ -367,14 +394,23 @@ class SecundariaDL(I3Downloader):
     """
     
     def __init__(self):
-        """Initialize the secundaria downloader"""
+        """
+        Initialize the downloader for secundaria market data, setting the appropriate configuration and target sheets for extraction.
+        """
         super().__init__()
         self.config = SecundariaConfig()
         self.volumenes_sheets = self.config.volumenes_sheets
               
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get secundaria volume data for a specific day.
+        Extracts and returns secundaria volume data from the specified Excel file, excluding sheets with known errors.
+        
+        Parameters:
+        	excel_file_name (str): Path to the Excel file to process.
+        	pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing cleaned secundaria volume data from the valid sheets.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
@@ -385,14 +421,25 @@ class TerciariaDL(I3Downloader):
     """
     
     def __init__(self):
-        """Initialize the tertiary regulation downloader"""
+        """
+        Initialize the downloader for tertiary regulation market data.
+        
+        Sets up the configuration and specifies the relevant Excel sheets to process for tertiary regulation volumes.
+        """
         super().__init__()
         self.config = TerciariaConfig()
         self.volumenes_sheets = self.config.volumenes_sheets 
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get tertiary regulation volume data.
+        Extracts and returns tertiary regulation volume data from the specified Excel file, excluding sheets with known errors.
+        
+        Parameters:
+        	excel_file_name (str): Path to the Excel file to process.
+        	pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing cleaned tertiary regulation volume data from the valid sheets.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
@@ -403,14 +450,23 @@ class RRDL(I3Downloader):
     """
     
     def __init__(self):
-        """Initialize the RR downloader"""
+        """
+        Initialize the Replacement Reserve (RR) downloader with the appropriate configuration and sheet selection.
+        """
         super().__init__()
         self.config = RRConfig()
         self.volumenes_sheets = self.config.volumenes_sheets
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get Replacement Reserve (RR) volume data.
+        Extracts Replacement Reserve (RR) volume data from the specified Excel file, excluding sheets with known errors.
+        
+        Parameters:
+        	excel_file_name (str): Path to the Excel file to process.
+        	pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing the cleaned RR volume data from the valid sheets.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
@@ -421,14 +477,23 @@ class CurtailmentDL(I3Downloader):
     """
     
     def __init__(self):
-        """Initialize the curtailment downloader"""
+        """
+        Initialize the CurtailmentDL downloader with the CurtailmentConfig and set the relevant volume sheets for curtailment data extraction.
+        """
         super().__init__()
         self.config = CurtailmentConfig()
         self.volumenes_sheets = self.config.volumenes_sheets
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get curtailment volume data.
+        Extracts curtailment volume data from the specified Excel file, excluding sheets with known errors.
+        
+        Parameters:
+        	excel_file_name (str): Path to the Excel file to process.
+        	pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing the cleaned curtailment volume data.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
@@ -439,14 +504,23 @@ class RestriccionesDL(I3Downloader):
     """
     
     def __init__(self):
-        """Initialize the restricciones downloader"""
+        """
+        Initialize the downloader for technical restrictions data, setting the appropriate configuration and target sheets for extraction.
+        """
         super().__init__()
         self.config = RestriccionesConfig()
         self.volumenes_sheets = self.config.volumenes_sheets
     
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get technical restrictions volume data.
+        Extracts and returns technical restrictions volume data from the specified Excel file, excluding sheets with known errors.
+        
+        Parameters:
+        	excel_file_name (str): Path to the Excel file to process.
+        	pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing the cleaned technical restrictions volume data.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
@@ -457,14 +531,23 @@ class P48DL(I3Downloader):
     """
     
     def __init__(self):
-        """Initialize the P48 downloader"""
+        """
+        Initialize the P48DL downloader with configuration for P48 (Final Program) volume data extraction.
+        """
         super().__init__()
         self.config = P48Config()
         self.volumenes_sheets = self.config.volumenes_sheets      
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get P48 (Final Program) volume data.
+        Extracts and returns P48 (Final Program) volume data from the specified Excel file, excluding sheets with known errors.
+        
+        Parameters:
+        	excel_file_name (str): Path to the Excel file to process.
+        	pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing the cleaned and standardized P48 volume data.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
@@ -475,14 +558,23 @@ class IndisponibilidadesDL(I3Downloader):
     """
     
     def __init__(self):
-        """Initialize the indisponibilidades downloader"""
+        """
+        Initialize the downloader for indisponibilidades (unavailability) data, setting the appropriate configuration and target sheets for extraction.
+        """
         super().__init__()
         self.config = IndisponibilidadesConfig()
         self.volumenes_sheets = self.config.volumenes_sheets
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get unavailability (indisponibilidades) volume data.
+        Extracts and returns unavailability volume data from the specified Excel file, excluding sheets with known errors.
+        
+        Parameters:
+        	excel_file_name (str): Path to the Excel file to process.
+        	pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing the cleaned unavailability volume data.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
@@ -493,10 +585,10 @@ class IntradiarioDL(I3Downloader):
     """
     def __init__(self, fecha: datetime = None):
         """
-        Initialize the IntradiarioDL downloader for intraday market data.
+        Initialize the IntradiarioDL downloader for extracting intraday market data for a specific date.
         
         Parameters:
-            fecha (datetime, optional): Date used to configure which intraday market sheets to process.
+            fecha (datetime, optional): The date used to configure which intraday market sheets to process. Must be provided or a ValueError is raised.
         """
         super().__init__()
         if fecha is None:
@@ -506,7 +598,14 @@ class IntradiarioDL(I3Downloader):
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         """
-        Get intradiario volume data for a specific day.
+        Extracts and returns intradiario volume data from the specified Excel file, excluding sheets with known errors.
+        
+        Parameters:
+        	excel_file_name (str): Path to the Excel file to process.
+        	pestañas_con_error (List[str]): List of sheet names to exclude due to errors.
+        
+        Returns:
+        	pd.DataFrame: DataFrame containing cleaned intradiario volume data for the specified day.
         """
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes 

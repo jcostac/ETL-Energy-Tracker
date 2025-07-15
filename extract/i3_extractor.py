@@ -21,7 +21,11 @@ class I3Extractor:
     """
     
     def __init__(self):
-        """Initialize the I3 downloader and raw file utils"""
+        """
+        Initializes the I3Extractor with downloader instances for each market segment, utility classes, and default configuration.
+        
+        Sets up downloaders for all supported market segments, file and environment utilities, a database engine, and initializes attributes for tracking the latest downloaded I3 files and error sheets. The default download window is set to 4 days.
+        """
 
         #downloaders
         self.i3_downloader = I3Downloader()
@@ -49,19 +53,12 @@ class I3Extractor:
 
     def fecha_input_validation(self, fecha_inicio_carga: str, fecha_fin_carga: str) -> tuple[str, str]:
         """
-        Validate and normalize the input date range for ESIOS API data extraction.
+        Validates and normalizes the input date range for data extraction.
         
-        Ensures that both start and end dates are provided and in the correct order, or defaults to a specific day if none are given. Raises a ValueError if the input is incomplete or invalid.
-        
-        Parameters:
-            fecha_inicio_carga (str): Start date in 'YYYY-MM-DD' format.
-            fecha_fin_carga (str): End date in 'YYYY-MM-DD' format.
+        Ensures both start and end dates are provided and that the start date is not after the end date. If no dates are provided, defaults to a specific day based on the configured download window. Raises a ValueError if the input is incomplete or invalid.
         
         Returns:
             tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format.
-        
-        Raises:
-            ValueError: If the date range is incomplete or the start date is after the end date.
         """
         # Check if fecha inicio < fecha fin, and if time range is valid
         if fecha_inicio_carga and fecha_fin_carga:
@@ -94,12 +91,13 @@ class I3Extractor:
     
     def download_i3_data(self, day: datetime) -> None:
         """
-        Download the I3 zip and Excel files for a specific day and update the latest file attributes.
+        Download the I3 zip and Excel files for the specified day and update the object's attributes with the latest file names and any sheet errors.
         
         Parameters:
             day (datetime): The date for which to download the I3 data.
         
-        The method updates the object's attributes with the names of the downloaded zip and Excel files, as well as any sheet IDs with errors. It pauses briefly to avoid rate limiting.
+        Raises:
+            AttributeError: If the downloader instance is not available.
         """
         if not hasattr(self, 'i3_downloader'):
              raise AttributeError("Downloader instance 'self.i3_downloader' not found.")
@@ -119,10 +117,10 @@ class I3Extractor:
 
     def validate_i3_correct_download(self):
         """
-        Checks whether the latest I3 zip and Excel file attributes are present and correctly formatted.
+        Validate that the latest downloaded I3 zip and Excel file attributes are present and correctly formatted.
         
         Returns:
-            bool: True if all required attributes exist and have valid formats; False otherwise.
+            bool: True if all required attributes exist and have valid date patterns; False otherwise.
         """
 
         # Check for None values
@@ -178,17 +176,17 @@ class I3Extractor:
     
     def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, mercados_lst: Optional[list[str]] = None) -> dict:
         """
-        Extracts data for all specified markets over a given date range, coordinating download, validation, and extraction workflows.
+        Coordinates the extraction of data for multiple markets over a specified date range.
         
-        Validates the input date range, iterates through each day, downloads I3 data, checks file integrity, and invokes per-market extraction logic. Tracks and reports extraction success or failure for each market and day, cleans up temporary files, and returns a summary of the extraction process.
+        Validates input dates, downloads I3 files for each day in the range, checks file integrity, and invokes per-market extraction logic. Tracks extraction success or failure for each market and day, cleans up temporary files, and returns a summary of the extraction process.
         
         Parameters:
-            fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to 1 day ago.
-            fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to 1 day ago.
+            fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to a date based on the configured download window.
+            fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to a date based on the configured download window.
             mercados_lst (Optional[list[str]]): List of market names to extract. If None, extracts all supported markets.
         
         Returns:
-            dict: Dictionary containing overall success status and detailed results for each market and day.
+            dict: Summary of extraction success and detailed results for each market and day.
         """
         # Initialize status tracking
         if (fecha_fin_carga is None and fecha_inicio_carga is None) or fecha_fin_carga == fecha_inicio_carga:
@@ -270,24 +268,24 @@ class I3Extractor:
 
     def _extract_data_per_day_all_markets(self, day: datetime):
         """
-        Abstract method for extracting data for all markets on a given day.
+        Defines the interface for extracting data for all market segments on a specific day.
         
-        This method must be implemented by subclasses to define the extraction logic for each market segment for the specified date.
+        Subclasses must implement this method to perform extraction logic for each relevant market on the given date.
         """
         raise NotImplementedError("This method should be implemented by subclasses.")
     
     def _extract_with_status(self, market_name, extract_function, day, status_details):
         """
-        Executes a market extraction function for a given day, updating the status details with success or failure information.
+        Run a market extraction function for a specific day and update the status details with the result.
         
         Parameters:
-            market_name (str): The name of the market being extracted.
-            extract_function (Callable): The extraction function to execute for the market.
-            day (datetime): The date for which data is being extracted.
-            status_details (dict): Dictionary tracking extraction results.
+            market_name (str): Name of the market being processed.
+            extract_function (Callable): Function to extract data for the market.
+            day (datetime): Date for which extraction is performed.
+            status_details (dict): Dictionary to record extraction outcomes.
         
         Returns:
-            dict: Updated status details reflecting the outcome of the extraction attempt.
+            dict: The updated status details reflecting extraction success or failure.
         """
         try:
             extract_function(day)
@@ -311,16 +309,18 @@ class I3VolumenesExtractor(I3Extractor):
     """
     def __init__(self):
         """
-        Initializes the I3VolumenesExtractor, setting up base class attributes and preparing for intradiario downloader initialization.
+        Initialize the I3VolumenesExtractor, preparing for extraction of volume data across multiple market segments.
+        
+        Sets up base class attributes and defers initialization of the intradiario downloader until extraction time.
         """
         super().__init__()
         self.intradiario_downloader = None #initialized in intra method with relevant day parameter passed to get correct number of intrasheets
 
     def _extract_and_save_volumenes(self, day: datetime, mercado: str, downloader) -> None:
         """
-        Extracts and saves volume data for a specified market and day using the provided downloader.
+        Extracts volume data for a specific market and day from the latest I3 Excel file and saves it as a CSV file.
         
-        Attempts to extract volume data from the latest I3 Excel file for the given market and date. If data is found, it is saved as a CSV file. Handles missing files and extraction errors gracefully.
+        Attempts to extract volume data using the provided downloader. If data is found, it is saved to disk; otherwise, a message is printed. Handles missing Excel files and other extraction errors gracefully.
         """
         try:
             # 1. Call the specific downloader's get_i3_volumenes
@@ -354,50 +354,76 @@ class I3VolumenesExtractor(I3Extractor):
             print(f"Error processing {mercado} volumenes for {day.date()}: {e}")
 
     def extract_volumenes_diario(self, day: datetime) -> None:
+        """
+        Extracts and saves daily market volume data for the specified day using the diario downloader.
+        """
         self._extract_and_save_volumenes(day, 'diario', self.diario_downloader)
 
     def extract_volumenes_intradiario(self, day: datetime) -> None:
         """
         Extracts and saves intradiario (intra-day) volume data for the specified day.
         
-        Initializes the intradiario downloader for the given date and processes the extraction and saving of volume data for the "intra" market segment.
+        Initializes the intradiario downloader for the given date and processes extraction and saving of volume data for the "intra" market segment.
         """
         self.intradiario_downloader = IntradiarioDL(fecha=day)
         self._extract_and_save_volumenes(day, 'intra', self.intradiario_downloader)
 
     def extract_volumenes_terciaria(self, day: datetime) -> None:
+        """
+        Extracts and saves volume data for the 'terciaria' market segment for the specified day.
+        """
         self._extract_and_save_volumenes(day, 'terciaria', self.terciaria_downloader)
 
     def extract_volumenes_secundaria(self, day: datetime) -> None:
+        """
+        Extracts and saves volume data for the 'secundaria' market segment for the specified day.
+        """
         self._extract_and_save_volumenes(day, 'secundaria', self.secundaria_downloader)
 
     def extract_volumenes_rr(self, day: datetime) -> None:
+        """
+        Extracts and saves volume data for the 'rr' market segment for the specified day.
+        """
         self._extract_and_save_volumenes(day, 'rr', self.rr_downloader)
 
     def extract_volumenes_curtailment(self, day: datetime) -> None:
+        """
+        Extracts and saves curtailment volume data for the specified day using the curtailment downloader.
+        """
         self._extract_and_save_volumenes(day, 'curtailment', self.curtailment_downloader)
 
     def extract_volumenes_p48(self, day: datetime) -> None:
+        """
+        Extracts and saves P48 market volume data for the specified day.
+        
+        Calls the internal extraction and saving routine using the P48 market downloader.
+        """
         self._extract_and_save_volumenes(day, 'p48', self.p48_downloader)
 
     def extract_volumenes_indisponibilidades(self, day: datetime) -> None:
+        """
+        Extracts and saves volume data for the 'indisponibilidades' market segment for the specified day.
+        """
         self._extract_and_save_volumenes(day, 'indisponibilidades', self.indisponibilidades_downloader)
 
     def extract_volumenes_restricciones(self, day: datetime) -> None:
+        """
+        Extracts and saves volume data for the 'restricciones' market segment for the specified day.
+        """
         self._extract_and_save_volumenes(day, 'restricciones', self.restricciones_downloader)
 
     def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict, mercados_lst: list[str] = None):
         """
-        Extracts volume data for all or selected markets from I3 files for a specific day, updating extraction status for each market.
+        Extracts volume data for all or specified markets from I3 files for a given day, updating the extraction status for each market.
         
         Parameters:
-            day (datetime): The date for which to extract data.
-            status_details (dict): Dictionary tracking extraction success and failure per market.
-            mercados_lst (list[str], optional): List of market names to extract. If None, extracts all markets.
+            day (datetime): The date for which to perform extraction.
+            status_details (dict): Dictionary to record extraction results per market.
+            mercados_lst (list[str], optional): List of market names to extract. If None, all supported markets are processed.
         
         Returns:
-            overall_success (bool): True if all requested markets were extracted successfully; False otherwise.
-            status_details (dict): Updated dictionary with per-market extraction results.
+            overall_success (bool): True if extraction succeeded for all requested markets; False if any market extraction failed.
+            status_details (dict): Updated dictionary containing per-market extraction outcomes.
         """
         # Track success for each market
         print("\n--------- I3 Volumenes Extraction ---------")

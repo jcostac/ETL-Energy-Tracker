@@ -26,6 +26,12 @@ class DescargadorESIOS:
     def __init__(self):
 
         #get esios token from environment variable
+        """
+        Initializes the DescargadorESIOS instance with ESIOS API token, download window, timezone, and proxy settings.
+        
+        Raises:
+            ValueError: If the ESIOS_TOKEN environment variable is not set.
+        """
         self.esios_token = os.getenv('ESIOS_TOKEN')
         if not self.esios_token:
             raise ValueError("ESIOS_TOKEN environment variable not set.")
@@ -178,15 +184,11 @@ class DescargadorESIOS:
 
     def _handle_response_error(self, response: requests.Response, indicator_id: str):
         """
-        Raises specific exceptions based on the HTTP status code of an ESIOS API response.
-        
-        Parameters:
-            response (requests.Response): The HTTP response object from the ESIOS API.
-            indicator_id (str): The ESIOS indicator ID relevant to the request.
+        Raise an exception based on the HTTP status code of an ESIOS API response.
         
         Raises:
-            ValueError: For authentication errors, forbidden access, missing indicators, or other HTTP errors.
-            ConnectionError: For rate limiting or server-side errors.
+            ValueError: If authentication fails, access is forbidden, the indicator is missing, or for other client-side errors.
+            ConnectionError: If rate limiting or server-side errors occur.
         """
         if response.status_code == 401:
             raise ValueError(f"Authentication error (401): Invalid or expired ESIOS_TOKEN.")

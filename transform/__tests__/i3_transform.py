@@ -17,7 +17,9 @@ def test_multiple_day_volumenes():
 
 def test_latest_day_volumenes():
     """
-    Test the transformation of "volumenes_i3" data for a single day for all markets.
+    Test that "volumenes_i3" data transformation succeeds for the latest available day across all markets.
+    
+    Asserts that the transformation completes successfully; raises an assertion error with details if it fails.
     """
     transformer = TransformadorI3()
     result = transformer.transform_data_for_all_markets(fecha_inicio=None, fecha_fin=None)

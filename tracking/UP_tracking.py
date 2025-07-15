@@ -570,12 +570,12 @@ class UPTracker:
 
     def process_ups(self, csv_path: str) -> None:
         """
-        Processes and synchronizes UP data between a CSV file and the database, updating records, marking obsolete entries, logging changes, and printing operation summaries.
+        Synchronizes UP data between a CSV file and the database, updating records, marking obsolete entries, logging changes, and printing operation summaries.
+        
+        This method coordinates the full workflow of loading UP data from a CSV file and the database, mapping technology IDs, identifying new and obsolete UPs, detecting and applying changes to existing UPs, updating the database, saving change logs, and printing before-and-after statistics. Errors encountered during processing are reported and re-raised.
         
         Parameters:
             csv_path (str): Path to the CSV file containing UP data.
-        
-        This method orchestrates the workflow of loading UP data from both CSV and database, mapping technology IDs, identifying new and obsolete UPs, detecting changes in existing UPs, applying all updates to the database, saving change logs, and printing before-and-after statistics. Errors encountered during processing are reported and re-raised.
         """
         try:
             

@@ -296,16 +296,16 @@ class OMIEProcessor:
     
     def _standardize_datetime(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
-        Standardizes the datetime information in the DataFrame to a UTC-based column, handling both hourly and 15-minute granularities and accounting for DST transitions.
+        Convert local OMIE datetimes to a standardized UTC column, handling both hourly and 15-minute granularities with correct daylight saving time (DST) adjustments.
         
-        Splits the data by granularity and whether the date is a DST transition day, applies specialized parsing and localization logic for each subset, and combines the results into a unified DataFrame with a `datetime_utc` column. Removes intermediate columns and invalid datetimes before returning the processed DataFrame.
+        Splits the input DataFrame by granularity and DST transition days, applies specialized parsing and localization for each subset, and merges the results into a single DataFrame with a `datetime_utc` column. Removes intermediate columns and invalid datetimes before returning the cleaned, sorted DataFrame.
         
         Parameters:
-            df (pd.DataFrame): Input DataFrame containing OMIE market data.
-            mercado (str): Market type, one of 'diario', 'intra', or 'continuo'.
+            df (pd.DataFrame): DataFrame containing OMIE market data with local datetimes.
+            mercado (str): Market type ('diario', 'intra', or 'continuo').
         
         Returns:
-            pd.DataFrame: DataFrame with standardized UTC datetime column (`datetime_utc`), sorted and cleaned of invalid entries.
+            pd.DataFrame: DataFrame with a standardized UTC datetime column (`datetime_utc`), cleaned and sorted.
         """
         if df.empty: 
             return df

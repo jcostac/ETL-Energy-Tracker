@@ -85,12 +85,10 @@ class ESIOSPreciosExtractor:
         """
                                  Extracts and saves price data for a specified market segment over a given date range.
                                  
-                                 For each day in the validated date range, retrieves price data using the provided downloader and saves it in CSV or Parquet format depending on the environment. Handles missing data and logs errors per day without interrupting the overall extraction process.
+                                 For each day in the validated date range, retrieves price data using the provided downloader and saves it as either CSV or Parquet, depending on the environment. Handles missing data and logs errors per day without interrupting the extraction process.
                                  
                                  Parameters:
-                                     fecha_inicio_carga (Optional[str]): Start date in 'YYYY-MM-DD' format.
-                                     fecha_fin_carga (Optional[str]): End date in 'YYYY-MM-DD' format.
-                                     mercado (str): Market segment name (e.g., 'diario', 'intra').
+                                     mercado (str): Name of the market segment (e.g., 'diario', 'intra').
                                      **kwargs: Additional arguments passed to the downloader's get_prices method.
                                  """
         # Validate input dates

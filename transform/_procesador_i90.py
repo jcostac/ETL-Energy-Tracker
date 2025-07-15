@@ -39,12 +39,12 @@ class I90Processor:
     # === FILTERING ===
     def _apply_market_filters_and_id(self, df: pd.DataFrame, market_config: I90Config) -> pd.DataFrame:
         """
-        Filter the input DataFrame according to the provided market configuration and assign the appropriate market ID.
+        Filters the input DataFrame according to the provided market configuration and assigns the appropriate market ID.
         
-        If the DataFrame contains the 'sheet_i90_volumenes' column (for intra market data), maps it directly to 'id_mercado' using the configuration mapping. Otherwise, applies filters for each market ID based on 'Sentido' and 'Redespacho' columns as specified in the market configuration, assigns 'id_mercado', and concatenates the results. Returns the filtered DataFrame with the 'id_mercado' column, or an empty DataFrame if no data matches.
-         
+        If the DataFrame contains the 'sheet_i90_volumenes' column (for intra market data), it maps this column directly to 'id_mercado' using the configuration's mapping. Otherwise, for each market ID in the configuration, it applies filters based on 'Sentido' and 'Redespacho' columns as specified, assigns 'id_mercado', and concatenates the filtered results. Returns a DataFrame with the 'id_mercado' column as integer type, or an empty DataFrame if no rows match the filters.
+        
         Returns:
-            pd.DataFrame: Filtered DataFrame with 'id_mercado' assigned, or empty if no rows match the filters.
+            pd.DataFrame: Filtered DataFrame with 'id_mercado' assigned, or an empty DataFrame if no rows match.
         """
         if df.empty:
             return pd.DataFrame() # Return empty if input is empty
@@ -131,43 +131,42 @@ class I90Processor:
     # === DATETIME HANDLING ===
     def _standardize_datetime(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Standardizes and converts input datetimes to a UTC column with 15-minute granularity, handling DST transitions and multiple input formats.
-        
-        Splits the input DataFrame by granularity and DST transition days, applies appropriate datetime parsing and conversion methods for each subset, and combines the results into a single DataFrame with a standardized `datetime_utc` column. Drops intermediate columns and invalid datetimes before returning the processed DataFrame.
+        Standardizes datetimes in the input DataFrame to UTC with 15-minute intervals, handling DST transitions and various input formats.
         
         Parameters:
-            dataset_type (str): Specifies the type of dataset being processed, affecting downstream datetime conversion logic.
+            dataset_type (str): The type of dataset being processed, which determines the datetime conversion logic.
         
         Returns:
-            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute intervals.
+            pd.DataFrame: DataFrame with a standardized `datetime_utc` column at 15-minute granularity.
         """
         return self.date_utils.standardize_datetime(df, dataset_type)
 
     @with_progress(message="Processing hourly data...", interval=2)
     def _process_hourly_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Processes hourly market data with possible DST suffixes, generating UTC datetimes at 15-minute intervals.
+        Process hourly market data by converting local time strings (including DST suffixes) to UTC datetimes at 15-minute intervals.
         
-        Converts "HH-HH+1" formatted time strings (including 'a'/'b' suffixes for DST fall-back) into timezone-aware local datetimes, then to UTC. Expands each hourly entry into four 15-minute intervals for downstream analysis.
-        
-        Returns:
-            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute granularity, or an empty DataFrame on error.
+        Delegates to the date utility to handle parsing, timezone conversion, and expansion of each hourly entry into four 15-minute intervals. Returns a DataFrame with standardized UTC datetimes suitable for further analysis.
         """
         return self.date_utils.process_hourly_data(df, dataset_type)
 
     @with_progress(message="Processing 15-minute data...", interval=2)
     def _process_15min_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Process 15-minute data (numeric index "1" to "96/92/100").
-        Creates timezone-aware datetime_local series and converts to UTC.
+        Processes 15-minute interval data by generating timezone-aware local datetimes and converting them to UTC.
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized UTC datetime columns for 15-minute intervals.
         """
         return self.date_utils.process_15min_data(df)
 
     @with_progress(message="Processing 15-minute data (vectorized)...", interval=2)
     def _process_15min_data_vectorized(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Process 15-minute data (numeric index "1" to "96/92/100") using vectorized operations.
-        Creates timezone-aware UTC datetime series by processing each day individually.
+        Processes 15-minute interval data using vectorized operations, generating timezone-aware UTC datetimes for each day.
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized 15-minute interval datetimes in UTC.
         """
         return self.date_utils.process_15min_data_vectorized(df)
         
@@ -176,33 +175,37 @@ class I90Processor:
     @with_progress(message="Processing hourly data (vectorized)...", interval=2)
     def _process_hourly_data_vectorized(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Vectorized processing of hourly data with possible DST suffixes, converting to UTC and expanding to 15-minute intervals.
+        Processes hourly market data in a vectorized manner, handling daylight saving time transitions and expanding each hour to 15-minute UTC intervals.
         
-        This method parses hourly time strings (e.g., "02-03a", "02-03b"), handles daylight saving time transitions using suffixes, localizes datetimes to Europe/Madrid, converts them to UTC, and expands each hour to four 15-minute intervals. Returns a DataFrame with standardized UTC datetimes and 15-minute granularity.
+        Parameters:
+            df (pd.DataFrame): Input DataFrame containing hourly data.
+            dataset_type (str): Type of dataset, such as 'volumenes_i90' or 'precios_i90'.
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute granularity.
         """
         return self.date_utils.process_hourly_data_vectorized(df, dataset_type)
     
     def _parse_hourly_datetime_local(self, fecha, hora_str) -> pd.Timestamp:
         """
-        Parse hourly format data (e.g., "00-01", "02-03a", "02-03b") into a timezone-aware
-        datetime in Europe/Madrid timezone.
+        Converts an hourly time string (e.g., "00-01", "02-03a", "02-03b") and a date into a timezone-aware pandas Timestamp in the Europe/Madrid timezone.
         
-        Args:
-            fecha: Date object or datetime object
-            hora_str: Hour string in format "HH-HH+1" potentially with 'a' or 'b' suffix
+        Parameters:
+            fecha: The date associated with the hourly interval.
+            hora_str: Hourly interval string, possibly with DST suffixes ('a' or 'b').
         
         Returns:
-            Timezone-aware pd.Timestamp in Europe/Madrid timezone
+            pd.Timestamp: Timezone-aware timestamp representing the start of the interval in Europe/Madrid.
         """
         return self.date_utils.parse_hourly_datetime_local(fecha, hora_str)
 
     def _parse_15min_datetime_local(self, fecha, hora_index_str) -> pd.Timestamp:
         """
-        Parse a 15-minute interval index for a given date into a timezone-aware datetime in Europe/Madrid, correctly handling daylight saving time transitions.
+        Parse a 15-minute interval index for a given date into a timezone-aware datetime in the Europe/Madrid timezone, handling daylight saving time transitions.
         
         Parameters:
             fecha: The date of the interval, as a string, pandas Timestamp, or date object.
-            hora_index_str: The 1-based index (as string or integer) of the 15-minute interval within the day.
+            hora_index_str: The 1-based index (as a string or integer) of the 15-minute interval within the day.
         
         Returns:
             pd.Timestamp: The corresponding timezone-aware datetime in Europe/Madrid.
@@ -217,7 +220,13 @@ class I90Processor:
         """
         Standardizes and filters DataFrame columns to match the required schema for the specified dataset type.
         
-        Renames columns for consistency (e.g., "Unidad de Programación" to "up", "precios" to "precio", "Tipo Transacción" to "tipo_transaccion") and selects only the columns required for the given dataset type ("volumenes_i90" or "precios_i90"). If the "Tipo Transacción" column is present, it is included in the output.
+        Renames columns for consistency (e.g., "Unidad de Programación" to "up", "precios" to "precio", "Tipo Transacción" to "tipo_transaccion") and selects only the columns required for the given dataset type ("volumenes_i90" or "precios_i90"). If "Tipo Transacción" is present, it is included in the output.
+        
+        Parameters:
+            dataset_type (str): The type of dataset, either "volumenes_i90" or "precios_i90".
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized and filtered columns.
         """
      
         if "Unidad de Programación" in df.columns:
@@ -510,15 +519,12 @@ class I90Processor:
                                      previous_session: pd.DataFrame, 
                                      session_id: int) -> pd.DataFrame:
         """
-                                     Compute the difference in volumes between the current intra session and the previous session for each unit and timestamp.
+                                     Compute the difference in volumes between the current and previous intra sessions for each unit and timestamp.
                                      
-                                     Parameters:
-                                     	current_session (pd.DataFrame): Data for the current intra session.
-                                     	previous_session (pd.DataFrame): Data for the previous session (either diario or prior intra session).
-                                     	session_id (int): Identifier for the current session.
+                                     For each combination of unit and timestamp, subtracts the previous session's volume from the current session's volume, assigning the result to the current session ID. Missing previous session values are treated as zero.
                                      
                                      Returns:
-                                     	pd.DataFrame: DataFrame containing the volume differences per unit and timestamp, with the current session ID assigned.
+                                         pd.DataFrame: DataFrame with columns ['datetime_utc', 'up', 'volumenes', 'id_mercado'] representing the volume differences for the current session.
                                      """
         try:
             print("="*70)
@@ -560,18 +566,18 @@ class I90Processor:
     # === MAIN PIPELINE ===
     def transform_raw_i90_data(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
         """
-        Executes the full I90 data transformation pipeline for volumes or prices, applying validation, filtering, datetime standardization, and optional intra cumulative processing.
+        Run the complete transformation pipeline on raw I90 market data, including validation, market filtering, datetime standardization, column selection, and optional intra cumulative volume processing.
         
         Parameters:
-            df (pd.DataFrame): The input DataFrame containing raw I90 data.
-            market_config (I90Config): Market configuration specifying filtering and processing rules.
-            dataset_type (str): The dataset type, either 'volumenes_i90' or 'precios_i90'.
+            df (pd.DataFrame): Raw I90 data to process.
+            market_config (I90Config): Configuration specifying market filtering and processing rules.
+            dataset_type (str): Type of dataset to process, either 'volumenes_i90' or 'precios_i90'.
         
         Returns:
-            pd.DataFrame: The fully processed DataFrame, or an empty DataFrame with expected columns if input is empty or an error occurs during processing.
+            pd.DataFrame: Fully processed DataFrame, or an empty DataFrame with expected columns if input is empty or the pipeline results in no data.
         
         Raises:
-            ValueError: If the DataFrame becomes empty at any pipeline step (except final validation).
+            ValueError: If the DataFrame becomes empty at any pipeline step except the final validation.
             Exception: For unexpected errors encountered during processing.
         """
       

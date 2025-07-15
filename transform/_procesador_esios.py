@@ -189,12 +189,12 @@ class ESIOSProcessor:
 
     def _handle_granularity(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Handles mixed time granularities by converting hourly records to 15-minute intervals and combining them with existing 15-minute data.
+        Convert hourly records to 15-minute intervals and merge with existing 15-minute data if mixed granularities are present.
         
-        If the DataFrame contains a 'granularidad' column, separates hourly and 15-minute records, converts hourly data to 15-minute intervals, and merges the results. If the column is absent, assumes all data shares the same granularity and returns the DataFrame unchanged.
+        If the DataFrame contains a 'granularidad' column, separates hourly and 15-minute records, converts hourly data to 15-minute intervals, and combines all records. If the column is absent, returns the DataFrame unchanged.
         
         Returns:
-            pd.DataFrame: DataFrame with all records in 15-minute intervals if conversion was needed, otherwise the original DataFrame.
+            pd.DataFrame: DataFrame with all records in 15-minute intervals if conversion was performed, otherwise the original DataFrame.
         """
         print("\n⏰ HANDLING TIME GRANULARITY")
         print("-"*30)
@@ -263,16 +263,15 @@ class ESIOSProcessor:
 
     def _validate_data(self, df: pd.DataFrame, type: str) -> pd.DataFrame:
         """
-        Validate the final DataFrame structure and content.
-
-        This method checks if the DataFrame is not empty before performing validation. 
-        If the DataFrame is empty, it skips the validation process.
-
-        Args:
-            df (pd.DataFrame): The DataFrame to be validated.
-
+        Validates the structure and content of the provided DataFrame according to the specified data type.
+        
+        If the DataFrame is empty, validation is skipped. For "processed" or "raw" types, the corresponding validation method is applied using the "precios_esios" schema. Returns the DataFrame after validation or raises an exception if validation fails.
+        
+        Parameters:
+            type (str): Specifies whether to validate as "processed" or "raw" data.
+        
         Returns:
-            pd.DataFrame: The original DataFrame after validation.
+            pd.DataFrame: The validated DataFrame.
         """
         print("\n🔍 DATA VALIDATION")
         print("-"*30)

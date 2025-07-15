@@ -433,15 +433,10 @@ class RawFileUtils(StorageFileUtils):
 
     def get_raw_file_list(self, mercado: str, year: int, month: int) -> list[str]:
         """
-        Return a list of raw CSV file names for the specified market, year, and month.
-        
-        Parameters:
-        	mercado (str): The market name.
-        	year (int): The year of the files.
-        	month (int): The month of the files.
+        Return a list of raw CSV file paths for the specified market, year, and month.
         
         Returns:
-        	list[str]: List of raw CSV file names in the specified directory.
+            list[str]: List of file paths for raw CSV files in the specified directory.
         """
         file_path = self.raw_path / mercado / str(year) / f"{month:02d}"
 
@@ -879,7 +874,7 @@ class ProcessedFileUtils(StorageFileUtils):
         """
         Constructs the full output file path for a partitioned parquet file using Hive-style key=value directories.
         
-        The resulting path is structured as `<processed_path>/<key1>=<value1>/<key2>=<value2>/.../<dataset_type>.parquet`, with the month value zero-padded. If the dataset type is "precios_i90", the file is named "precios.parquet" for consistency. Creates the partition directory if it does not exist.
+        The path is structured as `<processed_path>/<key1>=<value1>/<key2>=<value2>/.../<dataset_type>.parquet`, with the month value zero-padded. For dataset types `"precios_i90"` or `"precios_esios"`, the file is named `"precios.parquet"` to standardize naming. Creates the partition directory if it does not exist.
         
         Parameters:
             partition: Partition values, typically a pandas Series.

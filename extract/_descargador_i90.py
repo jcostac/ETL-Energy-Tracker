@@ -195,15 +195,15 @@ class I90Downloader:
     def _excel_file_to_df(self, fecha: datetime, volumenes_excel_file: pd.ExcelFile, precios_excel_file: pd.ExcelFile) -> pd.DataFrame:
       
         """
-        Convert relevant sheets from an Excel file into a cleaned, standardized DataFrame for a given date.
+        Converts all relevant sheets from a provided Excel file (volumes or prices) into a cleaned and standardized DataFrame for a specific date.
         
-        Processes each sheet in the provided Excel file (either volumes or prices), dynamically identifies the header row, melts hourly data into long format, adds granularity and date columns, and concatenates all results. Fully empty columns are dropped, and rows with missing or zero values in the main value column are removed. Remaining missing values in other columns are filled with zero, and the date column is formatted as 'YYYY-MM-DD'.
+        For each sheet, dynamically detects the header row by searching for the "Total" column, reshapes hourly data into long format, adds granularity and date columns, and concatenates results. Drops columns that are entirely empty and removes rows with missing or zero values in the main value column. Remaining missing values in other columns are filled with zero, and the date column is formatted as 'YYYY-MM-DD'. Raises a ValueError if the header row cannot be found in any sheet.
         
         Parameters:
             fecha (datetime): The date associated with the data in the Excel file.
         
         Returns:
-            pd.DataFrame: A DataFrame containing the cleaned and standardized data from all relevant sheets.
+            pd.DataFrame: Cleaned and standardized data from all relevant sheets.
         """
         all_dfs = []
 
