@@ -65,6 +65,7 @@ class DateUtilsETL:
         # Return the dictionary of transition dates and their types
         return transition_dates
 
+    # === DATETIME PROCESSING for i90 and i3 (hourly / 15-minute) ===
     @staticmethod
     def standardize_datetime(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
@@ -146,8 +147,7 @@ class DateUtilsETL:
             final_df = final_df.sort_values(by='datetime_utc').reset_index(drop=True)
         
         return final_df
-
-    # === DATETIME PROCESSING ===
+    
     @staticmethod
     @with_progress(message="Processing hourly data...", interval=2)
     def process_hourly_data(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
@@ -342,7 +342,7 @@ class DateUtilsETL:
             print("Localizing timestamps day by day...")
             # Apply the localization function to each daily group
             # group_keys=False prevents adding 'fecha' as an index level
-            result_df = input_df.groupby('fecha', group_keys=False).apply(localize_day)
+            result_df = input_df.groupby('fecha', group_keys=False).apply(localize_day, include_groups=True)
 
             # --- End Grouping ---
 
@@ -359,7 +359,7 @@ class DateUtilsETL:
             return pd.DataFrame()
 
     @staticmethod
-    def parse_hourly_datetime_local(self, fecha, hora_str) -> pd.Timestamp:
+    def parse_hourly_datetime_local(fecha, hora_str) -> pd.Timestamp:
         """
         Parse hourly format data (e.g., "00-01", "02-03a", "02-03b") into a timezone-aware
         datetime in Europe/Madrid timezone.
@@ -438,7 +438,7 @@ class DateUtilsETL:
         return local_dt
 
     @staticmethod
-    def parse_15min_datetime_local(self, fecha, hora_index_str) -> pd.Timestamp:
+    def parse_15min_datetime_local(fecha, hora_index_str) -> pd.Timestamp:
         """
         Parse a 15-minute interval index for a given date into a timezone-aware datetime in Europe/Madrid, correctly handling daylight saving time transitions.
         
@@ -575,6 +575,7 @@ class DateUtilsETL:
         else:
             raise ValueError(f"Index {index} out of bounds for date {fecha} with {len(aware_ts_sequence)} intervals.")
 
+    # === DATETIME TYPE CONVERSION UTC, LOCAL, NAIVE ===
     @staticmethod
     def convert_local_to_utc(dt_local_series: pd.Series) -> pd.DataFrame:
         """
@@ -820,6 +821,7 @@ class DateUtilsETL:
         df_naive = DateUtilsETL.convert_local_to_naive(df_local['datetime_local'], 'Europe/Madrid')
         return df_naive
     
+    # === DATETIME GRANULARITY CONVERSION (hourly / 15-minute) ===
     @staticmethod
     def convert_hourly_to_15min(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
