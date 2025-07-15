@@ -34,6 +34,7 @@ class I3Processor:
         if df.empty or 'Concepto' not in df.columns:
             return df
         
+        engine = None
         try:
             # Create engine for the correct database (replace 'your_db_name' with the actual DB name)
             engine = self.db_utils.create_engine('energy_tracker')
