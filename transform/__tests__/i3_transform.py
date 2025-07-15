@@ -12,9 +12,8 @@ def test_multiple_day_volumenes():
     transformer = TransformadorI3()
     result = transformer.transform_data_for_all_markets(fecha_inicio="2024-12-01", fecha_fin="2024-12-02", mercados_lst=["intra", "diario"])
     result_status = result["status"]
-    breakpoint()
 
-    #assert result_status["success"] == True, f"Multiple day volumenes transformation failed. Details: {result_status.get('details', {})}"
+    assert result_status["success"] == True, f"Multiple day volumenes transformation failed. Details: {result_status.get('details', {})}"
 
 def test_latest_day_volumenes():
     """

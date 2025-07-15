@@ -447,7 +447,6 @@ class RawFileUtils(StorageFileUtils):
 
         return list(file_path.glob(f"*.{self.raw_file_extension}"))
     
-
 class ProcessedFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving processed parquet files.
