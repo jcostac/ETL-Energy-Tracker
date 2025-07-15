@@ -16,7 +16,7 @@ def test_multiple_day_volumenes():
 
     #assert result_status["success"] == True, f"Multiple day volumenes transformation failed. Details: {result_status.get('details', {})}"
 
-def test_single_day_volumenes():
+def test_latest_day_volumenes():
     """
     Test the transformation of "volumenes_i3" data for a single day for all markets.
     """
@@ -29,7 +29,7 @@ def test_single_day_volumenes():
 if __name__ == "__main__":
     test_multiple_day_volumenes()
     time.sleep(5)
-    test_single_day_volumenes()
+    test_latest_day_volumenes()
     print("🎉 All tests passed successfully!")
 
 
