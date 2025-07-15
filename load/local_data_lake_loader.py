@@ -141,10 +141,12 @@ class LocalDataLakeLoader():
 
     def load_transformed_data_esios(self, transformed_data_dict, **kwargs):
         """
-        Loads transformed "precios_esios" dataset for each market from the provided dictionary.
+        Load the transformed "precios_esios" dataset for each market from the provided dictionary.
+        
+        Processes and saves the "precios_esios" data for all markets present in the input dictionary, delegating to the generic loader with the appropriate dataset type and value columns.
         
         Parameters:
-            transformed_data_dict (dict): Dictionary with a "data" key mapping market names to DataFrames and a "status" key with transformation status.
+            transformed_data_dict (dict): Dictionary containing a "data" key mapping market names to DataFrames and a "status" key with transformation status.
         
         Returns:
             dict: Summary of the loading process, including overall success, messages, and per-market status.

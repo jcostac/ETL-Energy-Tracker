@@ -58,16 +58,16 @@ def extract_i90_prices_func(fecha_inicio_carga, fecha_fin_carga):
 
 def transform_i90_prices_func(start_date, end_date, dataset_types, transform_type):
     """
-    Transforms I90 price data for all markets within the specified date range and dataset configuration.
+    Transform I90 price data for all markets within a specified date range and dataset configuration.
     
     Parameters:
-        start_date (str): The start date for the data transformation period.
-        end_date (str): The end date for the data transformation period.
-        dataset_types (str): The type of dataset to transform (e.g., "precios").
-        transform_type (str): The transformation mode to apply (e.g., "single").
+        start_date (str): Start date for the transformation period.
+        end_date (str): End date for the transformation period.
+        dataset_types (str): Dataset type to transform (e.g., "precios").
+        transform_type (str): Transformation mode to apply (e.g., "single").
     
     Returns:
-        dict: A dictionary containing the transformed data for all markets.
+        dict: Transformed I90 price data for all markets.
     """
     transformer = TransformadorI90()
     return transformer.transform_data_for_all_markets(

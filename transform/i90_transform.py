@@ -27,9 +27,9 @@ from configs.i90_config import (
 class TransformadorI90:
     def __init__(self):
         """
-        Initialize the TransformadorI90 instance with processor, file utilities, date utilities, dataset types, transform modes, and market configuration mappings.
+        Initialize a TransformadorI90 instance for processing and transforming I90 market data.
         
-        Sets up internal attributes for processing I90 market data, including available dataset types, transformation modes, and mappings from market names to their configuration classes. Also computes and stores lists of markets that support volumenes and precios datasets.
+        Sets up the processor, file utilities, date utilities, supported dataset types, transformation modes, and mappings from market names to their configuration classes. Also computes and stores lists of markets that support volumenes and precios datasets.
         """
         self.processor = I90Processor()
         self.raw_file_utils = RawFileUtils()
@@ -118,28 +118,28 @@ class TransformadorI90:
                                          mercados_lst: Optional[List[str]] = None,
                                          dataset_type: str = None) -> dict:
         """
-            Transforms I90 market data for specified markets and dataset type over a given date range or mode.
-            
-            Automatically determines the transformation mode based on the provided date parameters:
-            - If no dates are given, processes the latest available data ('latest' mode).
-            - If only `fecha_inicio` is provided or both dates are equal, processes a single day ('single' mode).
-            - If both dates are provided and different, processes the full date range ('multiple' mode).
-            
-            Validates the dataset type and filters markets to those relevant for the requested dataset. For each market, applies the appropriate transformation and collects results, tracking successes and failures.
-            
-            Parameters:
-                fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format, or the single date to process.
-                fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. If omitted or equal to `fecha_inicio`, processes a single day.
-                mercados_lst (List[str], optional): List of market names to process. If omitted, processes all markets relevant to the dataset type.
-                dataset_type (str): The dataset type to process ('volumenes_i90' or 'precios_i90').
-            
-            Returns:
-                dict: A dictionary with:
-                    - 'data': Mapping of market names to processed DataFrames (or lists of DataFrames).
-                    - 'status': Dictionary containing:
-                        - 'success': Boolean indicating overall success.
-                        - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.
-            """
+                                         Transform and aggregate I90 market data for specified markets and dataset type over a given date range or mode.
+                                         
+                                         Automatically determines the transformation mode based on provided date parameters:
+                                         - If no dates are given, processes the latest available data ('latest' mode).
+                                         - If only `fecha_inicio` is provided or both dates are equal, processes a single day ('single' mode).
+                                         - If both dates are provided and different, processes the full date range ('multiple' mode).
+                                         
+                                         Validates the dataset type and filters markets to those relevant for the requested dataset. For each market, applies the appropriate transformation and collects results, tracking successes and failures.
+                                         
+                                         Parameters:
+                                             fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format, or the single date to process.
+                                             fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. If omitted or equal to `fecha_inicio`, processes a single day.
+                                             mercados_lst (List[str], optional): List of market names to process. If omitted, processes all markets relevant to the dataset type.
+                                             dataset_type (str): The dataset type to process ('volumenes_i90' or 'precios_i90').
+                                         
+                                         Returns:
+                                             dict: Dictionary containing:
+                                                 - 'data': Mapping of market names to processed DataFrames (or lists of DataFrames).
+                                                 - 'status': Dictionary with:
+                                                     - 'success': Boolean indicating overall success.
+                                                     - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.
+                                         """
         # Auto-infer transform type based on date parameters
         if fecha_inicio is None and fecha_fin is None:
             transform_type = 'latest'
@@ -267,18 +267,18 @@ class TransformadorI90:
 
     def _transform_data(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str, fecha: Optional[datetime] = None) -> pd.DataFrame:
         """
-        Transforms a raw I90 market DataFrame into a processed DataFrame for the specified market and dataset type.
+        Transform a raw I90 market DataFrame into a processed DataFrame for a specific market and dataset type.
         
-        If the input DataFrame is empty or an error occurs during transformation, returns an empty DataFrame.
+        If the input DataFrame is empty or an error occurs during transformation, an empty DataFrame is returned.
         
         Parameters:
-            raw_df (pd.DataFrame): The raw market data to be transformed.
-            mercado (str): The market identifier.
-            dataset_type (str): The type of dataset to transform ('volumenes_i90' or 'precios_i90').
-            fecha (Optional[datetime]): The date to use for market configuration, required for certain markets.
+            raw_df (pd.DataFrame): Raw I90 market data to be transformed.
+            mercado (str): Market identifier.
+            dataset_type (str): Dataset type to transform ('volumenes_i90' or 'precios_i90').
+            fecha (Optional[datetime]): Date used for market configuration, required for some markets.
         
         Returns:
-            pd.DataFrame: The processed DataFrame, or an empty DataFrame if transformation fails.
+            pd.DataFrame: Processed DataFrame, or an empty DataFrame if transformation fails or input is empty.
         """
         if raw_df.empty:
             print(f"Skipping transformation for {mercado} - {dataset_type}: Input DataFrame is empty.")
@@ -477,18 +477,18 @@ class TransformadorI90:
 
     def _process_date_range(self, mercado: str, dataset_type: str, fecha_inicio: str, fecha_fin: str):
         """
-        Processes and transforms I90 market data for a specified market and dataset type over a given date range.
+        Process and transform I90 market data for a specified market and dataset type over a given date range.
         
-        Reads and aggregates raw monthly files covering the date range, filters the combined data to the exact date interval, and applies the appropriate transformation. Handles missing files and errors gracefully, continuing processing for available months.
+        Reads and aggregates raw monthly files covering the date range, filters the combined data to the exact interval, and applies the appropriate transformation. Handles missing files and errors gracefully, continuing processing for available months.
         
         Parameters:
-            mercado (str): The market name to process.
-            dataset_type (str): The type of dataset to process ('volumenes_i90' or 'precios_i90').
+            mercado (str): Market name to process.
+            dataset_type (str): Dataset type to process ('volumenes_i90' or 'precios_i90').
             fecha_inicio (str): Start date of the range in 'YYYY-MM-DD' format.
             fecha_fin (str): End date of the range in 'YYYY-MM-DD' format.
         
         Returns:
-            pd.DataFrame: The processed DataFrame for the specified market and date range, or an empty DataFrame if no data is found.
+            pd.DataFrame: Processed DataFrame for the specified market and date range, or an empty DataFrame if no data is found.
         """
         print(f"Starting MULTIPLE transformation for {mercado} - {dataset_type} from {fecha_inicio} to {fecha_fin}")
         try:
@@ -556,7 +556,16 @@ class TransformadorI90:
 
     def _extract_dataset_type_from_filename(self, filename: str) -> str:
         """
-        Extracts the dataset type (e.g., 'volumenes_i90' or 'precios_i90') from the raw file name.
+        Extract the dataset type ('volumenes_i90' or 'precios_i90') from a given filename.
+        
+        Parameters:
+            filename (str): The name of the file to analyze.
+        
+        Returns:
+            str: The extracted dataset type.
+        
+        Raises:
+            ValueError: If the filename does not contain a valid dataset type.
         """
         match = re.search(r'(volumenes_i90|precios_i90)', filename)
         if match:

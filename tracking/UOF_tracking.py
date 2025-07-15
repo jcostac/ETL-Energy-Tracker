@@ -550,9 +550,9 @@ class UOFTracker:
                       new_uofs_df: pd.DataFrame, obsolete_uofs_df: pd.DataFrame,
                       updates_df: pd.DataFrame, change_log: List[Dict]) -> None:
         """
-                      Prints a summary of UOF database changes and operations performed during processing.
+                      Prints a summary of UOF database changes and processing results.
                       
-                      Displays before-and-after statistics for total, active, and obsolete UOFs, as well as counts of new, obsolete, and updated UOFs and the total number of changes logged.
+                      Displays the counts of total, active, and obsolete UOFs before and after processing, as well as the number of new, obsolete, and updated UOFs and the total number of changes logged.
                       """
         print("\n📊 UOF Database Summary (Before -> After):")
         print(f"- Total UOFs: {initial_stats['total']} -> {final_stats['total']}")

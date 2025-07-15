@@ -8,7 +8,9 @@ import time
 
 def test_i3_download_multiple_days():
     """
-    Demonstrates how to use the I3VolumenesExtractor class to extract volume data for a specified date range and market.
+    Tests extraction of volume data for multiple days and markets using I3VolumenesExtractor.
+    
+    Asserts that extraction for the date range "2024-12-01" to "2024-12-02" and markets ["intra", "diario"] completes successfully.
     """
     try:
 
@@ -23,7 +25,9 @@ def test_i3_download_multiple_days():
 
 def test_i3_download_latest_day():
     """
-    Demonstrates how to use the I3VolumenesExtractor class to extract volume data for a specified date range.
+    Tests extraction of volume data for the latest available day using I3VolumenesExtractor.
+    
+    Asserts that the extraction completes successfully and raises any encountered exceptions.
     """
     try:
         i3_volumenes_extractor = I3VolumenesExtractor()

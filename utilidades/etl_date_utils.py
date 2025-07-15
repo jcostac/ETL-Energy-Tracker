@@ -1,5 +1,3 @@
-
-
 __all__ = ['DateUtilsETL'] #Export the class
 
 import pandas as pd
@@ -18,17 +16,17 @@ class DateUtilsETL:
     @staticmethod
     def get_transition_dates(fecha_inicio: datetime, fecha_fin: datetime, timezone: str = 'Europe/Madrid') -> Dict[datetime.date, int]:
         """
-        Get dictionary of special dates (daylight saving transitions) between two dates
+        Return a dictionary of daylight saving time (DST) transition dates and their types within a specified date range for a given timezone.
         
-        Args:
-            fecha_inicio (datetime): Start date
-            fecha_fin (datetime): End date
-            timezone (str): Timezone to use for the transition dates (default: 'Europe/Madrid')
-            
+        Parameters:
+            fecha_inicio (datetime): The start of the date range.
+            fecha_fin (datetime): The end of the date range.
+            timezone (str): The timezone to check for DST transitions (default is 'Europe/Madrid').
+        
         Returns:
-            dict: Dictionary with dates as keys and transition type as values
-                 transition type: 1 = 25-hour day (fall back)
-                                2 = 23-hour day (spring forward)
+            Dict[datetime.date, int]: A dictionary mapping each DST transition date to its type:
+                1 for a 25-hour day (fall back, end of DST),
+                2 for a 23-hour day (spring forward, start of DST).
         """
         # Get the timezone object for Spain (Europe/Madrid)
         timezone = pytz.timezone(timezone)
@@ -69,9 +67,16 @@ class DateUtilsETL:
     @staticmethod
     def standardize_datetime(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Standardizes and converts input datetimes to a UTC column with 15-minute granularity, handling DST transitions and multiple input formats.
+        Standardizes datetimes in the input DataFrame to a UTC-based 15-minute interval column, handling DST transitions and multiple input granularities.
         
-        Splits the input DataFrame by granularity and DST transition days, applies appropriate datetime parsing and conversion methods for each subset, and combines the results into a single DataFrame with a standardized `datetime_utc` column. Drops intermediate columns and invalid datetimes before returning the processed DataFrame.
+        Splits the data by granularity and DST transition days, applies the appropriate parsing and conversion methods for each subset, and merges the results into a unified DataFrame with a `datetime_utc` column. Intermediate columns and invalid datetimes are removed before returning the processed DataFrame.
+        
+        Parameters:
+            df (pd.DataFrame): Input DataFrame containing at least 'fecha', 'hora', and 'granularity' columns.
+            dataset_type (str): Specifies the dataset type, affecting value handling during granularity conversion.
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized 15-minute UTC datetimes and cleaned of intermediate columns.
         """
         if df.empty: 
             return df
@@ -152,13 +157,9 @@ class DateUtilsETL:
     @with_progress(message="Processing hourly data...", interval=2)
     def process_hourly_data(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Processes hourly market data with possible DST suffixes, generating UTC datetimes at 15-minute intervals.
+        Process hourly data with DST-aware parsing and expand to 15-minute UTC intervals.
         
-        Converts "HH-HH+1" formatted time strings (including 'a'/'b' suffixes for DST fall-back) into timezone-aware local datetimes, then to UTC. Expands each hourly entry into four 15-minute intervals for downstream analysis.
-            
-        Returns:
-            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute granularity, or an empty DataFrame on error.
-        """
+        Parses hourly time strings (including DST suffixes 'a'/'b' for ambiguous hours) into timezone-aware local datetimes in Europe/Madrid, converts them to UTC, and expands each hourly entry into four 15-minute intervals. Returns a DataFrame with standardized UTC datetimes at 15-minute granularity, or an empty DataFrame if an error occurs.
         try:
             # Create a copy to avoid modifying the original
             result_df = df.copy()
@@ -189,8 +190,10 @@ class DateUtilsETL:
     @with_progress(message="Processing 15-minute data...", interval=2)
     def process_15min_data(df: pd.DataFrame) -> pd.DataFrame:
         """
-        Process 15-minute data (numeric index "1" to "96/92/100").
-        Creates timezone-aware datetime_local series and converts to UTC.
+        Processes 15-minute interval data by generating timezone-aware local datetimes and converting them to UTC.
+        
+        Returns:
+            pd.DataFrame: DataFrame with added 'datetime_local' and 'datetime_utc' columns representing the localized and UTC timestamps for each interval. Returns an empty DataFrame if processing fails.
         """
         try:
             # Create a copy to avoid modifying the original
@@ -220,9 +223,9 @@ class DateUtilsETL:
     @with_progress(message="Processing hourly data (vectorized)...", interval=2)
     def process_hourly_data_vectorized(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Vectorized processing of hourly data with possible DST suffixes, converting to UTC and expanding to 15-minute intervals.
+        Vectorized processing of hourly data with DST suffixes, converting to UTC and expanding to 15-minute intervals.
         
-        This method parses hourly time strings (e.g., "02-03a", "02-03b"), handles daylight saving time transitions using suffixes, localizes datetimes to Europe/Madrid, converts them to UTC, and expands each hour to four 15-minute intervals. Returns a DataFrame with standardized UTC datetimes and 15-minute granularity.
+        Parses hourly time strings (including DST suffixes 'a'/'b'), localizes to Europe/Madrid with correct DST handling, converts to UTC, and expands each hour into four 15-minute intervals. Returns a DataFrame with standardized UTC datetimes at 15-minute granularity.
         """
         try:
             result_df = df.copy()
@@ -304,7 +307,10 @@ class DateUtilsETL:
     @staticmethod
     @with_progress(message="Processing 15-minute data (vectorized)...", interval=2)
     def process_15min_data_vectorized(df: pd.DataFrame) -> pd.DataFrame:
-        """Processes 15-minute data using vectorized operations."""
+        """
+        Processes 15-minute interval data by converting local timestamps to UTC using vectorized, day-by-day localization with daylight saving time handling.
+        
+        The function ensures input columns are properly typed, groups data by date, and localizes each day's intervals to the 'Europe/Madrid' timezone, automatically resolving ambiguous and nonexistent times due to DST transitions. Rows with failed conversions are removed. Returns a DataFrame with a new `datetime_utc` column containing the UTC timestamps.
         try:
             input_df = df.copy() # Use a different name to avoid confusion within apply
             tz = pytz.timezone('Europe/Madrid')
@@ -321,6 +327,14 @@ class DateUtilsETL:
             # --- Group by day and apply localization ---
             def localize_day(group: pd.DataFrame) -> pd.DataFrame:
                 # Sort within the day by 'hora'
+                """
+                Localizes a day's worth of 15-minute interval data to the target timezone, handling DST transitions, and converts the result to UTC.
+                
+                Sorts the group by interval index, computes the naive local datetime for each interval, localizes to the specified timezone with DST ambiguity and gap handling, and converts to UTC. If localization fails, assigns NaT to the UTC datetime column for the group.
+                
+                Returns:
+                    pd.DataFrame: The input group with an added 'datetime_utc' column containing the UTC timestamps.
+                """
                 group = group.sort_values(by='hora')
 
                 # Calculate naive datetime for the day
@@ -361,15 +375,14 @@ class DateUtilsETL:
     @staticmethod
     def parse_hourly_datetime_local(fecha, hora_str) -> pd.Timestamp:
         """
-        Parse hourly format data (e.g., "00-01", "02-03a", "02-03b") into a timezone-aware
-        datetime in Europe/Madrid timezone.
+        Parses an hourly time string (e.g., "02-03a", "02-03b") and date into a timezone-aware datetime in the Europe/Madrid timezone, correctly handling daylight saving time transitions.
         
-        Args:
-            fecha: Date object or datetime object
-            hora_str: Hour string in format "HH-HH+1" potentially with 'a' or 'b' suffix
-            
+        Parameters:
+            fecha: Date or datetime representing the day of the interval.
+            hora_str: Hour string in the format "HH-HH+1", optionally suffixed with 'a' or 'b' to indicate ambiguous hours during the fall-back DST transition.
+        
         Returns:
-            Timezone-aware pd.Timestamp in Europe/Madrid timezone
+            pd.Timestamp: Timezone-aware datetime in Europe/Madrid, with DST ambiguity and non-existent times resolved according to the suffix and transition rules.
         """
         # Ensure fecha is a date object
         if isinstance(fecha, pd.Timestamp):
@@ -440,17 +453,17 @@ class DateUtilsETL:
     @staticmethod
     def parse_15min_datetime_local(fecha, hora_index_str) -> pd.Timestamp:
         """
-        Parse a 15-minute interval index for a given date into a timezone-aware datetime in Europe/Madrid, correctly handling daylight saving time transitions.
+        Convert a 1-based 15-minute interval index for a given date into a timezone-aware datetime in the Europe/Madrid timezone, accurately handling daylight saving time transitions.
         
         Parameters:
             fecha: The date of the interval, as a string, pandas Timestamp, or date object.
-            hora_index_str: The 1-based index (as string or integer) of the 15-minute interval within the day.
-
+            hora_index_str: The 1-based index (string or integer) of the 15-minute interval within the day.
+        
         Returns:
             pd.Timestamp: The corresponding timezone-aware datetime in Europe/Madrid.
-
+        
         Raises:
-            ValueError: If the interval index is less than 1 or exceeds the number of intervals for the given date.
+            ValueError: If the interval index is less than 1 or exceeds the number of intervals for the given date, accounting for DST transitions.
         """
         # Ensure fecha is a date object
         if isinstance(fecha, pd.Timestamp):
@@ -579,14 +592,16 @@ class DateUtilsETL:
     @staticmethod
     def convert_local_to_utc(dt_local_series: pd.Series) -> pd.DataFrame:
         """
-        Converts a local datetime string to a UTC datetime object and adds a corresponding timezone column.
-
-        Args:
-            dt_local_series (pd.Series): A Series (single column) containing local datetime strings.
-
+        Convert a Series of local datetime strings to UTC-aware datetime objects.
+        
+        Parameters:
+        	dt_local_series (pd.Series): Series containing local datetime strings.
+        
         Returns:
-            pd.DataFrame: A DataFrame with datetime objects converted from the UTC date strings
-                         and a corresponding timezone column.
+        	pd.DataFrame: DataFrame with a 'datetime_utc' column of UTC-aware datetime objects.
+        
+        Raises:
+        	ValueError: If the input is not a pandas Series, is empty, or conversion to UTC fails.
         """
         # Ensure the input is a Series
         if not isinstance(dt_local_series, pd.Series):
@@ -697,15 +712,14 @@ class DateUtilsETL:
     @staticmethod
     def convert_naive_to_local(dt_naive: pd.Series, tz_name: str) -> pd.DataFrame:
         """
-        Converts naive datetime objects to timezone-aware local datetime objects with proper DST handling.
-        Uses transition dates to determine correct UTC offset for each datetime.
+        Convert a Series of naive datetime objects to timezone-aware datetimes in the specified local timezone, handling daylight saving time transitions.
         
-        Args:
-            dt_naive (pd.Series): Series containing naive datetime objects or strings
-            tz_name (str): Target timezone name (e.g. 'Europe/Madrid')
-            
+        Parameters:
+        	dt_naive (pd.Series): Series of naive datetime objects or strings to convert.
+        	tz_name (str): Name of the target timezone (e.g., 'Europe/Madrid').
+        
         Returns:
-            pd.DataFrame: DataFrame with timezone-aware datetime objects in the specified timezone
+        	pd.DataFrame: DataFrame with a 'datetime_local' column containing timezone-aware local datetimes.
         """
         # Input validation
         if not isinstance(dt_naive, pd.Series):
@@ -809,13 +823,13 @@ class DateUtilsETL:
     @staticmethod
     def convert_utc_to_naive(dt_utc: pd.Series) -> pd.DataFrame:
         """
-        Converts a pandas Series of UTC datetime objects to naive datetime objects in the 'Europe/Madrid' local time.
+        Convert a Series of UTC datetimes to naive datetimes in the Europe/Madrid local time.
         
         Parameters:
         	dt_utc (pd.Series): Series of UTC datetime objects or strings.
         
         Returns:
-        	pd.DataFrame: DataFrame containing the corresponding naive datetime objects in local time.
+        	pd.DataFrame: DataFrame with a 'datetime_naive' column containing the corresponding naive local datetimes.
         """
         df_local = DateUtilsETL.convert_utc_to_local(dt_utc, 'Europe/Madrid')
         df_naive = DateUtilsETL.convert_local_to_naive(df_local['datetime_local'], 'Europe/Madrid')
@@ -825,16 +839,12 @@ class DateUtilsETL:
     @staticmethod
     def convert_hourly_to_15min(df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Converts hourly data to 15-minute intervals, adjusting values based on dataset type.
+        Expand hourly data into 15-minute intervals, adjusting values based on dataset type.
         
-        Each hourly row is expanded into four 15-minute rows with appropriate minute offsets. If the dataset type contains "volumenes", the 'volumenes' column is divided by 4 for each new row; otherwise, values are simply replicated.
-        
-        Parameters:
-            df (pd.DataFrame): Hourly data with a 'datetime_utc' column.
-            dataset_type (str): String indicating the type of dataset, used to determine value adjustment.
+        Each hourly row is split into four rows at 15-minute intervals. If the dataset type includes "volumenes", the 'volumenes' column is divided by 4 for each interval; otherwise, values are replicated without adjustment.
         
         Returns:
-            pd.DataFrame: DataFrame with 15-minute granularity.
+            pd.DataFrame: DataFrame with 15-minute granularity and adjusted values.
         """
         # Sort by datetime_utc to ensure proper ordering
         df = df.sort_values(by='datetime_utc').reset_index(drop=True)
@@ -937,16 +947,13 @@ class DateUtilsETL:
         return df_hourly
         
 def DateUtilsETL_example_usage():
-    """Example usage of DateUtilsETL class
+    """
+    Demonstrates usage of the DateUtilsETL class for DST-aware datetime conversions and granularity transformations.
     
-    Creates a DataFrame with datetime examples including DST transition times:
-    - naive: Original datetime string without timezone information
-    - local: Datetime string with local timezone (Europe/Madrid)
-    - utc: Datetime string converted to UTC timezone
-    
-    Also demonstrates handling of DST transitions for Europe/Madrid timezone:
-    - Spring forward (March): 01:59:59 -> 03:00:00 (2:00 doesn't exist)
-    - Fall back (October): 02:59:59 -> 02:00:00 (2:00-2:59 exists twice)
+    This example shows how to:
+    - Retrieve DST transition dates for a given year in the Europe/Madrid timezone.
+    - Convert between naive, local, and UTC datetimes, including handling of DST transitions such as spring forward and fall back.
+    - Transform hourly data into 15-minute intervals using the provided conversion methods.
     """
 
     # Get DST transition dates in 2024

@@ -7,9 +7,9 @@ from tracking.ZR_tracking import ZRTracker
 
 def test_tracking_zr():
     """
-    Runs the Regulation Zones update workflow using hardcoded file paths for ESIOS and BSP data sources.
+    Execute the Regulation Zones (ZR) synchronization workflow using predefined ESIOS CSV and BSP Excel files.
     
-    Instantiates the ZRTracker, sets the input file paths, and executes the full process to synchronize zones and mappings with the database.
+    This function instantiates a ZRTracker, sets up input file paths for ESIOS and BSP data, and processes them to update and synchronize regulation zones and their mappings in the database.
     """
     tracker = ZRTracker()   
         
@@ -21,9 +21,9 @@ def test_tracking_zr():
 
 def test_tracking_up():
     """
-    Runs the UP synchronization workflow using a specified CSV file.
+    Synchronizes and updates Programming Units (UP) data in the database using a specified CSV file.
     
-    This function instantiates the UPTracker, sets the path to the ESIOS UP list CSV file, and initiates the process to synchronize and update UP data between the CSV source and the database.
+    This function instantiates a UPTracker, locates the UP data CSV file, and processes it to ensure the database reflects the latest UP information from the source file.
     """
 
     # Example usage
@@ -35,9 +35,9 @@ def test_tracking_up():
 
 def test_tracking_uof():
     """
-    Entry point for the UOF tracking script.
+    Downloads the latest UOF data from OMIE and processes it to update the database with new, obsolete, and changed UOF records.
     
-    Downloads the latest UOF data from OMIE, then processes and updates the database with new, obsolete, and changed UOFs. 
+    This function serves as the main workflow for synchronizing UOF data by downloading the most recent file, then invoking the tracker to process and apply updates.
     """
 
     print("--- UOF Tracker Script ---")

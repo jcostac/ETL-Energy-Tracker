@@ -300,10 +300,10 @@ class I90Config:
     @classmethod
     def has_volumenes_sheets(cls) -> bool:
         """
-        Determine whether the configuration class provides volume sheet numbers.
+        Return True if the configuration class instance has volume sheet numbers.
         
         Returns:
-            bool: True if the class instance has volume sheets; False otherwise or if instantiation fails.
+            bool: True if the class instance has non-empty volume sheets; False if instantiation fails or no volume sheets are present.
         """
         try:
             if cls.__name__ == "IntraConfig":
@@ -321,10 +321,10 @@ class I90Config:
     @classmethod
     def has_precios_sheets(cls) -> bool:
         """
-        Determine whether the configuration class provides price sheet numbers.
+        Return True if the configuration class instance includes price sheet numbers.
         
         Returns:
-            bool: True if the class instance has price sheets; False otherwise or if instantiation fails.
+            bool: True if the class instance has non-empty price sheets; False if not or if instantiation fails.
         """
         try:
             instance = cls()
@@ -340,6 +340,11 @@ class I90Config:
 
 class DiarioConfig(I90Config):
     def __init__(self):
+        """
+        Initialize the DiarioConfig with the market ID and sheet numbers for the Diario market.
+        
+        Sets the `market_ids` attribute to include only the Diario market, and retrieves the corresponding volume, price, and combined sheet numbers of interest.
+        """
         super().__init__()
         #get individual i.e. {'Diario': 1}
         self.diaria_id = self.id_mercado_map["Diario"]
@@ -359,8 +364,10 @@ class IntraConfig(I90Config):
         """
         Initialize the IntraConfig with market IDs and sheet selections based on the provided date.
         
+        Selects the appropriate set of intra market IDs depending on whether the given date is before or after June 13, 2024. Retrieves the corresponding volume and price sheet numbers for the selected markets.
+        
         Parameters:
-            fecha (datetime): The date used to determine which intra markets to include. Must not be None.
+            fecha (datetime): The date used to determine which intra markets to include.
         
         Raises:
             ValueError: If `fecha` is not provided.
@@ -411,6 +418,11 @@ class SecundariaConfig(I90Config):
     Config for secundaria market data
     """
     def __init__(self):
+        """
+        Initialize the configuration for the Secundaria market, setting market IDs and retrieving relevant sheet numbers for data processing.
+        
+        This constructor assigns the market IDs for "Secundaria a subir" and "Secundaria a bajar", and determines the associated volume, price, and combined sheets of interest.
+        """
         super().__init__()
         # get individual ids for subir and bajar
         self.secundaria_subir_id: str = self.id_mercado_map["Secundaria a subir"]
@@ -431,7 +443,7 @@ class TerciariaConfig(I90Config):
     """
     def __init__(self):
         """
-        Initialize the configuration for the Terciaria market, setting market IDs and retrieving relevant sheet numbers for volume and price data.
+        Initialize the configuration for the Terciaria market, setting market IDs and retrieving associated volume and price sheet numbers.
         """
         super().__init__()
         # get individual ids for subir and bajar
@@ -449,6 +461,11 @@ class TerciariaConfig(I90Config):
 
 class RRConfig(I90Config):
     def __init__(self):
+        """
+        Initialize the RRConfig with market IDs and sheet numbers for "RR a subir" and "RR a bajar".
+        
+        Sets up the configuration to process RR market data by retrieving the relevant market IDs and their associated volume and price sheet numbers.
+        """
         super().__init__()
         # get individual ids for subir and bajar
         self.rr_subir_id: str = self.id_mercado_map["RR a subir"]
@@ -466,7 +483,9 @@ class RRConfig(I90Config):
 class CurtailmentConfig(I90Config):
     def __init__(self):
         """
-        Initializes configuration for the Curtailment market, setting up market IDs, relevant sheet numbers, and redespacho filters for Curtailment-specific data processing.
+        Initialize Curtailment market configuration, including market IDs, relevant sheet numbers, and redespacho filters for Curtailment data processing.
+        
+        Sets up attributes for Curtailment and Curtailment Demanda market IDs, determines sheets of interest, and defines a redespacho filter specific to the main Curtailment market.
         """
         super().__init__()
         # get individual id
@@ -491,13 +510,13 @@ class CurtailmentConfig(I90Config):
         """
         Return the redespacho filter list for the specified Curtailment market ID.
         
-        If the provided market ID matches the main Curtailment market, returns the configured filter list for use with the 'Redespacho' column. Otherwise, delegates to the parent class implementation.
+        If the market ID matches the main Curtailment market, returns the configured filter list for the 'Redespacho' column. Otherwise, returns the result from the parent class.
         
         Parameters:
-            market_id (str): The market ID for which to retrieve the redespacho filter.
+            market_id (str): The market ID to check.
         
         Returns:
-            Optional[List[str]]: The filter list if applicable, otherwise None.
+            Optional[List[str]]: The filter list for the Curtailment market, or None if not applicable.
         """
         if market_id == self.curtailment_id:
             # This filter applies when dealing with the primary Curtailment market ID ('13')
@@ -511,7 +530,9 @@ class CurtailmentConfig(I90Config):
 class P48Config(I90Config):
     def __init__(self):
         """
-        Initializes configuration for the P48 market, setting the market ID and retrieving relevant volume sheet numbers.
+        Initialize the configuration for the P48 market, setting the market ID and retrieving associated volume sheet numbers.
+        
+        The configuration focuses on volume sheets, as P48 typically does not include price sheets.
         """
         super().__init__()
         # get individual id
@@ -530,7 +551,9 @@ class P48Config(I90Config):
 class IndisponibilidadesConfig(I90Config):
     def __init__(self):
         """
-        Initializes configuration for the Indisponibilidades market, setting up market IDs, relevant volume sheets, and redespacho filters.
+        Initialize the configuration for the Indisponibilidades market, including market IDs, volume sheets, and redespacho filters.
+        
+        Sets up the market to process only volume sheets (typically '08') and defines the redespacho filter for Indisponibilidades data.
         """
         super().__init__()
         # get individual id
@@ -550,9 +573,9 @@ class IndisponibilidadesConfig(I90Config):
 class RestriccionesConfig(I90Config):
     def __init__(self):
         """
-        Initializes configuration for Restricciones markets, setting market IDs, relevant sheet numbers, and redespacho filters for each market type.
+        Initialize configuration for Restricciones markets, setting market IDs, relevant sheet numbers, and redespacho filters for each market type.
         
-        Defines market IDs for Restricciones MD, TR, and RT2 (both subir and bajar), retrieves associated volume and price sheets, and sets up filters used to process redespacho data for each market category.
+        Defines the market IDs for Restricciones MD, TR, and RT2 (both subir and bajar), retrieves associated volume and price sheets, and sets up filters used to process redespacho data for each market category.
         """
         super().__init__()
 
@@ -592,13 +615,15 @@ class RestriccionesConfig(I90Config):
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
         """
-        Return the redespacho filter list for a given market ID in the Restricciones configuration.
+        Return the redespacho filter list for the specified market ID, or None if no filter is defined for that ID.
         
+        If the market ID matches one of the Restricciones MD, TR, or RT2 markets, returns the corresponding filter list; otherwise, delegates to the parent configuration.
+         
         Parameters:
             market_id (str): The market ID for which to retrieve the redespacho filter.
         
         Returns:
-            Optional[List[str]]: The filter list for the specified market ID, or None if no filter is defined.
+            Optional[List[str]]: The filter list for the specified market ID, or None if not defined.
         """
         if market_id in [self.restricciones_md_subir_id, self.restricciones_md_bajar_id]:
             # Market IDs 24, 25 correspond to MD filters
@@ -617,7 +642,7 @@ def print_config_info():
     """
     Prints detailed configuration information for the base I90Config and all its subclasses.
     
-    Displays mappings of market IDs to market names, sheet numbers, and directions for the base configuration. For each subclass, prints the configured market IDs, associated sheet numbers, and any redespacho filters, along with the temporary download path. Intended for diagnostic or inspection purposes.
+    Displays mappings of market IDs to market names, sheet numbers, and directions for the base configuration. For each subclass, prints the configured market IDs, associated sheet numbers, redespacho filters, and the temporary download path. Intended for diagnostic or inspection purposes.
     """
     print("\n=== BASE I90CONFIG INFORMATION ===")
     base_config = I90Config()

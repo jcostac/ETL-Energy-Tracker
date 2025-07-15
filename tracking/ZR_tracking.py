@@ -518,9 +518,9 @@ class ZRTracker:
 
     def process_zonas(self, esios_csv_path: str, bsp_csv_path: str) -> None:
         """
-        Executes the full workflow to synchronize Regulation Zones data from ESIOS and BSP files with the database.
+        Synchronizes Regulation Zones data from ESIOS and BSP files with the database.
         
-        Loads ESIOS data and i90 mappings, compares with the current database state to identify new, obsolete, and updated zones, applies all necessary updates, saves a detailed change log, and prints summary statistics before and after the update. Raises an exception if any processing step fails.
+        Loads ESIOS data and i90 mappings, compares them with the current database state to identify new, obsolete, and updated zones, applies all necessary updates, saves a detailed change log, and prints summary statistics. Raises an exception if any processing step fails.
         """
         try:
             # Load current data

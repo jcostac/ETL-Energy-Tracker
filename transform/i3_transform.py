@@ -25,6 +25,11 @@ from configs.i3_config import (
 
 class TransformadorI3:
     def __init__(self):
+        """
+        Initializes the TransformadorI3 instance with processor, file utilities, date utilities, dataset types, transform types, and market configuration mappings.
+        
+        Sets up internal utilities and configuration required for transforming raw I3 market data, and computes the list of markets supporting 'volumenes' datasets.
+        """
         self.processor = I3Processor()
         self.raw_file_utils = RawFileUtils()
         self.processed_file_utils = ProcessedFileUtils()
@@ -48,6 +53,12 @@ class TransformadorI3:
         self.i3_volumenes_markets = self._compute_volumenes_markets()
 
     def _compute_volumenes_markets(self):
+        """
+        Return a list of market names that have 'volumenes' sheets available in their configuration.
+        
+        Returns:
+        	markets (list): List of market names (as lowercase strings) with 'volumenes' sheet support.
+        """
         markets = []
         for config_cls in I3Config.__subclasses__():
             if config_cls.has_volumenes_sheets():
@@ -56,6 +67,18 @@ class TransformadorI3:
         return markets
 
     def get_config_for_market(self, mercado: str, fecha: Optional[datetime] = None) -> I3Config:
+        """
+        Retrieve the configuration instance for a specified market.
+        
+        If the market is 'intra', a `fecha` (date) parameter must be provided to instantiate its configuration. Raises a `ValueError` if the market is unknown or if required parameters are missing.
+        
+        Parameters:
+        	mercado (str): The market name for which to retrieve the configuration.
+        	fecha (Optional[datetime]): The date required for 'intra' market configuration.
+        
+        Returns:
+        	I3Config: The configuration instance for the specified market.
+        """
         config_class = self.market_config_map.get(mercado)
         if not config_class:
             all_known_i3_market_dl_names = self.i3_volumenes_markets
@@ -77,7 +100,20 @@ class TransformadorI3:
 
     def transform_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
                                        mercados_lst: Optional[List[str]] = None) -> dict:
-        if fecha_inicio is None and fecha_fin is None:
+        """
+                                       Transforms raw 'volumenes_i3' data for all specified or available markets over a given date range or mode.
+                                       
+                                       Depending on the provided date parameters, processes the latest available day, a single specified day, or a range of days for each relevant market. Returns a dictionary containing the processed data per market and a status summary indicating successes, failures, and processing mode.
+                                       
+                                       Parameters:
+                                           fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format. Determines the transformation mode if provided.
+                                           fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. Used for range processing if different from `fecha_inicio`.
+                                           mercados_lst (List[str], optional): List of market names to process. If None, processes all available markets.
+                                       
+                                       Returns:
+                                           dict: A dictionary with keys 'data' (processed DataFrames per market) and 'status' (success flag and details).
+                                       """
+                                       if fecha_inicio is None and fecha_fin is None:
             transform_type = 'latest'
         elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
             transform_type = 'single'
@@ -185,6 +221,20 @@ class TransformadorI3:
         }
 
     def _transform_data(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str, fecha: Optional[datetime] = None) -> pd.DataFrame:
+        """
+        Transforms raw market data for a specified market and dataset type using the appropriate configuration.
+        
+        If the input DataFrame is empty or the transformation fails, returns an empty DataFrame.
+        
+        Parameters:
+            raw_df (pd.DataFrame): The raw market data to be transformed.
+            mercado (str): The market identifier.
+            dataset_type (str): The type of dataset to transform.
+            fecha (Optional[datetime]): The date used for configuration selection, if required.
+        
+        Returns:
+            pd.DataFrame: The transformed market data, or an empty DataFrame if transformation is not possible.
+        """
         if raw_df.empty:
             print(f"Skipping transformation for {mercado} - {dataset_type}: Input DataFrame is empty.")
             return pd.DataFrame()
@@ -208,6 +258,20 @@ class TransformadorI3:
             return pd.DataFrame()
 
     def _process_df_based_on_transform_type(self, raw_df: pd.DataFrame, transform_type: str, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None) -> pd.DataFrame:
+        """
+        Filter a DataFrame of raw market data based on the specified transformation type and date criteria.
+        
+        Depending on the `transform_type`, this method filters the DataFrame to include only rows matching the latest date, a single specified date, or a date range. Raises an error if the 'fecha' column is missing or cannot be converted to datetime.
+        
+        Parameters:
+            raw_df (pd.DataFrame): The DataFrame containing raw market data with a 'fecha' column.
+            transform_type (str): The type of transformation ('latest', 'single', or 'multiple').
+            fecha_inicio (Optional[str]): The start date for filtering (used for 'single' and 'multiple' modes).
+            fecha_fin (Optional[str]): The end date for filtering (used for 'multiple' mode).
+        
+        Returns:
+            pd.DataFrame: The filtered DataFrame containing only the relevant rows for the specified transformation type.
+        """
         if raw_df.empty:
             return raw_df
 
@@ -252,6 +316,19 @@ class TransformadorI3:
             return pd.DataFrame()
 
     def _process_single_day(self, mercado: str, dataset_type: str, date: str):
+        """
+        Processes and transforms raw data for a specific market and dataset type on a single given date.
+        
+        Reads the relevant raw data file for the specified market and month, filters the data for the target date, and applies the transformation logic. Returns the processed DataFrame, or an empty DataFrame if no data is found for the date. Handles missing files and logs errors encountered during processing.
+        
+        Parameters:
+            mercado (str): The market identifier.
+            dataset_type (str): The type of dataset to process (e.g., 'volumenes_i3').
+            date (str): The target date in a format recognized by pandas (e.g., 'YYYY-MM-DD').
+        
+        Returns:
+            pd.DataFrame: The processed DataFrame for the specified date, or an empty DataFrame if no data is found.
+        """
         print(f"Starting SINGLE transformation for {mercado} - {dataset_type} on {date}")
         try:
             target_date = pd.to_datetime(date)
@@ -287,6 +364,11 @@ class TransformadorI3:
             print(f"Error during single day processing for {mercado}/{dataset_type} on {date}: {e}")
 
     def _process_latest_day(self, mercado: str, dataset_type: str):
+        """
+        Processes and transforms the latest available day's data for a given market and dataset type.
+        
+        Searches for the most recent raw data file for the specified market and dataset type, filters the data to the latest date present, and applies the transformation logic. Returns the processed DataFrame or an empty DataFrame if no data is found.
+        """
         print(f"Starting LATEST transformation for {mercado} - {dataset_type}")
         try:
             years = sorted(self.raw_file_utils.get_raw_folder_list(mercado=mercado), reverse=True)
@@ -329,6 +411,11 @@ class TransformadorI3:
             print(f"Error during latest day processing for {mercado}/{dataset_type}: {e}")
 
     def _process_date_range(self, mercado: str, dataset_type: str, fecha_inicio: str, fecha_fin: str):
+        """
+        Processes and transforms raw market data for a specified market and dataset type over a given date range.
+        
+        Reads and combines raw data files for all months within the date range, filters the data to include only rows within the specified dates, and applies the transformation logic. Returns a processed DataFrame or an empty DataFrame if no data is found.
+        """
         print(f"Starting MULTIPLE transformation for {mercado} - {dataset_type} from {fecha_inicio} to {fecha_fin}")
         try:
             start_dt = pd.to_datetime(fecha_inicio)
@@ -384,6 +471,15 @@ class TransformadorI3:
             print(traceback.format_exc())
 
     def _extract_dataset_type_from_filename(self, filename: str) -> str:
+        """
+        Extracts the dataset type string 'volumenes_i3' from a filename.
+        
+        Raises:
+            ValueError: If the dataset type cannot be determined from the filename.
+        
+        Returns:
+            str: The extracted dataset type.
+        """
         match = re.search(r'(volumenes_i3)', filename)
         if match:
             return match.group(1)
