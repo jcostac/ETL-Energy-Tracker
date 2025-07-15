@@ -27,8 +27,6 @@ def test_single_day_volumenes():
 
 if __name__ == "__main__":
     test_multiple_day_volumenes()
-    
-    breakpoint()
     time.sleep(5)
     test_single_day_volumenes()
     print("🎉 All tests passed successfully!")

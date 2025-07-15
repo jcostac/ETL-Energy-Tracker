@@ -798,7 +798,7 @@ class I3Processor:
             raise ValueError(f"Error calculating session differences: {e}")
 
     # === VALIDATION ===
-    def _validate_raw_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _validate_raw_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """Validate raw data structure."""
         if not df.empty:
             try:

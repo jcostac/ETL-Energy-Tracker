@@ -119,7 +119,7 @@ class DataValidationUtils:
                     if 'tipo_transaccion' in df.columns:
                         df['tipo_transaccion'] = df['tipo_transaccion'].astype('str')
                 
-                print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
+                print(f"{type.capitalize()} {validation_schema_type} data types validated successfully.")
             
             #for raw data
             elif type == "raw":
@@ -148,7 +148,7 @@ class DataValidationUtils:
                     df['Precio'] = df['Precio'].astype('float32')
 
                 
-                print(f"{type.upper()} {validation_schema_type.upper()} data types validated successfully.")
+                print(f"{type.capitalize()} {validation_schema_type} data types validated successfully.")
     
             
         except Exception as e:
