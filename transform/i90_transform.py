@@ -287,7 +287,7 @@ class TransformadorI90:
         try:
             market_config = self.get_config_for_market(mercado, fecha)
             print(f"Raw data loaded ({len(raw_df)} rows). Starting transformation for {mercado} - {dataset_type}...")
-            processed_df = self.processor.transform_volumenes_or_precios_i90(raw_df, market_config, dataset_type)
+            processed_df = self.processor.transform_raw_i90_data(raw_df, market_config, dataset_type)
             if processed_df is None or processed_df.empty:
                 print(f"Transformation resulted in empty or None DataFrame for {mercado} - {dataset_type}.")
                 return pd.DataFrame()

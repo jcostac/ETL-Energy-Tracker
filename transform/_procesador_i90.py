@@ -989,7 +989,7 @@ class I90Processor:
             raise ValueError(f"Error calculating differences: {e}")
 
     # === MAIN PIPELINE ===
-    def transform_volumenes_or_precios_i90(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
+    def transform_raw_i90_data(self, df: pd.DataFrame, market_config: I90Config, dataset_type: str) -> pd.DataFrame:
         """
         Executes the full I90 data transformation pipeline for volumes or prices, applying validation, filtering, datetime standardization, and optional intra cumulative processing.
         

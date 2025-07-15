@@ -107,7 +107,6 @@ class TransformadorI3:
             else:
                 invalid_markets = [m for m in mercados_lst if m not in self.i3_volumenes_markets]
                 if invalid_markets:
-                    breakpoint()
                     print(f"Warning: Invalid markets for {dataset_type}: {', '.join(invalid_markets)}")
                 relevant_markets = [m for m in mercados_lst if m in self.i3_volumenes_markets]
 
@@ -193,7 +192,7 @@ class TransformadorI3:
         try:
             market_config = self.get_config_for_market(mercado, fecha)
             print(f"Raw data loaded ({len(raw_df)} rows). Starting transformation for {mercado} - {dataset_type}...")
-            processed_df = self.processor.transform_volumenes_i3(raw_df, market_config)
+            processed_df = self.processor.transform_raw_i3_data(raw_df, market_config, dataset_type)
             if processed_df is None or processed_df.empty:
                 print(f"Transformation resulted in empty or None DataFrame for {mercado} - {dataset_type}.")
                 return pd.DataFrame()

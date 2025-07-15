@@ -21,7 +21,8 @@ class DataValidationUtils:
         #raw data structure requirements
         self.raw_precios_esios_required_cols = ['datetime_utc', 'value', 'indicador_id']
         self.raw_precios_i90_required_cols = ["fecha", "precios", "Redespacho", "Sentido", "Unidad de Programación", "hora", "granularity"]
-        self.raw_volumenes_required_cols = ["Unidad de Programación", "fecha", "volumenes", "hora", "granularity"]
+        self.raw_volumenes_i90_required_cols = ["Unidad de Programación", "fecha", "volumenes", "hora", "granularity"]
+        self.raw_volumenes_i3_required_cols = ["Concepto", "fecha", "volumenes", "hora", "granularity"]
         self.raw_volumenes_omie_required_cols = ["Fecha", "Unidad", "id_mercado", "Energía Compra/Venta", "Ofertada (O)/Casada (C)"]
         self.raw_volumenes_mic_required_cols = ["Fecha", "Contrato", "Precio", "Cantidad", "id_mercado"]
 
@@ -191,8 +192,10 @@ class DataValidationUtils:
                 required_cols = self.raw_precios_esios_required_cols
             elif validation_schema_type == "precios_i90":
                 required_cols = self.raw_precios_i90_required_cols
-            elif validation_schema_type in ["volumenes_i90", "volumenes_i3"]:
-                required_cols = self.raw_volumenes_required_cols
+            elif validation_schema_type == "volumenes_i90":
+                required_cols = self.raw_volumenes_i90_required_cols
+            elif validation_schema_type == "volumenes_i3":
+                required_cols = self.raw_volumenes_i3_required_cols
             elif validation_schema_type == "volumenes_omie":
                 required_cols = self.raw_volumenes_omie_required_cols
             elif validation_schema_type == "volumenes_mic":
