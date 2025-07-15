@@ -25,7 +25,6 @@ class I3Processor:
         self.raw_file_utils = RawFileUtils()
         self.processed_file_utils = ProcessedFileUtils()
         self.db_utils = DatabaseUtils()
-        self.dataset_type = "volumenes_i3"
 
     # === FILTERING ===
     def _filter_by_technology(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -372,7 +371,7 @@ class I3Processor:
         """Validate raw data structure."""
         if not df.empty:
             try:
-                self.data_validation_utils.validate_raw_data(df, self.dataset_type)
+                self.data_validation_utils.validate_raw_data(df, dataset_type)
                 print("Raw data validation successful.")
             except Exception as e:
                 print(f"Error during raw data validation: {e}")

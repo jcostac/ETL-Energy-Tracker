@@ -1,13 +1,11 @@
 import pandas as pd
 from datetime import datetime
-import pytz
-import pretty_errors
 import sys
 from pathlib import Path
-from typing import Optional, List, Type, Dict
-import numpy as np
+from typing import Optional, List
 import re 
 import traceback
+import pretty_errors
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -157,7 +155,6 @@ class TransformadorI3:
                     results[mercado] = None
                     print(f"❌ Failed to transform {dataset_type} for {mercado} ({transform_type}): {e}")
                     print(traceback.format_exc())
-                    raise e
 
             print(f"\n===== TRANSFORMATION RUN FINISHED (Mode: {transform_type.upper()}) =====")
             print("Summary:")
