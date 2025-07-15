@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from utilidades.etl_date_utils import DateUtilsETL, TimeUtils
+from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
 from utilidades.progress_utils import with_progress
 
@@ -326,7 +326,7 @@ class OMIEProcessor:
         year_max = df['Fecha'].dt.year.max() + 1
         start_range = pd.Timestamp(year=year_min, month=1, day=1)
         end_range = pd.Timestamp(year=year_max, month=12, day=31)
-        transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
+        transition_dates = DateUtilsETL.get_transition_dates(start_range, end_range)
         
         # Create mask for DST transition days
         df['is_dst_day'] = df['Fecha'].dt.date.apply(lambda x: x in transition_dates)

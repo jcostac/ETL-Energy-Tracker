@@ -19,7 +19,6 @@ from configs.i90_config import (
     )
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
-from utilidades.etl_date_utils import TimeUtils
 from utilidades.progress_utils import with_progress
 from utilidades.storage_file_utils import RawFileUtils
 
@@ -161,7 +160,7 @@ class I90Processor:
         year_max = df['fecha'].dt.year.max() + 1
         start_range = pd.Timestamp(year=year_min, month=1, day=1)
         end_range = pd.Timestamp(year=year_max, month=12, day=31)
-        transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
+        transition_dates = DateUtilsETL.get_transition_dates(start_range, end_range)
         
         # Create mask for DST transition days
         df['is_dst_day'] = df['fecha'].dt.date.apply(lambda x: x in transition_dates)
@@ -482,7 +481,7 @@ class I90Processor:
         # Create a much smaller date range for the transition check
         start_range = pd.Timestamp(year=year_range[0], month=1, day=1)
         end_range = pd.Timestamp(year=year_range[1], month=12, day=31)
-        transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
+        transition_dates = DateUtilsETL.get_transition_dates(start_range, end_range)
         
         is_transition_date = naive_dt.date() in transition_dates
         if is_transition_date:
@@ -540,7 +539,7 @@ class I90Processor:
         end_range = pd.Timestamp(year=year_range[1], month=12, day=31)
 
         # Get the transition dates for the year range 
-        transition_dates = TimeUtils.get_transition_dates(start_range, end_range)
+        transition_dates = DateUtilsETL.get_transition_dates(start_range, end_range)
         
         # Generate the sequence of timestamps for this day
         # Default: normal day (96 intervals)
