@@ -8,7 +8,7 @@ def test_update_tecnologias_generacion():
     p48_tecnologias = P48TecnologiasGeneracion()
 
     unique_p48_tecnologias = p48_tecnologias.get_unique_p48_conceptos()
-    breakpoint()
+
     result = p48_tecnologias.update_tecnologias_generacion(unique_p48_tecnologias)
     assert result, "New tecnologias were not inserted into the database."
 

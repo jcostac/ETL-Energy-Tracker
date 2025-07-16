@@ -24,7 +24,7 @@ class P48TecnologiasGeneracion:
         """
         return self.raw_file_utils.read_latest_raw_file(self.mercado, self.dataset_type)
 
-    def get_unique_p48_conceptos(self):
+    def get_unique_p48_conceptos(self) -> set:
         """
         Reads the latest available P48 file from the I3 source and returns the unique values from the 'concepto' column.
         Returns:
@@ -33,16 +33,16 @@ class P48TecnologiasGeneracion:
       
         try:
             raw_df = self.read_latest_p48_file()
-            
+
             if raw_df is None or raw_df.empty:
                 raise ValueError("No P48 data found.")
                 
-            if "concepto" in raw_df.columns:
-                unique_conceptos = set(raw_df["concepto"].dropna().unique())
+            if "Concepto" in raw_df.columns:
+                unique_conceptos = set(raw_df["Concepto"].dropna().unique())
                 print(f"Unique 'concepto' values: {unique_conceptos}")
                 return unique_conceptos
             else:
-                raise ValueError("No 'concepto' column found in the latest P48 file.")
+                raise ValueError("No 'Concepto' column found in the latest P48 file.")
 
         except Exception as e:
             print(f"Error reading latest P48 file: {e}")
@@ -83,6 +83,14 @@ class P48TecnologiasGeneracion:
 
             # Prepare DataFrame for insertion
             insert_df = pd.DataFrame({concepto_column: list(new_tecnologias)})
+
+            breakpoint()
+
+            # Check for duplicates in new_tecnologias
+            duplicates = new_tecnologias.intersection(existing_tecnologias)
+            if duplicates:
+                print(f"Duplicate tecnologias found: {duplicates}")
+                new_tecnologias = new_tecnologias - duplicates  # Remove duplicates from new technologies
 
             # Insert new tecnologias
             DatabaseUtils.write_table(engine, insert_df, self.table_name, if_exists='append', index=False)
