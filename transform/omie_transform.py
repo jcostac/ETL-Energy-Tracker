@@ -590,20 +590,20 @@ class TransformadorOMIE:
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None,
                                       mercados_lst: List[str] = None) -> Dict:
         """
-                                      Transforms OMIE market data for specified markets and date parameters, returning processed results and detailed status.
-                                      
-                                      Parameters:
-                                          fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format. Determines the transformation mode if provided.
-                                          fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. Used for date range transformations.
-                                          mercados_lst (List[str], optional): List of OMIE market names to process. If not provided, all supported markets are processed.
-                                      
-                                      Returns:
-                                          Dict: A dictionary with:
-                                              - 'data': Processed DataFrames for each market (or None if processing failed).
-                                              - 'status': Dictionary containing:
-                                                  - 'success': Boolean indicating if at least one market was processed successfully.
-                                                  - 'details': Dictionary with lists of processed and failed markets, the transformation type used, the date range, and error details if any.
-                                      """
+        Transforms OMIE market data for specified markets and date parameters, returning processed results and detailed status.
+        
+        Parameters:
+            fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format. Determines the transformation mode if provided.
+            fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. Used for date range transformations.
+            mercados_lst (List[str], optional): List of OMIE market names to process. If not provided, all supported markets are processed.
+        
+        Returns:
+            Dict: A dictionary with:
+                - 'data': Processed DataFrames for each market (or None if processing failed).
+                - 'status': Dictionary containing:
+                    - 'success': Boolean indicating if at least one market was processed successfully.
+                    - 'details': Dictionary with lists of processed and failed markets, the transformation type used, the date range, and error details if any.
+        """
         # Auto-infer transform type based on date parameters
         if fecha_inicio is None and fecha_fin is None:
             transform_type = 'latest'

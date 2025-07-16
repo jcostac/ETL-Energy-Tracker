@@ -75,6 +75,28 @@ class TransformadorI3:
 
     def transform_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
                                        mercados_lst: Optional[List[str]] = None) -> dict:
+        """
+        Transforms I3 market data for specified markets over a given date range or mode.
+        
+        Automatically determines the transformation mode based on the provided date parameters:
+        - If no dates are given, processes the latest available data ('latest' mode).
+        - If only `fecha_inicio` is provided or both dates are equal, processes a single day ('single' mode).
+        - If both dates are provided and different, processes the full date range ('multiple' mode).
+
+        Parameters:
+            fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format, or the single date to process.
+            fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. If omitted or equal to `fecha_inicio`, processes a single day.
+            mercados_lst (List[str], optional): List of market names to process. If omitted, processes all markets relevant to the dataset type.
+            dataset_type (str): The dataset type to process ('volumenes_i3' or 'precios_i90').
+            
+        Returns:
+            dict: A dictionary with:
+                - 'data': Mapping of market names to processed DataFrames (or lists of DataFrames if multiple days are processed).
+                - 'status': Dictionary containing:
+                    - 'success': Boolean indicating overall success.
+                    - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.
+        """
+    
         if fecha_inicio is None and fecha_fin is None:
             transform_type = 'latest'
         elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):

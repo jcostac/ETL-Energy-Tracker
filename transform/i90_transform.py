@@ -135,7 +135,7 @@ class TransformadorI90:
             
             Returns:
                 dict: A dictionary with:
-                    - 'data': Mapping of market names to processed DataFrames (or lists of DataFrames).
+                    - 'data': Mapping of market names to processed DataFrames (or lists of DataFrames if multiple days are processed).
                     - 'status': Dictionary containing:
                         - 'success': Boolean indicating overall success.
                         - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.

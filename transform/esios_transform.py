@@ -573,23 +573,23 @@ class TransformadorESIOS:
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None, 
                                       mercados: list[str] = None, mode: str = 'latest'):
         """
-                                      Transform and aggregate market price data for one or more specified markets using the selected processing mode.
-                                      
-                                      Depending on the mode, processes data for the latest day, a single day, a date range, or all available historical data. Tracks and reports the success or failure of each market's transformation, returning both the processed data and a detailed status summary.
-                                      
-                                      Parameters:
-                                          fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format. Required for 'single' and 'multiple' modes.
-                                          fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. Required for 'multiple' mode.
-                                          mercados (list[str], optional): List of market names to process. Defaults to all available markets if not provided.
-                                          mode (str): Processing mode. One of 'single', 'multiple', 'batch', or 'latest'.
-                                      
-                                      Returns:
-                                          dict: A dictionary with:
-                                              - 'data': Mapping of each market to its processed DataFrame or list of DataFrames (or None if processing failed).
-                                              - 'status': Dictionary containing:
-                                                  - 'success': Boolean indicating if at least one market was processed successfully.
-                                                  - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.
-                                      """
+        Transform and aggregate market price data for one or more specified markets using the selected processing mode.
+        
+        Depending on the mode, processes data for the latest day, a single day, a date range, or all available historical data. Tracks and reports the success or failure of each market's transformation, returning both the processed data and a detailed status summary.
+        
+        Parameters:
+            fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format. Required for 'single' and 'multiple' modes.
+            fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. Required for 'multiple' mode.
+            mercados (list[str], optional): List of market names to process. Defaults to all available markets if not provided.
+            mode (str): Processing mode. One of 'single', 'multiple', 'batch', or 'latest'.
+        
+        Returns:
+            dict: A dictionary with:
+                - 'data': Mapping of each market to its processed DataFrame or list of DataFrames (if multiple days are processed).
+                - 'status': Dictionary containing:
+                    - 'success': Boolean indicating if at least one market was processed successfully.
+                    - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.
+         """
         # Initialize status tracking
         status_details = {
             "markets_processed": [],
