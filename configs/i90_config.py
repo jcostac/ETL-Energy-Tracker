@@ -353,7 +353,6 @@ class DiarioConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
-
 class IntraConfig(I90Config):
     def __init__(self, fecha):
         """
@@ -403,8 +402,6 @@ class IntraConfig(I90Config):
         self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
-
-   
 
 class SecundariaConfig(I90Config):
     """

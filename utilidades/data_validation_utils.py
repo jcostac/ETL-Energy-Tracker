@@ -19,8 +19,8 @@ class DataValidationUtils:
         self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
         self.processed_volumenes_mic_required_cols = ['datetime_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
         self.processed_volumenes_i3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
-        self.processed_curtailments_i90_required_cols = ['datetime_utc', 'up', 'RTx', 'tipo', 'volumenes']
-        self.processed_curtailments_i3_required_cols = ['datetime_utc', 'tecnologia', 'RTx', 'tipo', 'volumenes']
+        self.processed_curtailments_i90_required_cols = ['datetime_utc', 'up', 'RTx', 'tipo', 'volumenes', "id_mercado"]
+        self.processed_curtailments_i3_required_cols = ['datetime_utc', 'tecnologia', 'RTx', 'tipo', 'volumenes', "id_mercado"]
 
         #raw data structure requirements
         self.raw_precios_esios_required_cols = ['datetime_utc', 'value', 'indicador_id']
@@ -128,6 +128,7 @@ class DataValidationUtils:
                     df['RTx'] = df['RTx'].astype('str')
                     df['tipo'] = df['tipo'].astype('str')
                     df['volumenes'] = df['volumenes'].astype('float32')
+                    df["id_mercado"] = df["id_mercado"].astype('uint8')
                     
                     if validation_schema_type == "curtailments_i90" and 'up' in df.columns:
                         df['up'] = df['up'].astype('str')
