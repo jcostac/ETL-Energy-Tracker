@@ -12,11 +12,15 @@ class DataValidationUtils:
         
         Defines the expected columns for each dataset type and source, supporting multiple processed volume formats (I90, OMIE, MIC, I3) and raw data schemas.
         """
+
+        #processed data structure requirements
         self.processed_price_required_cols = ['datetime_utc', "id_mercado", "precio"]
         self.processed_volumenes_i90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
         self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
         self.processed_volumenes_mic_required_cols = ['datetime_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
         self.processed_volumenes_i3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
+        self.processed_curtailments_i90_required_cols = ['datetime_utc', 'up', 'RTx', 'tipo', 'volumenes']
+        self.processed_curtailments_i3_required_cols = ['datetime_utc', 'tecnologia', 'RTx', 'tipo', 'volumenes']
 
         #raw data structure requirements
         self.raw_precios_esios_required_cols = ['datetime_utc', 'value', 'indicador_id']
@@ -118,6 +122,17 @@ class DataValidationUtils:
                         df['precio'] = df['precio'].astype('float32')
                     if 'tipo_transaccion' in df.columns:
                         df['tipo_transaccion'] = df['tipo_transaccion'].astype('str')
+
+                elif validation_schema_type in ["curtailments_i90", "curtailments_i3"]:
+                    df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
+                    df['RTx'] = df['RTx'].astype('str')
+                    df['tipo'] = df['tipo'].astype('str')
+                    df['volumenes'] = df['volumenes'].astype('float32')
+                    
+                    if validation_schema_type == "curtailments_i90" and 'up' in df.columns:
+                        df['up'] = df['up'].astype('str')
+                    if validation_schema_type == "curtailments_i3" and 'tecnologia' in df.columns:
+                        df['tecnologia'] = df['tecnologia'].astype('str')
                 
                 print(f"{type.capitalize()} {validation_schema_type} data types validated successfully.")
             
@@ -186,6 +201,10 @@ class DataValidationUtils:
                 required_cols = self.processed_volumenes_omie_required_cols
             elif validation_schema_type == "volumenes_mic":
                 required_cols = self.processed_volumenes_mic_required_cols
+            elif validation_schema_type == "curtailments_i90":
+                required_cols = self.processed_curtailments_i90_required_cols
+            elif validation_schema_type == "curtailments_i3":
+                required_cols = self.processed_curtailments_i3_required_cols
 
         elif type == "raw":
             if validation_schema_type == "precios_esios":
@@ -207,7 +226,3 @@ class DataValidationUtils:
         print(f"{type.upper()} {validation_schema_type.upper()} data structure validated successfully.")
         
         return df
-    
-    
-    
-    
