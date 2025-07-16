@@ -13,7 +13,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.etl_date_utils import DateUtilsETL
-from utilidades.storage_file_utils import RawFileUtils, ProcessedFileUtils
+from utilidades.raw_file_utils import RawFileUtils
+from utilidades.processed_file_utils import ProcessedFileUtils
 from transform._procesador_omie import OMIEProcessor
 from configs.omie_config import OMIEConfig, DiarioConfig, IntraConfig, IntraContinuoConfig
 

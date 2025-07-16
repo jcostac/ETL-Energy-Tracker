@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from configs.omie_config import OMIEConfig
 from extract._descargador_omie import IntraOMIEDownloader, ContinuoOMIEDownloader, DiarioOMIEDownloader
-from utilidades.storage_file_utils import RawFileUtils
+from utilidades.raw_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils
 

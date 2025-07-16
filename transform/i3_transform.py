@@ -13,7 +13,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.db_utils import DatabaseUtils
-from utilidades.storage_file_utils import RawFileUtils, ProcessedFileUtils
+from utilidades.raw_file_utils import RawFileUtils
+from utilidades.processed_file_utils import ProcessedFileUtils
 from transform._procesador_i3 import I3Processor
 from configs.i3_config import (
     I3Config,

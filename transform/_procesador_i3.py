@@ -6,7 +6,8 @@ from typing import Optional
 
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
-from utilidades.storage_file_utils import RawFileUtils, ProcessedFileUtils
+from utilidades.raw_file_utils import RawFileUtils
+from utilidades.processed_file_utils import ProcessedFileUtils
 from configs.i3_config import I3Config, DiarioConfig, IntraConfig
 from utilidades.progress_utils import with_progress
 from utilidades.db_utils import DatabaseUtils

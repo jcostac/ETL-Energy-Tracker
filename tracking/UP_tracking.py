@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 import pretty_errors
-from utilidades.db_utils import DatabaseUtils  # <-- Add this import
+from utilidades.db_utils import DatabaseUtils
 
 class UPTracker:
     """

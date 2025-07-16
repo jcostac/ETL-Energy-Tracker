@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from utilidades.storage_file_utils import ProcessedFileUtils
+from utilidades.processed_file_utils import ProcessedFileUtils
 
 class NLQueryGenerator:
     """

@@ -10,7 +10,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from extract._descargador_i3 import I3Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, RestriccionesDL, IntradiarioDL
-from utilidades.storage_file_utils import RawFileUtils
+from utilidades.raw_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils
 

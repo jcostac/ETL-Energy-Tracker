@@ -17,7 +17,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.append(str(SCRIPTS_DIR))
 
 # Corrected import path assuming utilidades is at the project root
-from utilidades.storage_file_utils import ProcessedFileUtils
+from utilidades.processed_file_utils import ProcessedFileUtils
 
 
 class LocalDataLakeLoader():

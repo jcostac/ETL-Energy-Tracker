@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from utilidades.storage_file_utils import RawFileUtils
+from utilidades.raw_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 
 class P48TecnologiasGeneracion:
@@ -83,8 +83,6 @@ class P48TecnologiasGeneracion:
 
             # Prepare DataFrame for insertion
             insert_df = pd.DataFrame({concepto_column: list(new_tecnologias)})
-
-            breakpoint()
 
             # Check for duplicates in new_tecnologias
             duplicates = new_tecnologias.intersection(existing_tecnologias)
