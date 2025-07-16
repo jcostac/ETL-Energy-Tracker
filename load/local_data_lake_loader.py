@@ -139,7 +139,7 @@ class LocalDataLakeLoader():
             "market_status": market_success  # Include per-market status in response
         }
 
-    def load_transformed_data_esios(self, transformed_data_dict, **kwargs):
+    def load_transformed_data_esios(self, transformed_data_dict, **kwargs) -> dict:
         """
         Loads transformed "precios_esios" dataset for each market from the provided dictionary.
         
@@ -156,7 +156,7 @@ class LocalDataLakeLoader():
             **kwargs
         )
     
-    def load_transformed_data_precios_i90(self, transformed_data_dict, **kwargs):
+    def load_transformed_data_precios_i90(self, transformed_data_dict, **kwargs) -> dict:
         """
         Loads transformed i90 price data for each market from the provided dictionary and stores it as partitioned Parquet files.
         
@@ -173,7 +173,7 @@ class LocalDataLakeLoader():
             **kwargs
         )
 
-    def load_transformed_data_volumenes_i90(self, transformed_data_dict, **kwargs):
+    def load_transformed_data_volumenes_i90(self, transformed_data_dict, **kwargs) -> dict:
         """
         Loads transformed i90 volume data for each market from the provided dictionary and stores it in the local data lake.
         
@@ -190,7 +190,7 @@ class LocalDataLakeLoader():
             **kwargs
         )
     
-    def load_transformed_data_volumenes_omie(self, transformed_data_dict, **kwargs):
+    def load_transformed_data_volumenes_omie(self, transformed_data_dict, **kwargs) -> dict:
         """
         Loads transformed OMIE volume data for each market from the provided dictionary and stores it in the local data lake.
         
@@ -207,7 +207,7 @@ class LocalDataLakeLoader():
             **kwargs
         )
     
-    def load_transformed_data_volumenes_mic(self, transformed_data_dict, **kwargs):
+    def load_transformed_data_volumenes_mic(self, transformed_data_dict, **kwargs) -> dict:
         """
         Loads and stores transformed MIC volume data for each market from the provided dictionary.
         
@@ -223,6 +223,26 @@ class LocalDataLakeLoader():
             value_cols= ['volumenes', 'precio'],
             **kwargs
         )
+
+
+    def load_transformed_data_volumenes_i3(self, transformed_data_dict, **kwargs) -> dict:
+        """
+        Loads transformed i3 volume data for each market from the provided dictionary and stores it in the local data lake.
+
+        Parameters:
+            transformed_data_dict (dict): Dictionary containing market names as keys and their corresponding DataFrames as values.
+        
+        Returns:
+            dict: Summary of the loading process, including overall success, status messages, and per-market results.
+        """
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='volumenes_i3',
+            value_cols= ['volumenes'],
+            **kwargs
+        )
+    
+
 
 def example_usage():
     """
