@@ -553,13 +553,3 @@ class TransformadorI90:
         except Exception as e:
             print(f"An unexpected error occurred during multiple transform: {e}")
             print(traceback.format_exc())
-
-    def _extract_dataset_type_from_filename(self, filename: str) -> str:
-        """
-        Extracts the dataset type (e.g., 'volumenes_i90' or 'precios_i90') from the raw file name.
-        """
-        match = re.search(r'(volumenes_i90|precios_i90)', filename)
-        if match:
-            return match.group(1)
-        raise ValueError(f"Could not determine dataset_type from filename: {filename}")
-    

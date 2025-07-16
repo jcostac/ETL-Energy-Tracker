@@ -402,8 +402,4 @@ class TransformadorI3:
             print(f"An unexpected error occurred during multiple transform: {e}")
             print(traceback.format_exc())
 
-    def _extract_dataset_type_from_filename(self, filename: str) -> str:
-        match = re.search(r'(volumenes_i3)', filename)
-        if match:
-            return match.group(1)
-        raise ValueError(f"Could not determine dataset_type from filename: {filename}")
+   

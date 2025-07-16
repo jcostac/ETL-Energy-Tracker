@@ -309,12 +309,13 @@ class RawFileUtils(StorageFileUtils):
             print("="*80 + "\n")
             raise
     
-    #WIP
-    def delete_raw_files_older_than(self, months: int, mercado: Optional[str] = None) -> None:
+    def delete_raw_files_older_than(self, months: int, mercado: Optional[str] = None, dataset_type: Optional[str] = None) -> None:
         """
         Delete raw CSV data directories older than a specified number of months.
         
-        If a market is specified, only directories for that market are considered; otherwise, all standard markets are checked. Removes entire month directories and cleans up empty year directories after deletion.
+        If a market is specified, only directories for that market are considered; otherwise, all standard markets are checked.
+        If a dataset type is specified, only directories for that dataset type are considered.
+        Removes entire month directories and cleans up empty year directories after deletion.
         """
         
         # Calculate cutoff date
@@ -325,7 +326,7 @@ class RawFileUtils(StorageFileUtils):
         markets_to_check = [mercado] if mercado else ["diario", "intra", "secundaria", "terciaria", "rr"]
         
         deleted_count = 0
-        #iterate through markets folders
+        # Iterate through markets folders
         for market in markets_to_check:
             market_path = self.raw_path / f"mercado={market}"
             if not market_path.exists():
@@ -341,6 +342,12 @@ class RawFileUtils(StorageFileUtils):
                     
                     # Create datetime for comparison (using first day of month)
                     dir_date = datetime(year, month, 1)
+                    
+                    # Check if dataset type is specified and if the directory matches
+                    if dataset_type:
+                        dataset_dir = month_dir / f"{dataset_type}.csv"  # Assuming dataset files are named as <dataset_type>.csv
+                        if not dataset_dir.exists():
+                            continue
                     
                     # Delete if dir date is older than cutoff
                     if dir_date < cutoff_date:
@@ -446,7 +453,53 @@ class RawFileUtils(StorageFileUtils):
         file_path = self.raw_path / mercado / str(year) / f"{month:02d}"
 
         return list(file_path.glob(f"*.{self.raw_file_extension}"))
-    
+
+    def read_latest_raw_file(self, mercado: str, dataset_type: str) -> Optional[pd.DataFrame]:
+        """
+        Reads the latest available raw file for a given market and dataset type.
+
+        It identifies the most recent year and month for which data exists and reads
+        the corresponding raw file. It prioritizes Parquet format over CSV.
+
+        Args:
+            mercado (str): The market name.
+            dataset_type (str): The type of dataset.
+
+        Returns:
+            Optional[pd.DataFrame]: A DataFrame with the contents of the latest raw file,
+                                    or None if no file is found.
+        """
+        try:
+            print(f"🔍 Searching for the latest raw file for market '{mercado}' and dataset '{dataset_type}'...")
+
+            years = self.get_raw_folder_list(mercado=mercado)
+            if not years:
+                print(f"⚠️ No years found for market '{mercado}'.")
+                return None
+            
+            # Iterate from the most recent year and month backwards
+            for year in sorted(years, reverse=True):
+                months = self.get_raw_folder_list(mercado=mercado, year=year)
+                if not months:
+                    continue
+
+                for month in sorted(months, reverse=True):
+                    file_path = self.raw_path / mercado / str(year) / f"{month:02d}"
+                    
+                    # Check for Parquet file first
+                    csv_filename = f"{dataset_type}.csv"
+                    csv_full_path = file_path / csv_filename
+                    if csv_full_path.exists():
+                        print(f"  📄 Found CSV file: {csv_full_path}")
+                        return pd.read_csv(csv_full_path)
+
+            print(f"⚠️ No raw file found for dataset '{dataset_type}' in market '{mercado}'.")
+            return None
+
+        except Exception as e:
+            print(f"❌ Error reading the latest raw file: {e}")
+            raise
+
 class ProcessedFileUtils(StorageFileUtils):
     """
     Utility class for processing and saving processed parquet files.
