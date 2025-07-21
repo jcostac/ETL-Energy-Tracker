@@ -38,7 +38,7 @@ def test_multiple_days_market_specific_volumenes():
     Asserts that the transformation status indicates success for the markets "terciaria", "rr", "curtailment", "p48", "indisponibilidades", and "restricciones" from 2025-03-02 to 2025-03-04.
     """
     transformer = TransformadorI90()
-    result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-02", fecha_fin="2025-03-04", dataset_type="volumenes_i90", mercados_lst=["terciaria", "rr", "curtailment", "p48", "indisponibilidades", "restricciones"])
+    result = transformer.transform_data_for_all_markets(fecha_inicio="2025-03-02", fecha_fin="2025-03-04", dataset_type="volumenes_i90", mercados_lst=["terciaria", "rr", "curtailment_demanda", "p48", "indisponibilidades", "restricciones"])
     result_status = result["status"]
 
     assert result_status["success"] == True, f"Multiple markets volumenes transformation failed. Details: {result_status.get('details', {})}"
