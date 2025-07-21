@@ -42,21 +42,21 @@ dag_esios_precios = DAG(
 )
 
 # Task functions to defer instantiation on load
-def extract_esios_prices_func(fecha_inicio_carga, fecha_fin_carga):
+def extract_esios_prices_func(fecha_inicio, fecha_fin):
     """
     Extracts electricity price data for all markets from ESIOS between the specified start and end dates.
     
     Parameters:
-        fecha_inicio_carga: Start date for data extraction.
-        fecha_fin_carga: End date for data extraction.
+        fecha_inicio: Start date for data extraction.
+        fecha_fin: End date for data extraction.
     
     Returns:
         dict: Extracted data for all markets within the given date range.
     """
     extractor = ESIOSPreciosExtractor()
     return extractor.extract_data_for_all_markets(
-        fecha_inicio_carga=fecha_inicio_carga,
-        fecha_fin_carga=fecha_fin_carga
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin
     )
 
 def transform_esios_prices_func(fecha_inicio, fecha_fin, mode):
@@ -97,7 +97,7 @@ def load_esios_prices_func(transformed_data_dict):
 extract_esios_prices = PythonOperator(
     task_id='extract_esios_prices',
     python_callable=extract_esios_prices_func,
-    op_kwargs={'fecha_inicio_carga': '{{ ds }}', 'fecha_fin_carga': '{{ ds }}'},
+    op_kwargs={'fecha_inicio': '{{ ds }}', 'fecha_fin': '{{ ds }}'},
     dag=dag_esios_precios
 )
 

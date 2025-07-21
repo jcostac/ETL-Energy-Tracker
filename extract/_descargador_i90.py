@@ -15,7 +15,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
 from utilidades.db_utils import DatabaseUtils
-from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntraConfig
+from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentDemandaConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntraConfig
 
 class I90Downloader:
     """
@@ -644,7 +644,7 @@ class CurtailmentDL(I90Downloader):
     def __init__(self):
         """Initialize the curtailment downloader"""
         super().__init__()
-        self.config = CurtailmentConfig()
+        self.config = CurtailmentDemandaConfig()
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
 

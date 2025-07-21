@@ -39,21 +39,21 @@ dag = DAG(
 )
 
 # Task functions to defer instantiation on load (which can cause issues with the DAG like SQL too many connections error)
-def extract_i90_volumes_func(fecha_inicio_carga, fecha_fin_carga):
+def extract_i90_volumes_func(fecha_inicio, fecha_fin):
     """
     Extracts I90 market volume data for all markets within the specified date range.
     
     Parameters:
-        fecha_inicio_carga (str): Start date for data extraction in 'YYYY-MM-DD' format.
-        fecha_fin_carga (str): End date for data extraction in 'YYYY-MM-DD' format.
+        fecha_inicio (str): Start date for data extraction in 'YYYY-MM-DD' format.
+        fecha_fin (str): End date for data extraction in 'YYYY-MM-DD' format.
     
     Returns:
         dict: Extracted I90 volume data for all markets within the given date range.
     """
     extractor = I90VolumenesExtractor()
     return extractor.extract_data_for_all_markets(
-        fecha_inicio_carga=fecha_inicio_carga, 
-        fecha_fin_carga=fecha_fin_carga
+        fecha_inicio=fecha_inicio, 
+        fecha_fin=fecha_fin
     )
 
 def transform_i90_volumes_func(start_date, end_date, dataset_types, transform_type):
@@ -96,7 +96,7 @@ def load_i90_volumes_func(transformed_data_dict):
 extract_i90_volumes = PythonOperator(
     task_id='extract_i90_volumes',
     python_callable=extract_i90_volumes_func,
-    op_kwargs={'fecha_inicio_carga': '{{ ds }}', 'fecha_fin_carga': '{{ ds }}'},
+    op_kwargs={'fecha_inicio': '{{ ds }}', 'fecha_fin': '{{ ds }}'},
     dag=dag,
 )
 

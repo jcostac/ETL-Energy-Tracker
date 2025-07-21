@@ -13,7 +13,7 @@ def precios_download_multiple_days():
     Raises an assertion error if the extraction is not successful, including details from the result.
     """
     extractor = I90PreciosExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-02", fecha_fin_carga="2025-03-08")
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-03-02", fecha_fin="2025-03-08")
 
     assert result["success"] == True, f"Multiple days precios download failed. Details: {result.get('details', {})}"
 
@@ -25,7 +25,7 @@ def volumenes_download_multiple_days():
     Raises an assertion error if the extraction is not successful, including details from the result.
     """
     extractor = I90VolumenesExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-02", fecha_fin_carga="2025-03-08")
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-03-02", fecha_fin="2025-03-08")
 
     assert result["success"] == True, f"Multiple days volumenes download failed. Details: {result.get('details', {})}"
 

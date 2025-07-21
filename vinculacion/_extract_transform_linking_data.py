@@ -52,7 +52,7 @@ class VinculacionDataExtractor:
             #-- Downloading OMIE raw data for both diario and intra
             print(f"\n📥 DOWNLOADING OMIE DATA")
             try:
-                omie_download_result = self.omie_extractor.extract_data_for_all_markets(fecha_inicio_carga=target_date, fecha_fin_carga=target_date, mercados_lst=self.config.OMIE_MARKETS) 
+                omie_download_result = self.omie_extractor.extract_data_for_all_markets(fecha_inicio=target_date, fecha_fin=target_date, mercados_lst=self.config.OMIE_MARKETS) 
                 
                 if omie_download_result['success']:
                     print(f"✅ OMIE raw data download successful")
@@ -66,7 +66,7 @@ class VinculacionDataExtractor:
             #-- Downloading I90 raw data (volumenes only) for both diario and intra
             print(f"\n📥 DOWNLOADING I90 DATA")
             try:
-                i90_download_result = self.i90_extractor.extract_data_for_all_markets(fecha_inicio_carga=target_date, fecha_fin_carga=target_date,
+                i90_download_result = self.i90_extractor.extract_data_for_all_markets(fecha_inicio=target_date, fecha_fin=target_date,
                                                                                        mercados_lst=self.config.I90_MARKETS)
                 
                 if i90_download_result['success']:

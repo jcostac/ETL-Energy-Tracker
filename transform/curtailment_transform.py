@@ -51,8 +51,8 @@ class CurtailmentTransformer:
             transform_type = 'multiple'
 
         status_details = {
-            "mercados_processed": [],
-            "mercados_failed": [],
+            "markets_processed": [],
+            "markets_failed": [],
             "mode": transform_type,
             "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin and fecha_inicio else "latest"
         }
@@ -77,15 +77,15 @@ class CurtailmentTransformer:
                     mercado_result = self._process_date_range(mercado, source, dataset_type, fecha_inicio, fecha_fin)
 
                 if mercado_result is not None and isinstance(mercado_result, pd.DataFrame) and not mercado_result.empty:
-                    status_details["mercados_processed"].append(mercado)
+                    status_details["markets_processed"].append(mercado)
                     results[mercado] = mercado_result
                 else:
-                    status_details["mercados_failed"].append(mercado)
+                    status_details["markets_failed"].append(mercado)
                     overall_success = False
 
             except Exception as e:
-                status_details["mercados_failed"].append({
-                    "mercado": mercado,
+                status_details["markets_failed"].append({
+                    "market": mercado,
                     "error": str(e)
                 })
                 overall_success = False

@@ -11,12 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 # Import actual config classes from configs.i90_config
-from configs.i90_config import (
-        I90Config, # Base might be useful too
-        DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig,
-        CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig,
-        IntraConfig
-    )
+from configs.i90_config import I90Config, DiarioConfig, IntraConfig
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
 from utilidades.progress_utils import with_progress

@@ -39,21 +39,21 @@ dag = DAG(
 )
 
 # Task functions to defer instantiation on load
-def extract_i90_prices_func(fecha_inicio_carga, fecha_fin_carga):
+def extract_i90_prices_func(fecha_inicio, fecha_fin):
     """
     Extracts I90 market price data for all markets within the specified date range.
     
     Parameters:
-        fecha_inicio_carga: Start date for data extraction.
-        fecha_fin_carga: End date for data extraction.
+        fecha_inicio: Start date for data extraction.
+        fecha_fin: End date for data extraction.
     
     Returns:
         Extracted data for all I90 markets within the given date range.
     """
     extractor = I90PreciosExtractor()
     return extractor.extract_data_for_all_markets(
-        fecha_inicio_carga=fecha_inicio_carga,
-        fecha_fin_carga=fecha_fin_carga
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin
     )
 
 def transform_i90_prices_func(start_date, end_date, dataset_types, transform_type):
@@ -96,7 +96,7 @@ def load_i90_prices_func(transformed_data_dict):
 extract_i90_prices = PythonOperator(
     task_id='extract_i90_prices',
     python_callable=extract_i90_prices_func,
-    op_kwargs={'fecha_inicio_carga': '{{ ds }}', 'fecha_fin_carga': '{{ ds }}'},
+    op_kwargs={'fecha_inicio': '{{ ds }}', 'fecha_fin': '{{ ds }}'},
     dag=dag,
 )
 

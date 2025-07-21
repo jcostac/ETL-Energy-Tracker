@@ -18,14 +18,14 @@ class ConsultasESIOS:
         """
         self.processed_dir = "" #to be configured in storage.config.py
 
-    def consulta_precios(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
+    def consulta_precios(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None, 
                     indicator_ids: Optional[list[int]] = None, is_quinceminutal: bool = False):
         """
         TODO: Obtiene los datos del parquet procesado (actualmente se obtiene de la base de datos)
         
         Args:
-            fecha_inicio_carga (Optional[str]): Fecha inicial en formato YYYY-MM-DD
-            fecha_fin_carga (Optional[str]): Fecha final en formato YYYY-MM-DD
+            fecha_inicio (Optional[str]): Fecha inicial en formato YYYY-MM-DD
+            fecha_fin (Optional[str]): Fecha final en formato YYYY-MM-DD
             indicator_ids (Optional[list[int]]): Lista de IDs de indicadores ESIOS para filtrar
             is_quinceminutal (bool): Si True, obtiene datos de Precios_quinceminutales, si False, de Precios_horarios
             
@@ -33,12 +33,12 @@ class ConsultasESIOS:
             pd.DataFrame: DataFrame con los datos de la base de datos
         """
         # Check if fecha inicio carga is older than fecha fin carga
-        if fecha_inicio_carga and fecha_fin_carga:
-            if fecha_inicio_carga > fecha_fin_carga:
+        if fecha_inicio and fecha_fin:
+            if fecha_inicio > fecha_fin:
                 raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
             else:
                 # Construct where clause for dates
-                where_clause = f'fecha between "{fecha_inicio_carga}" and "{fecha_fin_carga}"'
+                where_clause = f'fecha between "{fecha_inicio}" and "{fecha_fin}"'
                 
         else:
             where_clause = ""

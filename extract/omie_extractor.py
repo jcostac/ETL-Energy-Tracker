@@ -41,7 +41,7 @@ class OMIEExtractor:
         self.download_window = 93  # OMIE typically has data available with 90 day delay as well 
 
 
-    def fecha_input_validation(self, fecha_inicio_carga: str, fecha_fin_carga: str) -> tuple[str, str]:
+    def fecha_input_validation(self, fecha_inicio: str, fecha_fin: str) -> tuple[str, str]:
         """
         Validate and normalize the input date range for OMIE data extraction.
         
@@ -51,43 +51,43 @@ class OMIEExtractor:
             tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format.
         """
         # Check if dates are provided and valid
-        if fecha_inicio_carga and fecha_fin_carga:
-            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-            fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+        if fecha_inicio and fecha_fin:
+            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+            fecha_fin_carga_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
 
             # If start date > end date, raise error
             if fecha_inicio_carga_dt > fecha_fin_carga_dt:
-                print(f"Wrong input dates: {fecha_inicio_carga} > {fecha_fin_carga}")
+                print(f"Wrong input dates: {fecha_inicio} > {fecha_fin}")
                 raise ValueError("La fecha de inicio de carga no puede ser mayor que la fecha de fin de carga")
             
-            print(f"Descargando datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
+            print(f"Descargando datos entre {fecha_inicio} y {fecha_fin}")
 
         # If no dates provided, set default values
-        elif fecha_inicio_carga is None and fecha_fin_carga is None:
+        elif fecha_inicio is None and fecha_fin is None:
             fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window)
             fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window) + timedelta(days=1)
             
-            fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d')
-            fecha_fin_carga = fecha_fin_carga_dt.strftime('%Y-%m-%d')
-            print(f"No se han proporcionado fechas de carga, se descargarán datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
+            fecha_inicio = fecha_inicio_carga_dt.strftime('%Y-%m-%d')
+            fecha_fin = fecha_fin_carga_dt.strftime('%Y-%m-%d')
+            print(f"No se han proporcionado fechas de carga, se descargarán datos entre {fecha_inicio} y {fecha_fin}")
 
         else:
             raise ValueError("No se han proporcionado fechas de carga completas")
 
-        return fecha_inicio_carga, fecha_fin_carga
+        return fecha_inicio, fecha_fin
 
-    def extract_omie_diario(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
+    def extract_omie_diario(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None) -> None:
         """
         Extracts daily OMIE market data for a specified date range and saves it as standardized raw CSV files.
         
         Validates the input dates, iterates over each day in the range, downloads daily market data, standardizes column names for consistency, adds a market identifier column, and saves the data using the configured file utility. Skips saving if no data is available for a given day. Raises an exception if an error occurs during extraction.
         """
         # Validate input dates
-        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        self.fecha_input_validation(fecha_inicio, fecha_fin)
 
         # Convert to datetime objects
-        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-        fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+        fecha_fin_carga_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
 
         print(f"Processing market: diario")
         # Download data for each day in the range
@@ -100,8 +100,8 @@ class OMIEExtractor:
             try:
                 # Get data for the day using the diario downloader
                 diario_data = self.diario_downloader.descarga_omie_datos(
-                    fecha_inicio_carga=day_str,
-                    fecha_fin_carga=day_str
+                    fecha_inicio=day_str,
+                    fecha_fin=day_str
                 )
 
                 #diario data is a dict with keys as months and values as the dataframes for a market
@@ -143,7 +143,7 @@ class OMIEExtractor:
                 print(f"  ❌ {error_msg}")
                 raise e
             
-    def extract_omie_intra(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, 
+    def extract_omie_intra(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None, 
                           intra_lst: Optional[List[int]] = None) -> None:
         """
                           Extracts intraday (intra) market data from OMIE for a specified date range and set of intraday market sessions.
@@ -151,17 +151,17 @@ class OMIEExtractor:
                           Validates input dates, iterates over each day in the range, downloads intraday data for the specified sessions, standardizes column names, assigns the appropriate market ID (`id_mercado`) based on session and delivery date, and saves the resulting data as raw CSV files. Handles regulatory changes after 2024-06-13, when only intraday markets 1-3 are available.
                           
                           Parameters:
-                              fecha_inicio_carga (Optional[str]): Start date in 'YYYY-MM-DD' format. If None, defaults to 93 days ago.
-                              fecha_fin_carga (Optional[str]): End date in 'YYYY-MM-DD' format. If None, uses logic in fecha_input_validation.
+                              fecha_inicio (Optional[str]): Start date in 'YYYY-MM-DD' format. If None, defaults to 93 days ago.
+                              fecha_fin (Optional[str]): End date in 'YYYY-MM-DD' format. If None, uses logic in fecha_input_validation.
                               intra_lst (Optional[List[int]]): List of intraday market session IDs to extract. If None, extracts all available sessions.
                           """
     
         # Validate input dates
-        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        self.fecha_input_validation(fecha_inicio, fecha_fin)
         
         # Convert to datetime objects
-        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-        fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+        fecha_fin_carga_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
 
         print(f"Processing market: intra")
         # Download data for each day in the range
@@ -174,8 +174,8 @@ class OMIEExtractor:
             try:
                 # Get data for the day using the intra downloader
                 intra_data = self.intra_downloader.descarga_omie_datos(
-                    fecha_inicio_carga=day_str,
-                    fecha_fin_carga=day_str,
+                    fecha_inicio=day_str,
+                    fecha_fin=day_str,
                     intras =intra_lst
                 )
 
@@ -213,19 +213,19 @@ class OMIEExtractor:
                 print(f"  ❌ {error_msg}")
                 raise e 
 
-    def extract_omie_continuo(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None) -> None:
+    def extract_omie_continuo(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None) -> None:
         """
         Extracts and saves OMIE continuous market data for each day in the specified date range.
         
         Validates input dates, downloads daily continuous market data, assigns a market identifier, and saves the data as raw CSV files. Skips saving if no data is available for a given day. Raises an exception if data download fails.
         """
         # Validate input dates
-        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        self.fecha_input_validation(fecha_inicio, fecha_fin)
         
 
         # Convert to datetime objects
-        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-        fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+        fecha_inicio_carga_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+        fecha_fin_carga_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
 
         print(f"Processing market: continuo")
         # Download data for each day in the range
@@ -238,8 +238,8 @@ class OMIEExtractor:
             try:
                 # Get data for the day using the continuo downloader
                 continuo_data = self.continuo_downloader.descarga_omie_datos(
-                    fecha_inicio_carga=day_str,
-                    fecha_fin_carga=day_str
+                    fecha_inicio=day_str,
+                    fecha_fin=day_str
                 )
 
 
@@ -263,25 +263,25 @@ class OMIEExtractor:
                 print(f"  ❌ Error downloading continuo data for {day_str}: {e}")
                 raise e
 
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None , mercados_lst: Optional[List[str]] = None) -> Dict:
+    def extract_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None , mercados_lst: Optional[List[str]] = None) -> Dict:
         """
         Extracts OMIE market data for all specified markets within a given date range and returns a summary of the extraction status.
         
         Parameters:
-        	fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If None, defaults to the latest available window.
-        	fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If None, defaults to the latest available window.
+        	fecha_inicio (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If None, defaults to the latest available window.
+        	fecha_fin (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If None, defaults to the latest available window.
         	mercados_lst (Optional[List[str]]): List of market names to extract ('diario', 'intra', 'continuo'). If None, all markets are extracted.
         
         Returns:
         	Dict: Dictionary containing a boolean 'success' flag and a 'details' dictionary with lists of successfully downloaded and failed markets, as well as the date range.
         """
         # Validate input dates BEFORE starting any extraction
-        self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
+        self.fecha_input_validation(fecha_inicio, fecha_fin)
         
-        if (fecha_fin_carga is None and fecha_inicio_carga is None) or fecha_fin_carga == fecha_inicio_carga:
+        if (fecha_fin is None and fecha_inicio is None) or fecha_fin == fecha_inicio:
             date_range_str = f"Single day download for latest available day"
         else:
-            date_range_str = f"{fecha_inicio_carga} to {fecha_fin_carga}"
+            date_range_str = f"{fecha_inicio} to {fecha_fin}"
 
         # Initialize status tracking
         status_details = {
@@ -299,17 +299,17 @@ class OMIEExtractor:
             if 'diario' in mercados_lst:
                 print("\n--------- Diario ---------")
                 success_diario = self._extract_with_status("diario", self.extract_omie_diario, 
-                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
+                                                        fecha_inicio, fecha_fin, status_details)
                 market_successes.append(success_diario)
             if 'intra' in mercados_lst:
                 print("\n--------- Intra ---------")
                 success_intra = self._extract_with_status("intra", self.extract_omie_intra, 
-                                                        fecha_inicio_carga, fecha_fin_carga, status_details)
+                                                        fecha_inicio, fecha_fin, status_details)
                 market_successes.append(success_intra)
             if 'continuo' in mercados_lst:
                 print("\n--------- Continuo ---------")
                 success_continuo = self._extract_with_status("continuo", self.extract_omie_continuo, 
-                                                       fecha_inicio_carga, fecha_fin_carga, status_details)
+                                                       fecha_inicio, fecha_fin, status_details)
                 market_successes.append(success_continuo)
             print("\n--------------------------------")
             
@@ -326,8 +326,8 @@ class OMIEExtractor:
         # Return status for Airflow task
         return {"success": overall_success, "details": status_details}
 
-    def _extract_with_status(self, market_name: str, extract_function, fecha_inicio_carga: Optional[str], 
-                            fecha_fin_carga: Optional[str], status_details: Dict) -> bool:
+    def _extract_with_status(self, market_name: str, extract_function, fecha_inicio: Optional[str], 
+                            fecha_fin: Optional[str], status_details: Dict) -> bool:
         """
                             Attempts to extract data for a specific market and updates the extraction status.
                             
@@ -336,8 +336,8 @@ class OMIEExtractor:
                             Parameters:
                                 market_name (str): The name of the market being extracted.
                                 extract_function: The extraction function to invoke for the market.
-                                fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format.
-                                fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format.
+                                fecha_inicio (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format.
+                                fecha_fin (Optional[str]): End date for extraction in 'YYYY-MM-DD' format.
                                 status_details (Dict): Dictionary tracking downloaded and failed markets.
                             
                             Returns:
@@ -345,7 +345,7 @@ class OMIEExtractor:
                             """
         try:
             if extract_function == self.extract_omie_diario or extract_function == self.extract_omie_intra:
-                error_msg = extract_function(fecha_inicio_carga, fecha_fin_carga)
+                error_msg = extract_function(fecha_inicio, fecha_fin)
 
                 if error_msg: #for diario and intra market bc we dont raise an error for these markets but rather return a df and an error msg
                     raise Exception(error_msg)
@@ -355,7 +355,7 @@ class OMIEExtractor:
         
 
             else: #for continuo market, since we dont return a df or an error msg, we just raise an error
-                extract_function(fecha_inicio_carga, fecha_fin_carga)
+                extract_function(fecha_inicio, fecha_fin)
             
                 status_details["markets_downloaded"].append(market_name)
                 return True

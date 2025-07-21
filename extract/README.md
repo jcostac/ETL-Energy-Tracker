@@ -70,16 +70,16 @@ esios_extractor = ESIOSPreciosExtractor()
 # Extract daily market prices (saves to CSV if dev=True, else Parquet)
 print(f"Extracting ESIOS Diario prices from {start_str} to {end_str}...")
 esios_extractor.extract_diario(
-    fecha_inicio_carga=start_str,
-    fecha_fin_carga=end_str,
+    fecha_inicio=start_str,
+    fecha_fin=end_str,
     dev=False # Set dev=True for CSV output, False for Parquet
 )
 
 # Extract specific intraday markets (e.g., 1 and 2)
 print(f"Extracting ESIOS Intra prices (1, 2) from {start_str} to {end_str}...")
 esios_extractor.extract_intra(
-    fecha_inicio_carga=start_str,
-    fecha_fin_carga=end_str,
+    fecha_inicio=start_str,
+    fecha_fin=end_str,
     intra_lst=[1, 2],
     dev=False
 )
@@ -99,8 +99,8 @@ i90_vol_extractor = I90VolumenesExtractor()
 # Extract all available I90 volumes for the date range
 print(f"Extracting I90 Volumes from {i90_start_str} to {i90_end_str}...")
 i90_vol_extractor.extract_data(
-    fecha_inicio_carga=i90_start_str,
-    fecha_fin_carga=i90_end_str,
+    fecha_inicio=i90_start_str,
+    fecha_fin=i90_end_str,
     dev=True # Set dev=True for CSV output, False for Parquet
 )
 
@@ -110,8 +110,8 @@ i90_pre_extractor = I90PreciosExtractor()
 # Extract I90 prices (e.g., restrictions) for the date range
 print(f"Extracting I90 Precios (Restricciones) from {i90_start_str} to {i90_end_str}...")
 i90_pre_extractor.extract_data(
-    fecha_inicio_carga=i90_start_str,
-    fecha_fin_carga=i90_end_str,
+    fecha_inicio=i90_start_str,
+    fecha_fin=i90_end_str,
     dev=True
 )
 

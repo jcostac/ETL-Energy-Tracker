@@ -13,7 +13,7 @@ def volumenes_download_single_day():
     Raises an AssertionError if the extraction is unsuccessful.
     """
     extractor = I90VolumenesExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-01", fecha_fin_carga="2025-03-01")
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-03-01", fecha_fin="2025-03-01")
     assert result["success"] == True, f"Single day volumenes download failed. Details: {result.get('details', {})}"
 
 def precios_download_single_day():
@@ -23,7 +23,7 @@ def precios_download_single_day():
     Asserts that the extraction is successful and raises an error with details if it fails.
     """
     extractor = I90PreciosExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-01", fecha_fin_carga="2025-03-01")
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-03-01", fecha_fin="2025-03-01")
     assert result["success"] == True, f"Single day precios download failed. Details: {result.get('details', {})}"
 
 if __name__ == "__main__":

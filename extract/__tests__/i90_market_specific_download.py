@@ -13,7 +13,7 @@ def volumenes_download_market_specific():
     Raises an AssertionError if the extraction is not successful, including error details.
     """
     extractor = I90VolumenesExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-01", fecha_fin_carga="2025-01-01", mercados_lst=["terciaria", "rr", "curtailment", "p48", "indisponibilidades", "restricciones"])
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-01-01", fecha_fin="2025-01-01", mercados_lst=["terciaria", "rr", "curtailment", "p48", "indisponibilidades", "restricciones"])
     assert result["success"] == True, f"Volumenes download failed. Details: {result.get('details', {})}"
 
 def precios_download_market_specific():
@@ -23,7 +23,7 @@ def precios_download_market_specific():
     Raises an AssertionError if the extraction is not successful.
     """
     extractor = I90PreciosExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-01", fecha_fin_carga="2025-01-01", mercados_lst=["restricciones"])
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-01-01", fecha_fin="2025-01-01", mercados_lst=["restricciones"])
     assert result["success"] == True, f"Precios download failed. Details: {result.get('details', {})}"
 
 if __name__ == "__main__":

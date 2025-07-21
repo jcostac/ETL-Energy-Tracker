@@ -35,38 +35,38 @@ class TransformadorESIOS:
 
         #global attributes
         self.dataset_type = "precios_esios"
-        self.transform_types = ['latest', 'batch', 'single', 'multiple']
+        self.transform_types = ['latest', 'single', 'multiple']
     
-    def _filter_data_by_mode(self, raw_df: pd.DataFrame, mode: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:
+    def _filter_data_by_transform_type(self, raw_df: pd.DataFrame, transform_type: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:
         """
-        Filter the input DataFrame according to the specified transformation mode and date parameters.
+        Filter the input DataFrame according to the specified transformation transform_type and date parameters.
         
-        Depending on the mode, this method selects rows for the latest day, a single day, a date range, or returns the entire DataFrame. For 'single' and 'multiple' modes, the relevant date parameters must be provided. Returns an empty DataFrame if the input is empty.
+        Depending on the transform_type, this method selects rows for the latest day, a single day, a date range, or returns the entire DataFrame. For 'single' and 'multiple' transform_types, the relevant date parameters must be provided. Returns an empty DataFrame if the input is empty.
         
         Parameters:
             raw_df (pd.DataFrame): Input DataFrame containing a 'datetime_utc' column.
-            mode (str): Transformation mode; one of 'latest', 'batch', 'single', or 'multiple'.
-            fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format, required for 'single' and 'multiple' modes.
-            fecha_fin (str, optional): End date in 'YYYY-MM-DD' format, required for 'multiple' mode.
+            transform_type (str): Transformation transform_type; one of 'latest', 'single', or 'multiple'.
+            fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format, required for 'single' and 'multiple' transform_types.
+            fecha_fin (str, optional): End date in 'YYYY-MM-DD' format, required for 'multiple' transform_type.
         
         Returns:
-            pd.DataFrame: Filtered DataFrame according to the selected mode and date(s).
+            pd.DataFrame: Filtered DataFrame according to the selected transform_type and date(s).
         """
 
         # First ensure datetime_utc is properly converted
         if 'datetime_utc' in raw_df.columns:
             raw_df['datetime_utc'] = pd.to_datetime(raw_df['datetime_utc'])
 
-        #check that fecha_inicio and fecha_fin are provided for single and multiple modes
-        if mode == 'multiple' and (fecha_inicio is None or fecha_fin is None):
-            raise ValueError("fecha_inicio and fecha_fin must be provided for multiple mode")
-        if mode == 'single' and fecha_inicio is None:
-            raise ValueError("fecha_inicio must be provided for single mode")
+        #check that fecha_inicio and fecha_fin are provided for single and multiple transform_types
+        if transform_type == 'multiple' and (fecha_inicio is None or fecha_fin is None):
+            raise ValueError("fecha_inicio and fecha_fin must be provided for multiple transform_type")
+        if transform_type == 'single' and fecha_inicio is None:
+            raise ValueError("fecha_inicio must be provided for single transform_type")
 
         if not raw_df.empty:
-            print(f"ℹ️Processing in {mode.upper()} mode")
-            #1. LATEST mode
-            if mode == 'latest':
+            print(f"ℹ️Processing in {transform_type.upper()} transform_type")
+            #1. LATEST transform_type
+            if transform_type == 'latest':
                 # Process only the last day in the dataframe
                 last_day = raw_df['datetime_utc'].dt.date.max()
                 print(f"Latest day in data: {last_day}")
@@ -76,13 +76,8 @@ class TransformadorESIOS:
                 print(f"Dates in data: {sorted(raw_df['datetime_utc'].dt.date.unique())}")
                 return filtered_df
 
-            #2. BATCH mode
-            elif mode == 'batch':
-                # Process the entire dataframe
-                return raw_df
-
-            #3. SINGLE mode
-            elif mode == 'single':  
+            #2. SINGLE transform_type
+            elif transform_type == 'single':  
                 # Convert to pandas Timestamp for consistent comparison
                 target_date = pd.to_datetime(fecha_inicio).date()
 
@@ -94,8 +89,8 @@ class TransformadorESIOS:
                 
                 return filtered_df
 
-            #4. MULTIPLE mode
-            elif mode == 'multiple':
+            #4. MULTIPLE transform_type
+            elif transform_type == 'multiple':
                 #convert from naive to utc
                 target_fecha_inicio = pd.to_datetime(fecha_inicio).date()
                 target_fecha_fin = pd.to_datetime(fecha_fin).date()
@@ -111,7 +106,7 @@ class TransformadorESIOS:
                 return filtered_df
             
             else:
-                raise ValueError(f"Invalid transform type: {mode}")
+                raise ValueError(f"Invalid transform type: {transform_type}")
         else:
             # Return empty DataFrame if input is empty
              print("Input DataFrame is empty, returning empty DataFrame.")
@@ -188,61 +183,6 @@ class TransformadorESIOS:
              print(f"Warning: Market '{mercado}' does not have a specific process method in routing.")
              return None # Or handle default case if necessary
 
-    def _process_batch_mode(self, mercado: str) -> list[Optional[pd.DataFrame]]:
-        """Processes all historical data for a given market and returns a list of processed dataframes."""
-        print("\n" + "="*80)
-        print(f"🔄 STARTING BATCH TRANSFORM")
-        print(f"Market: {mercado.upper()}")
-        print("="*80 + "\n")
-
-        years = self.raw_file_utils.get_raw_folder_list(mercado)
-        processed_dfs = []
-
-        for year in years:
-            months = self.raw_file_utils.get_raw_folder_list(mercado, year)
-
-            print(f"\n📅 Processing Year: {year}")
-            print("-"*50)
-
-            for month in months:
-                processed_df_month = None # Initialize for this month
-                try:
-                    print(f"📌 Processing {year}-{month:02d}...")
-                    raw_df = self.raw_file_utils.read_raw_file(year, month, self.dataset_type, mercado)
-
-                    if raw_df.empty:
-                        print(f"⚠️  Empty raw file for {year}-{month:02d}. Skipping.")
-                        continue
-
-                    print(f"   Raw records found: {len(raw_df)}")
-                    # Filter is usually not needed for batch, but kept for consistency if logic changes
-                    filtered_df = self._filter_data_by_mode(raw_df, 'batch')
-                    # Route to transform (which returns the processed DF)
-                    processed_df_month = self._route_to_market_transform(filtered_df, mercado)
-
-                    if processed_df_month is not None and not processed_df_month.empty:
-                        print(f"✅ Successfully transformed {year}-{month:02d}. Records: {len(processed_df_month)}")
-                    elif processed_df_month is None:
-                         print(f"❌ Transformation failed for {year}-{month:02d}.")
-                    else: # Empty DataFrame returned
-                         print(f"⚠️ Transformation resulted in empty DataFrame for {year}-{month:02d}.")
-
-                except FileNotFoundError:
-                    print(f"❌ Raw file not found for {year}-{month:02d}. Skipping.")
-                except Exception as e:
-                    print(f"❌ Error processing {year}-{month:02d}: {e}")
-                    # Decide if you want to append None on error or just skip
-                    # processed_df_month = None # Ensure it's None on error
-                finally:
-                    # Append the result for this month (could be DF or None)
-                    processed_dfs.append(processed_df_month)
-
-            print("-"*50)
-
-        print(f"\n✅ BATCH TRANSFORM COMPLETE for {mercado.upper()}")
-        print("="*80 + "\n")
-        return processed_dfs # Return list of processed dataframes (or None)
-
     def _process_single_day(self, mercado: str, date: str) -> Optional[pd.DataFrame]:
         """
         Process and transform market data for a single specified day.
@@ -305,8 +245,8 @@ class TransformadorESIOS:
             print(f"   Records found: {len(raw_df)}")
 
             print("\n2. Filtering for target date...")
-            # Use 'single' mode for filtering
-            filtered_df = self._filter_data_by_mode(raw_df, mode='single', fecha_inicio=date)
+            # Use 'single' transform_type for filtering
+            filtered_df = self._filter_data_by_transform_type(raw_df, transform_type='single', fecha_inicio=date)
 
             if filtered_df.empty:
                 print("\n❌ NO DATA FOUND FOR TARGET DATE")
@@ -399,7 +339,7 @@ class TransformadorESIOS:
                  return None
 
             print("\n2. Filtering for latest day in the file...")
-            filtered_df = self._filter_data_by_mode(raw_df, 'latest') # Use 'latest' mode filter
+            filtered_df = self._filter_data_by_transform_type(raw_df, 'latest') # Use 'latest' transform_type filter
 
             if filtered_df.empty:
                 print("❌ NO RECORDS FOUND FOR LATEST DAY")
@@ -523,8 +463,8 @@ class TransformadorESIOS:
             print(f"   Total raw records combined: {len(combined_raw_df)}")
 
             print("\n2. Filtering combined data for the specific date range...")
-            # Use 'multiple' mode filter on the combined dataframe
-            filtered_df = self._filter_data_by_mode(
+            # Use 'multiple' transform_type filter on the combined dataframe
+            filtered_df = self._filter_data_by_transform_type(
                 combined_raw_df,
                 'multiple',
                 fecha_inicio=fecha_inicio,
@@ -596,30 +536,38 @@ class TransformadorESIOS:
         return self._transform_market_data(raw_df, 'rr')
     
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None, 
-                                      mercados: list[str] = None, mode: str = 'latest'):
+                                      mercados: list[str] = None):
         """
-        Transform and aggregate market price data for one or more specified markets using the selected processing mode.
+        Transform and aggregate market price data for one or more specified markets using the selected processing transform_type.
         
-        Depending on the mode, processes data for the latest day, a single day, a date range, or all available historical data. Tracks and reports the success or failure of each market's transformation, returning both the processed data and a detailed status summary.
+        Depending on the transform_type, processes data for the latest day, a single day, a date range, or all available historical data. Tracks and reports the success or failure of each market's transformation, returning both the processed data and a detailed status summary.
         
         Parameters:
-            fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format. Required for 'single' and 'multiple' modes.
-            fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. Required for 'multiple' mode.
+            fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format. Required for 'single' and 'multiple' transform_types.
+            fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. Required for 'multiple' transform_type.
             mercados (list[str], optional): List of market names to process. Defaults to all available markets if not provided.
-            mode (str): Processing mode. One of 'single', 'multiple', 'batch', or 'latest'.
+            transform_type (str): Processing transform_type. One of 'single', 'multiple', or 'latest'.
         
         Returns:
             dict: A dictionary with:
                 - 'data': Mapping of each market to its processed DataFrame or list of DataFrames (if multiple days are processed).
                 - 'status': Dictionary containing:
                     - 'success': Boolean indicating if at least one market was processed successfully.
-                    - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.
+                    - 'details': Dictionary with lists of processed and failed markets, the transform_type used, and the date range.
          """
+        # Auto-infer transform type based on date parameters
+        if fecha_inicio is None and fecha_fin is None:
+            transform_type = 'latest'
+        elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
+            transform_type = 'single'
+        elif fecha_inicio is not None and fecha_fin is not None and fecha_inicio != fecha_fin:
+            transform_type = 'multiple'
+
         # Initialize status tracking
         status_details = {
             "markets_processed": [],
             "markets_failed": [],
-            "mode": mode,
+            "mode": transform_type,
             "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
         }
         
@@ -628,15 +576,7 @@ class TransformadorESIOS:
         
         # Validate inputs
         try:
-            if mode not in self.transform_types:
-                raise ValueError(f"Invalid transform type: {mode}. Must be one of: {self.transform_types}")
                 
-            # Add validation for required parameters
-            if mode == 'single' and not fecha_inicio:
-                raise ValueError("fecha_inicio must be provided for single mode")
-            if mode == 'multiple' and (not fecha_inicio or not fecha_fin):
-                raise ValueError("Both fecha_inicio and fecha_fin must be provided for multiple mode")
-            
             # Get list of all markets to process
             if mercados is None:
                 mercados = ESIOSConfig().esios_precios_markets
@@ -647,13 +587,11 @@ class TransformadorESIOS:
             for mercado in mercados:
                 market_result = None
                 try:
-                    if mode == 'batch':
-                        market_result = self._process_batch_mode(mercado)
-                    elif mode == 'single':
+                    if transform_type == 'single':
                         market_result = self._process_single_day(mercado, fecha_inicio)
-                    elif mode == 'latest':
-                        market_result = self._process_latest_day(mercado)
-                    elif mode == 'multiple':
+                    elif transform_type == 'latest':
+                        market_result = self._process_latest_day(mercado, fecha_inicio)
+                    elif transform_type == 'multiple':
                         market_result = self._process_date_range(mercado, fecha_inicio, fecha_fin)
                     
                     # Check if transformation was successful

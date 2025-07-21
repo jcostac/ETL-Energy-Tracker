@@ -13,7 +13,7 @@ def test_i3_download_multiple_days():
     try:
 
         i3_volumenes_extractor = I3VolumenesExtractor()
-        results = i3_volumenes_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2024-12-02", mercados_lst=["intra", "diario"])
+        results = i3_volumenes_extractor.extract_data_for_all_markets(fecha_inicio="2024-12-01", fecha_fin="2024-12-02", mercados_lst=["intra", "diario"])
         assert results["success"] == True, "i3 multiple days download failed"
 
     except Exception as e:
@@ -27,7 +27,7 @@ def test_i3_download_latest_day():
     """
     try:
         i3_volumenes_extractor = I3VolumenesExtractor()
-        results = i3_volumenes_extractor.extract_data_for_all_markets(fecha_inicio_carga=None, fecha_fin_carga=None)
+        results = i3_volumenes_extractor.extract_data_for_all_markets(fecha_inicio=None, fecha_fin=None)
         assert results["success"] == True, "i3 latest day download failed"
         
     except Exception as e:

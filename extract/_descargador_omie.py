@@ -203,22 +203,22 @@ class OMIEDownloader:
             raise Exception(f"Failed to download {filename}. Status code: {response.status_code}")
    
     ####// MAIN DOWNLOADER METHOD //####
-    def descarga_omie_datos(self, fecha_inicio_carga: str, fecha_fin_carga: str, intras: list = None) -> dict:
+    def descarga_omie_datos(self, fecha_inicio: str, fecha_fin: str, intras: list = None) -> dict:
         """
         Download and process daily OMIE market data files for a specified date range.
         
         Downloads monthly ZIP archives containing daily CSV files from OMIE, filters and processes files within the specified date range, and optionally restricts to specific intraday sessions. Excludes files with known error dates. Returns a dictionary mapping each year-month to a list of processed dataframes for the matching days.
         
         Parameters:
-            fecha_inicio_carga (str): Start date in 'YYYY-MM-DD' format.
-            fecha_fin_carga (str): End date in 'YYYY-MM-DD' format.
+            fecha_inicio (str): Start date in 'YYYY-MM-DD' format.
+            fecha_fin (str): End date in 'YYYY-MM-DD' format.
             intras (list, optional): List of intraday session numbers to include; if None, includes all available sessions.
         
         Returns:
             dict: Dictionary with keys as 'YYYYMM' strings and values as lists of processed pandas DataFrames for each matching file.
         """
         # Validate dates
-        start_date, end_date = self._date_validation(fecha_inicio=fecha_inicio_carga, fecha_fin=fecha_fin_carga)
+        start_date, end_date = self._date_validation(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
        
         # Get all months in range
         current_date = start_date.replace(day=1)
@@ -659,9 +659,9 @@ if __name__ == "__main__":
     #diario.descarga_omie_datos(fecha_inicio="2025-01-01", fecha_fin="2025-01-01") 
 
     intradiario = IntraOMIEDownloader()
-    intradiario.descarga_omie_datos(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
+    intradiario.descarga_omie_datos(fecha_inicio="2025-03-03", fecha_fin="2025-03-03")
 
     continuo = ContinuoOMIEDownloader()
-    continuo.descarga_omie_datos(fecha_inicio_carga="2025-03-03", fecha_fin_carga="2025-03-03")
+    continuo.descarga_omie_datos(fecha_inicio="2025-03-03", fecha_fin="2025-03-03")
     #intradiario.descarga_datos_omie_latest_day()
     #intradiario.descarga_datos_omie_mensuales()

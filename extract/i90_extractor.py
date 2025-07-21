@@ -47,15 +47,15 @@ class I90Extractor:
         self.latest_i90_zip_file_name = None
         self.latest_i90_pestañas_con_error = None
 
-    def fecha_input_validation(self, fecha_inicio_carga: str, fecha_fin_carga: str) -> tuple[str, str]:
+    def fecha_input_validation(self, fecha_inicio: str, fecha_fin: str) -> tuple[str, str]:
         """
         Validate and normalize the input date range for ESIOS API data extraction.
         
         Ensures that both start and end dates are provided and in the correct order, or defaults to a specific day if none are given. Raises a ValueError if the input is incomplete or invalid.
         
         Parameters:
-            fecha_inicio_carga (str): Start date in 'YYYY-MM-DD' format.
-            fecha_fin_carga (str): End date in 'YYYY-MM-DD' format.
+            fecha_inicio (str): Start date in 'YYYY-MM-DD' format.
+            fecha_fin (str): End date in 'YYYY-MM-DD' format.
         
         Returns:
             tuple[str, str]: Validated start and end dates in 'YYYY-MM-DD' format.
@@ -64,9 +64,9 @@ class I90Extractor:
             ValueError: If the date range is incomplete or the start date is after the end date.
         """
         # Check if fecha inicio < fecha fin, and if time range is valid
-        if fecha_inicio_carga and fecha_fin_carga:
-            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-            fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+        if fecha_inicio and fecha_fin:
+            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+            fecha_fin_carga_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
 
             # If fecha inicio > fecha fin, raise error
             if fecha_inicio_carga_dt > fecha_fin_carga_dt:
@@ -74,23 +74,23 @@ class I90Extractor:
 
             # If fecha inicio y fecha fin are valid, print message
             else:
-                print(f"Descargando datos entre {fecha_inicio_carga} y {fecha_fin_carga}")
+                print(f"Descargando datos entre {fecha_inicio} y {fecha_fin}")
 
         # If no fecha inicio y fecha fin, set default values
-        elif fecha_inicio_carga is None and fecha_fin_carga is None:
+        elif fecha_inicio is None and fecha_fin is None:
             # Get datetime range for 93 days ago 
             fecha_inicio_carga_dt = datetime.now() - timedelta(days=self.download_window) 
             fecha_fin_carga_dt = datetime.now() - timedelta(days=self.download_window)
             
             # Convert to string format
-            fecha_inicio_carga = fecha_inicio_carga_dt.strftime('%Y-%m-%d') 
-            fecha_fin_carga = fecha_fin_carga_dt.strftime('%Y-%m-%d')
-            print(f"No se han proporcionado fechas de carga, se descargarán datos para el día {fecha_inicio_carga}")
+            fecha_inicio = fecha_inicio_carga_dt.strftime('%Y-%m-%d') 
+            fecha_fin = fecha_fin_carga_dt.strftime('%Y-%m-%d')
+            print(f"No se han proporcionado fechas de carga, se descargarán datos para el día {fecha_inicio}")
 
         else:
             raise ValueError("No se han proporcionado fechas de carga completas")
 
-        return fecha_inicio_carga, fecha_fin_carga
+        return fecha_inicio, fecha_fin
     
     def download_i90_data(self, day: datetime) -> None:
         """
@@ -184,25 +184,25 @@ class I90Extractor:
         # All checks passed
         return True
     
-    def extract_data_for_all_markets(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None, mercados_lst: Optional[list[str]] = None) -> dict:
+    def extract_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None, mercados_lst: Optional[list[str]] = None) -> dict:
         """
         Extracts data for all specified markets over a given date range, coordinating download, validation, and extraction workflows.
         
         Validates the input date range, iterates through each day, downloads I90 data, checks file integrity, and invokes per-market extraction logic. Tracks and reports extraction success or failure for each market and day, cleans up temporary files, and returns a summary of the extraction process.
         
         Parameters:
-            fecha_inicio_carga (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to 93 days ago.
-            fecha_fin_carga (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to 93 days ago.
+            fecha_inicio (Optional[str]): Start date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to 93 days ago.
+            fecha_fin (Optional[str]): End date for extraction in 'YYYY-MM-DD' format. If not provided, defaults to 93 days ago.
             mercados_lst (Optional[list[str]]): List of market names to extract. If None, extracts all supported markets.
         
         Returns:
             dict: Dictionary containing overall success status and detailed results for each market and day.
         """
         # Initialize status tracking
-        if (fecha_fin_carga is None and fecha_inicio_carga is None) or fecha_fin_carga == fecha_inicio_carga:
+        if (fecha_fin is None and fecha_inicio is None) or fecha_fin == fecha_inicio:
             date_range_str = f"Single day download for {(datetime.now() - timedelta(days=self.download_window)).strftime('%Y-%m-%d')}"
         else:
-            date_range_str = f"{fecha_inicio_carga} to {fecha_fin_carga}"
+            date_range_str = f"{fecha_inicio} to {fecha_fin}"
 
         status_details = {
             "markets_downloaded": [],  
@@ -211,9 +211,9 @@ class I90Extractor:
         }
         
         try:
-            fecha_inicio_carga, fecha_fin_carga = self.fecha_input_validation(fecha_inicio_carga, fecha_fin_carga)
-            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-            fecha_fin_carga_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+            fecha_inicio, fecha_fin = self.fecha_input_validation(fecha_inicio, fecha_fin)
+            fecha_inicio_carga_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+            fecha_fin_carga_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
             
             overall_success = True #overall success is true if no failed markets
             for day in pd.date_range(start=fecha_inicio_carga_dt, end=fecha_fin_carga_dt):
@@ -576,8 +576,8 @@ def example_usage():
     i90_volumenes_extractor = I90VolumenesExtractor()
     i90_precios_extractor = I90PreciosExtractor()
 
-    i90_volumenes_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
-    i90_precios_extractor.extract_data_for_all_markets(fecha_inicio_carga="2024-12-01", fecha_fin_carga="2025-02-01")
+    i90_volumenes_extractor.extract_data_for_all_markets(fecha_inicio="2024-12-01", fecha_fin="2025-02-01")
+    i90_precios_extractor.extract_data_for_all_markets(fecha_inicio="2024-12-01", fecha_fin="2025-02-01")
 
 if __name__ == "__main__":
     example_usage()

@@ -13,6 +13,7 @@ from deprecated import deprecated
 # Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
+
 # Use absolute imports
 from utilidades.db_utils import DatabaseUtils
 from configs.esios_config import DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
@@ -38,7 +39,6 @@ class DescargadorESIOS:
 
         # Set proxy usage directly to False
         self.use_proxies = False
-        print(f"ESIOS Proxy Usage Enabled: {self.use_proxies}") # Log the setting
 
         # Conditionally initialize proxy manager (used in make esios request)
         if self.use_proxies:
@@ -46,29 +46,29 @@ class DescargadorESIOS:
         else:
             self.proxy_manager = None
 
-    def get_esios_data(self, indicator_id: str, fecha_inicio_carga: str = None, fecha_fin_carga: str = None) -> pd.DataFrame:
+    def get_esios_data(self, indicator_id: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:
         """
         Downloads data from ESIOS for a specific indicator within a date range.
         
         Args:
             indicator_id (str): The indicator ID for which data is being requested
-            fecha_inicio_carga (str): Start date for data request in 'YYYY-MM-DD' format
-            fecha_fin_carga (str): End date for data request in 'YYYY-MM-DD' format
+            fecha_inicio (str): Start date for data request in 'YYYY-MM-DD' format
+            fecha_fin (str): End date for data request in 'YYYY-MM-DD' format
         
         Returns:
             pd.DataFrame: DataFrame containing the requested data with granularity information
         """
-        return self._make_esios_request(indicator_id, fecha_inicio_carga, fecha_fin_carga)
+        return self._make_esios_request(indicator_id, fecha_inicio, fecha_fin)
 
-    def _make_esios_request(self, indicator_id: str, fecha_inicio_carga: str, fecha_fin_carga: str) -> pd.DataFrame:
+    def _make_esios_request(self, indicator_id: str, fecha_inicio: str, fecha_fin: str) -> pd.DataFrame:
         """
         Internal method that handles the actual API call and data processing.
         Can now run with or without proxies based on self.use_proxies.
 
         Args:
             indicator_id (str): The ID of the indicator for which data is being requested.
-            fecha_inicio_carga (str): The start date for the data request in 'YYYY-MM-DD' format.
-            fecha_fin_carga (str): The end date for the data request in 'YYYY-MM-DD' format.
+            fecha_inicio (str): The start date for the data request in 'YYYY-MM-DD' format.
+            fecha_fin (str): The end date for the data request in 'YYYY-MM-DD' format.
 
         Returns:
             pd.DataFrame: A DataFrame containing the requested data from the ESIOS API with an extra column for "granularidad".
@@ -79,10 +79,10 @@ class DescargadorESIOS:
             Exception: If there is an error during the API call or data validation process. 
         """
         # Convert string dates to Madrid local datetime (tz aware) start of day 00:00:00
-        start_local = self.madrid_tz.localize(datetime.strptime(fecha_inicio_carga, '%Y-%m-%d'))
+        start_local = self.madrid_tz.localize(datetime.strptime(fecha_inicio, '%Y-%m-%d'))
 
         # For end date, we want the end of the day (23:55:00 -> max esios time in a day 23:55:00)
-        end_local = self.madrid_tz.localize(datetime.strptime(fecha_fin_carga, '%Y-%m-%d').replace(hour=23, minute=55, second=0))
+        end_local = self.madrid_tz.localize(datetime.strptime(fecha_fin, '%Y-%m-%d').replace(hour=23, minute=55, second=0))
 
         # Convert to end time and start time to UTC for API request
         start_utc = start_local.astimezone(pytz.UTC)
@@ -162,7 +162,7 @@ class DescargadorESIOS:
         else:
             # --- Direct Logic (No Proxies) ---
             try:
-                print(f"Direct API request for indicator {indicator_id} from {fecha_inicio_carga} to {fecha_fin_carga}")
+                print(f"Direct API request for indicator {indicator_id} from {fecha_inicio} to {fecha_fin}")
                 response = requests.get(url, headers=headers, params=params, timeout=(20, 40))
 
                 if response.status_code != 200:
@@ -277,89 +277,6 @@ class DescargadorESIOS:
         # Return True if structure seems ok and data values exist
         return True
 
-    @deprecated(action="error", reason="Method used in old ETL pipeline, now deprecated")
-    def save_data_to_db(self, df_data: pd.DataFrame, dev: bool, table_name: str = None):
-        """
-        Saves data to the database, handling granularity changes if applicable.
-        For classes with granularity changes (Intra, Secundaria, Terciaria, RR), data is saved to:
-        - Precios_horarios before the change date
-        - Precios_quinceminutales after the change date
-        
-        Args:
-            df_data (pd.DataFrame): DataFrame containing the data to save
-            dev (bool): If True, save to the development database
-            table_name (str, optional): Override the default table name determination
-        
-        Note:
-            Child classes with granularity changes must define cambio_granularidad_fecha as an attribute
-        """
-        if df_data.empty:
-            print("No hay datos para guardar")
-            return
-        
-        # Define the tables to save to in case dev is True or False (development or production)
-        prod_tables = ['Precios_horarios', 'Precios_quinceminutales']
-        dev_tables = ['Precios_horarios_dev', 'Precios_quinceminutales_dev']
-
-        if dev: #if dev is True, save to development tables
-            tabla_horaria = dev_tables[0]
-            tabla_quinceminutal = dev_tables[1]
-        else: #if dev is False, save to production tables
-            tabla_horaria = prod_tables[0]
-            tabla_quinceminutal = prod_tables[1]
-
-        # Print start of save process for the specific child class
-        print(f"Inicio del proceso de guardado para {self.__class__.__name__}")
-
-        # Get the first and last date in the dataframe and conveer to right format
-        fecha_inicio = df_data['fecha'].min().strftime('%Y-%m-%d')
-        fecha_fin = df_data['fecha'].max().strftime('%Y-%m-%d')
-        fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
-        fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
-        
-        # If table_name is provided, use it directly
-        if table_name:
-            print(f"Guardando datos en {table_name}")
-            DatabaseUtils.write_table(self.bbdd_engine, df_data, table_name)
-            return
-        
-        # Handle classes with granularity changes
-        if hasattr(self, 'cambio_granularidad_fecha'):
-            change_date = self.cambio_granularidad_fecha
-            
-            # Handle data that spans the granularity change date
-            if fecha_inicio_dt < change_date and fecha_fin_dt >= change_date:
-                # Split data into before and after change date
-                before_change = df_data[df_data['fecha'] < pd.Timestamp(change_date)]
-                after_change = df_data[df_data['fecha'] >= pd.Timestamp(change_date)]
-                
-                # Drop duplicates before saving to avoid integrity errors
-                if not before_change.empty:
-                    print(f"Guardando datos anteriores al {change_date.strftime('%Y-%m-%d')} en {tabla_horaria}")
-                    DatabaseUtils.write_table(self.bbdd_engine, before_change, tabla_horaria)
-                
-                # Save data after granularity change date to 15-min prices table if exists
-                if not after_change.empty:
-                    print(f"Guardando datos posteriores al {change_date.strftime('%Y-%m-%d')} en {tabla_quinceminutal}")
-                    DatabaseUtils.write_table(self.bbdd_engine, after_change, tabla_quinceminutal)
-                
-            # Handle data that is entirely after the change date -> save to 15-min table
-            elif fecha_inicio_dt >= change_date:
-                print(f"Guardando datos en {tabla_quinceminutal} (todos los datos ocurren después del cambio de granularidad el  {change_date.strftime('%Y-%m-%d')})")
-                DatabaseUtils.write_table(self.bbdd_engine, df_data, tabla_quinceminutal)
-                
-            # Handle data that is entirely before the change date -> save to hourly table
-            else:
-                print(f"Guardando datos en {tabla_horaria} (todos los datos ocurren antes del cambio de granularidad el {change_date.strftime('%Y-%m-%d')})")
-                DatabaseUtils.write_table(self.bbdd_engine, df_data, tabla_horaria)
-        
-        # Handle classes without granularity changes
-        else:
-            has_minutes = any(':' in str(h) for h in df_data['hora'] if h is not None)
-            table_name = tabla_quinceminutal if has_minutes else tabla_horaria
-            print(f"Guardando datos en {table_name}")
-            DatabaseUtils.write_table(self.bbdd_engine, df_data, table_name)
-
 class DiarioPreciosDL(DescargadorESIOS):
 
     def __init__(self):
@@ -368,8 +285,8 @@ class DiarioPreciosDL(DescargadorESIOS):
         self.config = DiarioConfig()
         self.indicator_id = self.config.indicator_id
 
-    def get_prices(self, fecha_inicio_carga: Optional[str] = None, fecha_fin_carga: Optional[str] = None):
-        return self.get_esios_data(self.indicator_id, fecha_inicio_carga, fecha_fin_carga)
+    def get_prices(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None):
+        return self.get_esios_data(self.indicator_id, fecha_inicio, fecha_fin)
 
 class IntraPreciosDL(DescargadorESIOS):
 
@@ -382,14 +299,14 @@ class IntraPreciosDL(DescargadorESIOS):
         self.intra_reduccion_fecha = self.config.intra_reduccion_fecha #date of regulatory change for intras
         self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha #date of granularidad change for intras
         
-    def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, intra_lst: list[int]) -> pd.DataFrame:
+    def get_prices(self, fecha_inicio: str, fecha_fin: str, intra_lst: list[int]) -> pd.DataFrame:
         """
         Descarga los datos de ESIOS para los mercados intradiarios especificados.
         Automatically handles regulatory changes by downloading only available intras after cutoff dates.
 
         Args:
-            fecha_inicio_carga (str): La fecha de inicio de la carga en formato YYYY-MM-DD
-            fecha_fin_carga (str): La fecha de fin de la carga en formato YYYY-MM-DD
+            fecha_inicio (str): La fecha de inicio de la carga en formato YYYY-MM-DD
+            fecha_fin (str): La fecha de fin de la carga en formato YYYY-MM-DD
             intra_ids (list[int]): Lista de IDs de mercados intradiarios (1-7)
 
         Returns:
@@ -402,8 +319,8 @@ class IntraPreciosDL(DescargadorESIOS):
             raise ValueError(f"Invalid intra markets: {invalid_intra_nums}. Valid intra markets are 1-7")
 
         # Convert dates to datetime for comparison
-        fecha_inicio_dt = datetime.strptime(fecha_inicio_carga, '%Y-%m-%d')
-        fecha_fin_dt = datetime.strptime(fecha_fin_carga, '%Y-%m-%d')
+        fecha_inicio_dt = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+        fecha_fin_dt = datetime.strptime(fecha_fin, '%Y-%m-%d')
         
         dfs = [] #list of dataframes to concatenate
 
@@ -416,7 +333,7 @@ class IntraPreciosDL(DescargadorESIOS):
                 intra_indicator_id = self.config.get_indicator_id(self.intra_name_map[intra_num])
                 df = self.get_esios_data(
                     intra_indicator_id,
-                    fecha_inicio_carga,
+                    fecha_inicio,
                     (self.intra_reduccion_fecha.strftime('%Y-%m-%d')) #en fecha reduccion intra aun no aplica el cambio
                 )
                 if not df.empty:
@@ -431,7 +348,7 @@ class IntraPreciosDL(DescargadorESIOS):
                 df = self.get_esios_data(
                     intra_indicator_id,
                     (self.intra_reduccion_fecha).strftime('%Y-%m-%d'),
-                    fecha_fin_carga
+                    fecha_fin
                 )
                 if not df.empty:
                     dfs.append(df)
@@ -445,8 +362,8 @@ class IntraPreciosDL(DescargadorESIOS):
                 intra_indicator_id = self.config.get_indicator_id(self.intra_name_map[intra_num])
                 df = self.get_esios_data(
                     intra_indicator_id,
-                    fecha_inicio_carga,
-                    fecha_fin_carga
+                    fecha_inicio,
+                    fecha_fin
                 )
                 if not df.empty:
                     dfs.append(df)
@@ -460,8 +377,8 @@ class IntraPreciosDL(DescargadorESIOS):
                 #download data
                 df = self.get_esios_data(
                     intra_indicator_id,
-                    fecha_inicio_carga,
-                    fecha_fin_carga
+                    fecha_inicio,
+                    fecha_fin
                 )
                 if not df.empty:
                     dfs.append(df)
@@ -471,7 +388,7 @@ class IntraPreciosDL(DescargadorESIOS):
             final_df = pd.concat(dfs, ignore_index=True)
             return final_df
         else:
-            print(f"No data found for intras {intra_lst} in the date range {fecha_inicio_carga} to {fecha_fin_carga}")
+            print(f"No data found for intras {intra_lst} in the date range {fecha_inicio} to {fecha_fin}")
             return pd.DataFrame()
     
 class SecundariaPreciosDL(DescargadorESIOS):
@@ -483,15 +400,15 @@ class SecundariaPreciosDL(DescargadorESIOS):
         self.precio_dual_fecha = self.config.precio_dual_fecha
         self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha
         
-    def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, secundaria_lst: list[int]) -> pd.DataFrame:
+    def get_prices(self, fecha_inicio: str, fecha_fin: str, secundaria_lst: list[int]) -> pd.DataFrame:
         """
         Downloads ESIOS data for secundaria for a specific day.
         Handles the regulatory change on 20/11/2024 where it changes from single price (634) 
         to dual price (634 for down, 2130 for up).
         
         Args:
-            fecha_inicio_carga (str): Load date in YYYY-MM-DD format (assumed same as fecha_fin_carga)
-            fecha_fin_carga (str): Load date in YYYY-MM-DD format (assumed same as fecha_inicio_carga)
+            fecha_inicio (str): Load date in YYYY-MM-DD format (assumed same as fecha_fin)
+            fecha_fin (str): Load date in YYYY-MM-DD format (assumed same as fecha_inicio)
             secundaria_lst (list[int]): List of secundaria types [1: up, 2: down]
         
         Returns:
@@ -503,12 +420,12 @@ class SecundariaPreciosDL(DescargadorESIOS):
             raise ValueError(f"Invalid secundaria types: {invalid_ids}. Valid types are 1 (subir) and 2 (bajar)")
         
          # Ensure we're downloading data for a single day
-        if fecha_inicio_carga != fecha_fin_carga:
-            print(f"Warning: fecha_inicio_carga ({fecha_inicio_carga}) and fecha_fin_carga ({fecha_fin_carga}) differ. " 
-                  f"Using fecha_inicio_carga as the target date, only data range of one day will be downloaded.")
+        if fecha_inicio != fecha_fin:
+            print(f"Warning: fecha_inicio ({fecha_inicio}) and fecha_fin ({fecha_fin}) differ. " 
+                  f"Using fecha_inicio as the target date, only data range of one day will be downloaded.")
         
         # Use only the start date for simplicity
-        target_date = fecha_inicio_carga  # Only hours will vary between dates
+        target_date = fecha_inicio  # Only hours will vary between dates
         target_date_dt = datetime.strptime(target_date, '%Y-%m-%d')
         
         dfs = []
@@ -553,14 +470,14 @@ class TerciariaPreciosDL(DescargadorESIOS):
         self.precio_unico_fecha = self.config.precio_unico_fecha
         self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha
         
-    def get_prices(self, fecha_inicio_carga: str, fecha_fin_carga: str, terciaria_lst: list[int]) -> pd.DataFrame:
+    def get_prices(self, fecha_inicio: str, fecha_fin: str, terciaria_lst: list[int]) -> pd.DataFrame:
         """
         Descarga los datos de ESIOS para terciaria para un día específico.
         Maneja el cambio regulatorio del 10/12/2024 donde se cambia de precio dual (676 bajar, 677 subir) a precio único (2197).
         
         Args:
-            fecha_inicio_carga (str): Fecha de carga en formato YYYY-MM-DD (se asume que es la misma que fecha_fin_carga)
-            fecha_fin_carga (str): Fecha de carga en formato YYYY-MM-DD (se asume que es la misma que fecha_inicio_carga)
+            fecha_inicio (str): Fecha de carga en formato YYYY-MM-DD (se asume que es la misma que fecha_fin)
+            fecha_fin (str): Fecha de carga en formato YYYY-MM-DD (se asume que es la misma que fecha_inicio)
             terciaria_lst (list[int]): Lista de tipos de terciaria [1: subir, 2: bajar, 3: directa subir, 
                                                                   4: directa bajar, 5: programada único]
         
@@ -573,12 +490,12 @@ class TerciariaPreciosDL(DescargadorESIOS):
             raise ValueError(f"Invalid terciaria types: {invalid_ter_nums}. Valid types are 1-5")
         
         # Ensure we're downloading data for a single day
-        if fecha_inicio_carga != fecha_fin_carga:
-            print(f"Warning: fecha_inicio_carga ({fecha_inicio_carga}) and fecha_fin_carga ({fecha_fin_carga}) differ. " 
-                  f"Using fecha_inicio_carga as the target date, only data for one day will be downloaded.")
+        if fecha_inicio != fecha_fin:
+            print(f"Warning: fecha_inicio ({fecha_inicio}) and fecha_fin ({fecha_fin}) differ. " 
+                  f"Using fecha_inicio as the target date, only data for one day will be downloaded.")
         
         # Use only the start date for simplicity
-        target_date = fecha_inicio_carga #fecha carga == fecha fin carga only hours will vary between both dates
+        target_date = fecha_inicio #fecha carga == fecha fin carga only hours will vary between both dates
         target_date_dt = datetime.strptime(target_date, '%Y-%m-%d')
         
         dfs = []
@@ -633,11 +550,11 @@ class RRPreciosDL(DescargadorESIOS):
         self.indicator_id = self.config.indicator_id
         self.cambio_granularidad_fecha = self.config.cambio_granularidad_fecha
 
-    def get_prices(self, fecha_inicio_carga, fecha_fin_carga):
+    def get_prices(self, fecha_inicio, fecha_fin):
         """
         Descarga los datos de ESIOS para un indicador específico en un rango de fechas. Para RR (precio único) y se guarda en el indicador de RR a subir.
         """
-        return self.get_esios_data(self.indicator_id, fecha_inicio_carga, fecha_fin_carga)
+        return self.get_esios_data(self.indicator_id, fecha_inicio, fecha_fin)
 
 
 if __name__ == "__main__":

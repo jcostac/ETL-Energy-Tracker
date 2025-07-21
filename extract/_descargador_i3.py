@@ -11,7 +11,7 @@ import os
 # Add the project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-from configs.i3_config import I3Config, DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig, IntraConfig
+from configs.i3_config import I3Config, DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig, IntraConfig
 
 class I3Downloader:
     """
@@ -423,7 +423,7 @@ class CurtailmentDL(I3Downloader):
     def __init__(self):
         """Initialize the curtailment downloader"""
         super().__init__()
-        self.config = CurtailmentConfig()
+        self.config = CurtailmentDemandaConfig()
         self.volumenes_sheets = self.config.volumenes_sheets
 
     def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:

@@ -618,7 +618,7 @@ class TransformadorOMIE:
         status_details = {
             "markets_processed": [],
             "markets_failed": [],
-            "transform_type": transform_type,
+            "mode": transform_type,
             "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
         }
         

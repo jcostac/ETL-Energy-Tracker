@@ -14,7 +14,7 @@ def omie_download_single_day():
     Asserts that extraction is successful and prints a confirmation message.
     """
     extractor = OMIEExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-04-08", fecha_fin_carga="2025-04-08")
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-04-08", fecha_fin="2025-04-08")
     
     # Assert that the extraction was successful
     assert result["success"] == True, f"Single day download failed. Details: {result.get('details', {})}"
@@ -28,7 +28,7 @@ def omie_download_multiple_days():
     Asserts that data extraction from "2025-03-02" to "2025-03-08" completes successfully.
     """
     extractor = OMIEExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-03-02", fecha_fin_carga="2025-03-08")
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-03-02", fecha_fin="2025-03-08")
     
     # Assert that the extraction was successful
     assert result["success"] == True, f"Multiple days download failed. Details: {result.get('details', {})}"
@@ -42,7 +42,7 @@ def omie_download_market_specific():
     """
    
     extractor = OMIEExtractor()
-    result = extractor.extract_data_for_all_markets(fecha_inicio_carga="2025-01-01", fecha_fin_carga="2025-01-01", mercados_lst=["continuo"])
+    result = extractor.extract_data_for_all_markets(fecha_inicio="2025-01-01", fecha_fin="2025-01-01", mercados_lst=["continuo"])
     
     # Assert that the extraction was successful
     assert result["success"] == True, f"Market specific download failed. Details: {result.get('details', {})}"
