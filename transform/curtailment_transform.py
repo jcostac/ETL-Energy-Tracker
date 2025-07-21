@@ -37,8 +37,10 @@ class CurtailmentTransformer:
                 - 'data': Mapping of source names to processed DataFrames.
                 - 'status': Dictionary containing success status and details.
         """
+        mercado = "curt"
+
         if sources_lst is None:
-            sources_lst = ['curtailment_i90', 'curtailment_i3']
+            sources_lst = ['i90', 'i3']
 
         if fecha_inicio is None and fecha_fin is None:
             transform_type = 'latest'
@@ -48,10 +50,10 @@ class CurtailmentTransformer:
             transform_type = 'multiple'
 
         status_details = {
-            "markets_processed": [],
-            "markets_failed": [],
+            "mercados_processed": [],
+            "mercados_failed": [],
             "mode": transform_type,
-            "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
+            "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin and fecha_inicio else "latest"
         }
 
         overall_success = True
@@ -62,42 +64,41 @@ class CurtailmentTransformer:
         if fecha_fin: print(f"End Date: {fecha_fin}")
         print("="*60)
 
-        for market in sources_lst:
-            print(f"\n-- Source: {market} --")
-            source = market.split('_')[1]  # 'i90' or 'i3'
-            dataset_type = f'volumenes_{source}'
+        for source in sources_lst:
+            print(f"\n-- Source: {source} --")
+            dataset_type = f'volumenes_{source}' #we transform volumenes data from restricciones (either i3 or i90)
             try:
                 if transform_type == 'single':
-                    market_result = self._process_single_day(market, dataset_type, fecha_inicio)
+                    mercado_result = self._process_single_day(mercado, source, dataset_type, fecha_inicio)
                 elif transform_type == 'latest':
-                    market_result = self._process_latest_day(market, dataset_type)
+                    mercado_result = self._process_latest_day(mercado, source, dataset_type)
                 elif transform_type == 'multiple':
-                    market_result = self._process_date_range(market, dataset_type, fecha_inicio, fecha_fin)
+                    mercado_result = self._process_date_range(mercado, source, dataset_type, fecha_inicio, fecha_fin)
 
-                if market_result is not None and isinstance(market_result, pd.DataFrame) and not market_result.empty:
-                    status_details["markets_processed"].append(market)
-                    results[market] = market_result
+                if mercado_result is not None and isinstance(mercado_result, pd.DataFrame) and not mercado_result.empty:
+                    status_details["mercados_processed"].append(mercado)
+                    results[mercado] = mercado_result
                 else:
-                    status_details["markets_failed"].append(market)
+                    status_details["mercados_failed"].append(mercado)
                     overall_success = False
 
             except Exception as e:
-                status_details["markets_failed"].append({
-                    "market": market,
+                status_details["mercados_failed"].append({
+                    "mercado": mercado,
                     "error": str(e)
                 })
                 overall_success = False
-                results[market] = None
-                print(f"❌ Failed to transform for {market} ({transform_type}): {e}")
+                results[mercado] = None
+                print(f"❌ Failed to transform for {mercado} ({transform_type}): {e}")
                 print(traceback.format_exc())
 
         print(f"\n===== CURTAILMENT TRANSFORMATION RUN FINISHED (Mode: {transform_type.upper()}) =====")
         print("Summary:")
-        for market, result in results.items():
+        for mercado, result in results.items():
             status = "Failed/No Data"
             if isinstance(result, pd.DataFrame) and not result.empty:
                 status = f"Success ({len(result)} records)"
-            print(f"- {market}: {status}")
+            print(f"- {mercado}: {status}")
         print("="*60)
 
         return {
@@ -108,19 +109,18 @@ class CurtailmentTransformer:
             }
         }
 
-    def _transform_data(self, raw_df: pd.DataFrame, market: str) -> pd.DataFrame:
+    def _transform_data(self, raw_df: pd.DataFrame, source: str) -> pd.DataFrame:
         if raw_df.empty:
-            print(f"Skipping transformation for {market}: Input DataFrame is empty.")
+            print(f"Skipping transformation for {source}: Input DataFrame is empty.")
             return pd.DataFrame()
 
-        source = market.split('_')[1]
-        table_name = f'curtailments_{source}'
-        processed_df = self.processor.transform_raw_curtailment_data(raw_df, table_name)
+        dataset_type = f'curtailments_{source}'
+        processed_df = self.processor.transform_raw_curtailment_data(raw_df, dataset_type)
         if processed_df is None or processed_df.empty:
-            print(f"Transformation resulted in empty or None DataFrame for {market}.")
+            print(f"Transformation resulted in empty or None DataFrame for {source}.")
             return pd.DataFrame()
 
-        print(f"Processed data for {market}:")
+        print(f"Processed data for {source}:")
         print(processed_df.head())
         return processed_df
 
@@ -167,8 +167,8 @@ class CurtailmentTransformer:
             print(f"Error during date filtering ({transform_type} mode): {e}")
             return pd.DataFrame()
 
-    def _process_single_day(self, market: str, dataset_type: str, date: str):
-        print(f"Starting SINGLE transformation for {market} on {date}")
+    def _process_single_day(self, mercado: str, source: str, dataset_type: str, date: str):
+        print(f"Starting SINGLE transformation for {mercado} on {date}")
         try:
             target_date = pd.to_datetime(date)
             target_year = target_date.year
@@ -179,22 +179,23 @@ class CurtailmentTransformer:
             filtered_df = self._process_df_based_on_transform_type(raw_df, 'single', fecha_inicio=date)
 
             if filtered_df.empty:
-                print(f"No data found for {market} on {date}.")
+                print(f"No data found for {dataset_type} on {date}.")
                 return pd.DataFrame()
 
-            processed_df = self._transform_data(filtered_df, market)
+            processed_df = self._transform_data(filtered_df, source)
             return processed_df
 
         except Exception as e:
-            print(f"Error during single day processing for {market} on {date}: {e}")
+            print(f"Error during single day processing for {mercado} on {date}: {e}")
             return pd.DataFrame()
 
-    def _process_latest_day(self, market: str, dataset_type: str):
-        print(f"Starting LATEST transformation for {market}")
+    def _process_latest_day(self, mercado: str, source: str, dataset_type: str):
+        print(f"Starting LATEST transformation for {mercado}")
         try:
+            #getting data from restricciones isnce it contains data from sheet 03 and 08
             years = sorted(self.raw_utils.get_raw_folder_list(mercado='restricciones'), reverse=True)
             if not years:
-                print(f"No data years found for restricciones. Skipping latest for {market}.")
+                print(f"No data years found for restricciones. Skipping latest for {mercado}.")
                 return pd.DataFrame()
 
             found = False
@@ -206,27 +207,27 @@ class CurtailmentTransformer:
                         continue
                     matching_files = [f for f in files if dataset_type in str(f)]
                     if matching_files:
-                        print(f"Identified latest available file for {market}: {year}-{month:02d}")
+                        print(f"Identified latest available file for {mercado}: {year}-{month:02d}")
                         raw_df = self.raw_utils.read_raw_file(year, month, dataset_type, 'restricciones')
                         filtered_df = self._process_df_based_on_transform_type(raw_df, 'latest')
                         if filtered_df.empty:
-                            print(f"No data found for the latest day within file {year}-{month:02d} for {market}.")
+                            print(f"No data found for the latest day within file {year}-{month:02d} for {mercado}.")
                             return pd.DataFrame()
-                        processed_df = self._transform_data(filtered_df, market)
+                        processed_df = self._transform_data(filtered_df, source)
                         found = True
                         return processed_df
                 if found:
                     break
             if not found:
-                print(f"No raw file found for {market} in any available year/month.")
+                print(f"No raw file found for {mercado} in any available year/month.")
                 return pd.DataFrame()
 
         except Exception as e:
-            print(f"Error during latest day processing for {market}: {e}")
+            print(f"Error during latest day processing for {mercado}: {e}")
             return pd.DataFrame()
 
-    def _process_date_range(self, market: str, dataset_type: str, fecha_inicio: str, fecha_fin: str):
-        print(f"Starting MULTIPLE transformation for {market} from {fecha_inicio} to {fecha_fin}")
+    def _process_date_range(self, mercado: str, source: str, dataset_type: str, fecha_inicio: str, fecha_fin: str):
+        print(f"Starting MULTIPLE transformation for {mercado} from {fecha_inicio} to {fecha_fin}")
         try:
             start_dt = pd.to_datetime(fecha_inicio)
             end_dt = pd.to_datetime(fecha_fin)
@@ -235,46 +236,46 @@ class CurtailmentTransformer:
 
             all_days_in_range = pd.date_range(start_dt, end_dt, freq='D')
             if all_days_in_range.empty:
-                print("Warning: Date range resulted in zero days. Nothing to process for {market}.")
+                print("Warning: Date range resulted in zero days. Nothing to process for {mercado}.")
                 return pd.DataFrame()
 
             year_months = sorted(list(set([(d.year, d.month) for d in all_days_in_range])))
 
             all_raw_dfs = []
-            print(f"Reading files for year-months: {year_months} for {market}")
+            print(f"Reading files for year-months: {year_months} for {mercado}")
             for year, month in year_months:
                 try:
                     raw_df = self.raw_utils.read_raw_file(year, month, dataset_type, 'restricciones')
                     if raw_df is not None and not raw_df.empty:
                         all_raw_dfs.append(raw_df)
                     else:
-                        print(f"Warning: No data returned from reading for {year}-{month:02d} for {market}.")
+                        print(f"Warning: No data returned from reading for {year}-{month:02d} for {mercado}.")
 
                 except FileNotFoundError:
-                    print(f"Warning: Raw file not found for {year}-{month:02d} for {market}. Skipping.")
+                    print(f"Warning: Raw file not found for {year}-{month:02d} for {mercado}. Skipping.")
                 except Exception as e:
-                    print(f"Error reading or processing raw file for {year}-{month:02d} for {market}: {e}")
+                    print(f"Error reading or processing raw file for {year}-{month:02d} for {mercado}: {e}")
                     continue
 
             if not all_raw_dfs:
-                print(f"No raw data found for the specified date range {fecha_inicio} to {fecha_fin} for {market}.")
+                print(f"No raw data found for the specified date range {fecha_inicio} to {fecha_fin} for {mercado}.")
                 return pd.DataFrame()
 
             combined_raw_df = pd.concat(all_raw_dfs, ignore_index=True)
 
-            print(f"Combined raw data ({len(combined_raw_df)} rows) for {market}. Applying date range filtering.")
+            print(f"Combined raw data ({len(combined_raw_df)} rows) for {mercado}. Applying date range filtering.")
             filtered_df = self._process_df_based_on_transform_type(combined_raw_df, 'multiple', fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
 
             if filtered_df.empty:
-                print(f"No data found for {market} between {fecha_inicio} and {fecha_fin} after final filtering.")
+                print(f"No data found for {mercado} between {fecha_inicio} and {fecha_fin} after final filtering.")
                 return pd.DataFrame()
 
-            print(f"Filtered data has {len(filtered_df)} rows for {market}. Proceeding with transformation...")
-            processed_df = self._transform_data(filtered_df, market)
+            print(f"Filtered data has {len(filtered_df)} rows for {mercado}. Proceeding with transformation...")
+            processed_df = self._transform_data(filtered_df, source)
             return processed_df
 
         except Exception as e:
-            print(f"An unexpected error occurred during multiple transform for {market}: {e}")
+            print(f"An unexpected error occurred during multiple transform for {mercado}: {e}")
             print(traceback.format_exc())
             return pd.DataFrame()
 
@@ -282,10 +283,10 @@ class CurtailmentTransformer:
         """
         Wrapper for i90 latest transformation using the standardized method.
         """
-        return self.transform_curtailment_data(sources_lst=['curtailment_i90'])
+        return self.transform_curtailment_data(sources_lst=['i90'])
 
     def transform_curtailment_i3(self) -> dict:
         """
         Wrapper for i3 latest transformation using the standardized method.
         """
-        return self.transform_curtailment_data(sources_lst=['curtailment_i3'])
+        return self.transform_curtailment_data(sources_lst=['i3'])

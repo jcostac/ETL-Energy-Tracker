@@ -49,18 +49,23 @@ class ProcessedFileUtils(StorageFileUtils):
         # Then handle subset-based duplicates
         try:
             if dataset_type == 'volumenes_i90':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "up"], keep='last')
+                df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "up", "id_mercado"], keep='last')
             elif dataset_type == 'volumenes_i3':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "tecnologia"], keep='last')
+                df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "tecnologia", "id_mercado"], keep='last')
             elif dataset_type == 'precios_i90':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "up"], keep='last')
+                df = df.drop_duplicates(subset=['datetime_utc', 'precio', "up", "id_mercado"], keep='last')
+            elif dataset_type == 'precios_esios':
+                df = df.drop_duplicates(subset=['datetime_utc', 'precio', "id_mercado"], keep='last')
             elif dataset_type == 'volumenes_omie':
-                df = df.drop_duplicates(subset=['datetime_utc', 'mercado', "uof"], keep='last')
-            elif dataset_type == 'volumenes_mic':
+                df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "uof", "id_mercado"], keep='last')
+            elif dataset_type == 'curtailments_i90':
+                df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "up", "RTx", "tipo", "volumenes"], keep='last')
+            elif dataset_type == 'curtailments_i3':
+                df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "tecnologia", "RTx", "tipo", "volumenes"], keep='last')
+            else:
                 #we allow duplicates for mic market data, so we don't drop any duplicates
                 return df
-            else:
-                df = df.drop_duplicates(subset=['datetime_utc', 'id_mercado', 'precio'], keep='last')
+            
         except KeyError as e:
             raise KeyError(f"Missing required column for deduplication: {str(e)}")
         except Exception as e:
@@ -68,7 +73,6 @@ class ProcessedFileUtils(StorageFileUtils):
         
         return df
     
-
     def _add_partition_cols(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
         Add 'year', 'month', and 'mercado' columns to the DataFrame for partitioning.
@@ -464,7 +468,7 @@ class ProcessedFileUtils(StorageFileUtils):
             else:
                 segment = f"{col}={value}"
             path_segments.append(segment)
-        partition_path_str = os.path.join(*path_segments) #kwargs, join path segments ie> processed/mercado=BTC/id_mercado=BTC/year=2024/month=01
+        partition_path_str = os.path.join(*path_segments) #kwargs, join path segments ie> processed/mercado="Intra"/id_mercado="2"/year=2024/month=01
         os.makedirs(partition_path_str, exist_ok=True) #create directory if it doesn't exist
 
         if dataset_type == "precios_i90" or dataset_type == "precios_esios":
@@ -497,7 +501,7 @@ class ProcessedFileUtils(StorageFileUtils):
     
     def _set_dict_cols(self, schema: pa.Schema) -> list[str]:
         """
-        Determine which columns should use dictionary encoding for Parquet writing based on the schema.
+        Determine which columns should use dictionary encoding (integers instead of full strings for repeated values) for Parquet writing based on the schema.
         
         Returns:
             dict_cols (list[str]): List of column names to apply dictionary encoding, such as "up", "tecnologia", or "uof", depending on the dataset type.
@@ -512,6 +516,7 @@ class ProcessedFileUtils(StorageFileUtils):
         elif "uof" in schema.names: #for omie market data
             dict_cols.append("uof")
         else:
-            print(f" Dictionary encoding not applied for this dataset. Only applied for i90 and i3 datasets.")
+            print(f" Dictionary encoding not applied for this dataset. Only applied for volumenes data set for uof, up and tecnologia")
+        
         print("--------------------------------")
         return dict_cols

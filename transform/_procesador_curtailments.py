@@ -40,11 +40,13 @@ class CurtailmentProcessor:
 
         #apply filters from config  
         if "Redespacho" in df.columns:
-            #where we have r1 values of the filters, we add R1 in the RTx column
-            df['RTx'] = df['Redespacho'].apply(lambda x: "R1" if x in self.curtailment_config.rt1_redespacho_filter else "R5")
-            
-            #where we have r5 values of the filters, we add R5 in the RTx column
-            df['RTx'] = df['Redespacho'].apply(lambda x: "R5" if x in self.curtailment_config.rt5_redespacho_filter else "R1")
+            def assign_rtx(redespacho):
+                if redespacho in self.curtailment_config.rt1_redespacho_filter:
+                    return "R1"
+                if redespacho in self.curtailment_config.rt5_redespacho_filter:
+                    return "R5"
+                return None
+            df['RTx'] = df['Redespacho'].apply(assign_rtx)
 
             #filter df by redespacho
             df = df[df['Redespacho'].isin(self.curtailment_config.rt1_redespacho_filter + self.curtailment_config.rt5_redespacho_filter)]
@@ -82,6 +84,8 @@ class CurtailmentProcessor:
         
         if "Unidad de Programación" in df.columns:
             df = df.rename(columns={"Unidad de Programación": "up"})
+        
+        if "Tipo Restricción" in df.columns:
             df = df.rename(columns={"Tipo Restricción": "tipo"})
 
         if "Concepto" in df.columns:

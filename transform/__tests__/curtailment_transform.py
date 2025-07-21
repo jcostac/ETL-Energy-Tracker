@@ -7,16 +7,19 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'
 from transform.curtailment_transform import CurtailmentTransformer
 
 
-def test_curtailment_transform():
+def test_curtailment_i3_transform():
+    transformer = CurtailmentTransformer()
+    i3_result = transformer.transform_curtailment_i3() 
+    assert i3_result['status']['success'] is True, "i3 transformation failed"
+
+
+def test_curtailment_i90_transform():
     transformer = CurtailmentTransformer()
     i90_result = transformer.transform_curtailment_i90()
-    i3_result = transformer.transform_curtailment_i3() 
-
-    assert i90_result is not None, "i90 transformation failed"
-    assert i3_result is not None, "i3 transformation failed"
+    assert i90_result['status']['success'] is True, "i90 transformation failed"
 
 if __name__ == "__main__":
-    transformer = CurtailmentTransformer()
-    # Example usage
-    i90_result = transformer.transform_curtailment_i90()
-    i3_result = transformer.transform_curtailment_i3() 
+    test_curtailment_i3_transform()
+    test_curtailment_i90_transform()
+
+

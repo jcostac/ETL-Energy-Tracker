@@ -242,6 +242,27 @@ class LocalDataLakeLoader():
             **kwargs
         )
     
+    def load_transformed_data_curtailments_i90(self, transformed_data_dict, **kwargs) -> dict:
+        """
+        Loads transformed curtailments i90 data for each market from the provided dictionary and stores it in the local data lake.
+        """
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='curtailments_i90',
+            value_cols= ['volumenes'],
+            **kwargs
+        )
+    
+    def load_transformed_data_curtailments_i3(self, transformed_data_dict, **kwargs) -> dict:
+        """
+        Loads transformed curtailments i3 data for each market from the provided dictionary and stores it in the local data lake.
+        """
+        return self.load_transformed_data(
+            transformed_data_dict,
+            dataset_type='curtailments_i3',
+            value_cols= ['volumenes'],
+            **kwargs
+        )
 
 
 def example_usage():

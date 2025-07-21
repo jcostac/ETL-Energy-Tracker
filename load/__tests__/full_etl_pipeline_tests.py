@@ -17,6 +17,9 @@ from transform.i90_transform import TransformadorI90
 from extract.i3_extractor import I3Extractor
 from transform.i3_transform import TransformadorI3
 
+# Curtailments imports
+from transform.curtailment_transform import CurtailmentTransformer
+
 # Load import (common for all)
 from load.local_data_lake_loader import LocalDataLakeLoader
 
@@ -24,7 +27,7 @@ from load.local_data_lake_loader import LocalDataLakeLoader
 @pytest.fixture
 def test_date():
     """Fixture for a fixed test date where data should be available."""
-    return '2024-01-01'
+    return '2024-05-22'
 
 
 def test_esios_full_etl(test_date):
@@ -43,7 +46,6 @@ def test_esios_full_etl(test_date):
         load_result = loader.load_transformed_data_esios(transform_result["data"][market])
         assert load_result['success'], "ESIOS load failed"
 
-
 def test_omie_full_etl(test_date):
     """Test full ETL for OMIE volumes."""
     extractor = OMIEExtractor()
@@ -58,7 +60,6 @@ def test_omie_full_etl(test_date):
     for market in transform_result["data"].keys():
         load_result = loader.load_transformed_data_volumenes_omie(transform_result["data"][market])
         assert load_result['success'], "OMIE load failed"
-
 
 def test_i90_full_etl(test_date):
     """Test full ETL for I90 prices (as representative; extend for volumes if needed)."""
@@ -76,7 +77,6 @@ def test_i90_full_etl(test_date):
         load_result = loader.load_transformed_data_precios_i90(transform_result["data"][market])
         assert load_result['success'], "I90 load failed"
 
-
 def test_i3_full_etl(test_date):
     """Test full ETL for I3 volumes."""
     extractor = I3Extractor()
@@ -92,3 +92,29 @@ def test_i3_full_etl(test_date):
     for market in transform_result["data"].keys():
         load_result = loader.load_transformed_data_volumenes_i3(transform_result["data"][market])
         assert load_result['success'], "I3 load failed"
+
+def test_curtailments_full_etl_i90(test_date):
+    """Test full ETL for curtailments."""
+    transformer = CurtailmentTransformer()
+    transform_result = transformer.transform_curtailment_i90(fecha_inicio=test_date, fecha_fin=test_date)
+    assert transform_result['status']['success'], "Curtailments transformation failed"
+
+    loader = LocalDataLakeLoader()
+    for market in transform_result["data"].keys():
+        load_result = loader.load_transformed_data_curtailments_i90(transform_result["data"][market])
+        assert load_result['success'], "Curtailments load failed"
+
+def test_curtailments_full_etl_i3(test_date):
+    """Test full ETL for curtailments."""
+    transformer = CurtailmentTransformer()
+    transform_result = transformer.transform_curtailment_i3(fecha_inicio=test_date, fecha_fin=test_date)
+    assert transform_result['status']['success'], "Curtailments transformation failed"
+
+    loader = LocalDataLakeLoader()
+    for market in transform_result["data"].keys():
+        load_result = loader.load_transformed_data_curtailments_i3(transform_result["data"][market])
+        assert load_result['success'], "Curtailments load failed"
+
+
+if __name__ == "__main__":
+    test_esios_full_etl()
