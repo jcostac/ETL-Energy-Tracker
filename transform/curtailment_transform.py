@@ -7,7 +7,7 @@ import traceback
 from utilidades.raw_file_utils import RawFileUtils
 from transform._procesador_curtailments import CurtailmentProcessor
 
-class CurtailmentTransformer:
+class TransformadorCurtailment:
     """
     Transformer class for curtailment data from i90 and i3 sources.
     Handles reading the latest raw data and processing it using CurtailmentProcessor.
@@ -280,14 +280,14 @@ class CurtailmentTransformer:
             print(traceback.format_exc())
             return pd.DataFrame()
 
-    def transform_curtailment_i90(self) -> dict:
+    def transform_curtailment_i90(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None) -> dict:
         """
         Wrapper for i90 latest transformation using the standardized method.
         """
-        return self.transform_curtailment_data(sources_lst=['i90'])
+        return self.transform_curtailment_data(sources_lst=['i90'], fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
 
-    def transform_curtailment_i3(self) -> dict:
+    def transform_curtailment_i3(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None) -> dict:
         """
         Wrapper for i3 latest transformation using the standardized method.
         """
-        return self.transform_curtailment_data(sources_lst=['i3'])
+        return self.transform_curtailment_data(sources_lst=['i3'],fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)

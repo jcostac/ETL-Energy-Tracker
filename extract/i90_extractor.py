@@ -391,7 +391,7 @@ class I90VolumenesExtractor(I90Extractor):
         self._extract_and_save_volumenes(day, 'rr', self.rr_downloader)
 
     def extract_volumenes_curtailment(self, day: datetime) -> None:
-        self._extract_and_save_volumenes(day, 'curtailment', self.curtailment_downloader)
+        self._extract_and_save_volumenes(day, 'curtailment_demanda', self.curtailment_downloader)
 
     def extract_volumenes_p48(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'p48', self.p48_downloader)
@@ -428,7 +428,7 @@ class I90VolumenesExtractor(I90Extractor):
             ("terciaria", self.extract_volumenes_terciaria),
             ("secundaria", self.extract_volumenes_secundaria),
             ("rr", self.extract_volumenes_rr),
-            ("curtailment", self.extract_volumenes_curtailment),
+            ("curtailment_demanda", self.extract_volumenes_curtailment),
             ("p48", self.extract_volumenes_p48),
             ("indisponibilidades", self.extract_volumenes_indisponibilidades),
             ("restricciones", self.extract_volumenes_restricciones)
