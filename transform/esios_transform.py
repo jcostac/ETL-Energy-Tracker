@@ -570,6 +570,31 @@ class TransformadorESIOS:
 
         return processed_df_final # Return the single combined DF or None
 
+    def process_diario_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """
+        Transform raw market data for the 'diario' market.
+        
+        Returns:
+            A processed DataFrame for the 'diario' market, or None if transformation fails or results in empty data.
+        """
+        return self._transform_market_data(raw_df, 'diario')
+
+    def process_intra_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """Transforms data for the 'intra' market."""
+        return self._transform_market_data(raw_df, 'intra')
+
+    def process_secundaria_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """Transforms data for the 'secundaria' market."""
+        return self._transform_market_data(raw_df, 'secundaria')
+
+    def process_terciaria_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """Transforms data for the 'terciaria' market."""
+        return self._transform_market_data(raw_df, 'terciaria')
+
+    def process_rr_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """Transforms data for the 'rr' market."""
+        return self._transform_market_data(raw_df, 'rr')
+    
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None, 
                                       mercados: list[str] = None, mode: str = 'latest'):
         """
@@ -670,29 +695,3 @@ class TransformadorESIOS:
                 "details": status_details
             }
         }
-
-    def process_diario_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """
-        Transform raw market data for the 'diario' market.
-        
-        Returns:
-            A processed DataFrame for the 'diario' market, or None if transformation fails or results in empty data.
-        """
-        return self._transform_market_data(raw_df, 'diario')
-
-    def process_intra_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """Transforms data for the 'intra' market."""
-        return self._transform_market_data(raw_df, 'intra')
-
-    def process_secundaria_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """Transforms data for the 'secundaria' market."""
-        return self._transform_market_data(raw_df, 'secundaria')
-
-    def process_terciaria_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """Transforms data for the 'terciaria' market."""
-        return self._transform_market_data(raw_df, 'terciaria')
-
-    def process_rr_market(self, raw_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """Transforms data for the 'rr' market."""
-        return self._transform_market_data(raw_df, 'rr')
-    
