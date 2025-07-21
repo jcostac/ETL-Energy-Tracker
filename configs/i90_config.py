@@ -460,19 +460,18 @@ class RRConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
         
-class CurtailmentConfig(I90Config):
+class CurtailmentDemandaConfig(I90Config):
     def __init__(self):
         """
         Initializes configuration for the Curtailment market, setting up market IDs, relevant sheet numbers, and redespacho filters for Curtailment-specific data processing.
         """
         super().__init__()
         # get individual id
-        self.curtailment_id: str = self.id_mercado_map["Curtailment"]
         self.curtailment_demanda_id: str = self.id_mercado_map["Curtailment demanda"]
 
         # group id onto a single var (to be used in get_sheets_of_interest)
         # Include both relevant market IDs if processing logic needs them
-        self.market_ids: List[str] = [self.curtailment_id, self.curtailment_demanda_id]
+        self.market_ids: List[str] = [self.curtailment_demanda_id]
 
         # get sheets of interest
         self.volumenes_sheets: List[str]
@@ -481,29 +480,16 @@ class CurtailmentConfig(I90Config):
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
         # Define Redespacho filter for volumenes sheet ('03') associated with the main Curtailment ID
-        # Renamed from curtailment_volumenes_sheets for clarity
-        self.redespacho_filter_curtailment: List[str] = ['UPLPVPV', 'UPLPVPCBN', 'UPOPVPB']
+        self.redespacho_filter_curtailment: List[str] = ['UPOPVPB']
 
-    def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
+    def get_redespacho_filter(self) -> Optional[List[str]]:
         """
         Return the redespacho filter list for the specified Curtailment market ID.
         
-        If the provided market ID matches the main Curtailment market, returns the configured filter list for use with the 'Redespacho' column. Otherwise, delegates to the parent class implementation.
-        
-        Parameters:
-            market_id (str): The market ID for which to retrieve the redespacho filter.
-        
         Returns:
-            Optional[List[str]]: The filter list if applicable, otherwise None.
+            List[str]: The filter list for the Curtailment market.
         """
-        if market_id == self.curtailment_id:
-            # This filter applies when dealing with the primary Curtailment market ID ('13')
-            return self.redespacho_filter_curtailment
-        # elif market_id == self.curtailment_demanda_id:
-            # Define filters for curtailment_demanda (ID '23') if needed, e.g.:
-            # return ['Some', 'Demand', 'Filters']
-        # Otherwise, no specific filter defined for this ID in this config
-        return super().get_redespacho_filter(market_id)
+        return self.redespacho_filter_curtailment
 
 class P48Config(I90Config):
     def __init__(self):

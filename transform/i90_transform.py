@@ -21,7 +21,7 @@ from transform._procesador_i90 import I90Processor # Import the new processor
 from configs.i90_config import (
         I90Config, # Base class
         DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, IntraConfig,
-        CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
+        CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
     )
 
 
@@ -48,7 +48,7 @@ class TransformadorI90:
             'secundaria': SecundariaConfig,
             'terciaria': TerciariaConfig,
             'rr': RRConfig,
-            'curtailment': CurtailmentConfig,
+            'curtailment_demanda': CurtailmentDemandaConfig,
             'p48': P48Config,
             'indisponibilidades': IndisponibilidadesConfig,
             'restricciones': RestriccionesConfig,
@@ -62,12 +62,14 @@ class TransformadorI90:
         """
         Return a list of market names that support volumenes sheets based on their configuration classes.
         """
-        markets = []
+        mercados = []
         for config_cls in I90Config.__subclasses__():
             if config_cls.has_volumenes_sheets(): # Check if the market has volumenes_sheets ie True
-                market_name = config_cls.__name__.replace('Config', '').lower() # parse the market name
-                markets.append(market_name) # Add the market name to the list
-        return markets
+                mercado = config_cls.__name__.replace('Config', '').lower() # parse the market name
+                if mercado == 'curtailmentdemanda': #special case for curtailment_demanda
+                    mercado = 'curtailment_demanda'
+                mercados.append(mercado) # Add the market name to the list
+        return mercados
 
     def _compute_precios_markets(self):
         """

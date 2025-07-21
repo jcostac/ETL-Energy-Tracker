@@ -14,6 +14,7 @@ class CurtailmentTransformer:
     """
 
     def __init__(self):
+        self.mercado = "curtailment_generacion" #this is the market name that will be used to process the data
         self.raw_utils = RawFileUtils()
         self.processor = CurtailmentProcessor()
 
@@ -37,7 +38,7 @@ class CurtailmentTransformer:
                 - 'data': Mapping of source names to processed DataFrames.
                 - 'status': Dictionary containing success status and details.
         """
-        mercado = "curt"
+        mercado = self.mercado
 
         if sources_lst is None:
             sources_lst = ['i90', 'i3']

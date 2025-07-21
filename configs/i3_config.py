@@ -232,14 +232,13 @@ class RRConfig(I3Config):
             return self.redespacho_filter
         return super().get_redespacho_filter(market_id)
 
-class CurtailmentConfig(I3Config):
+class CurtailmentDemandaConfig(I3Config):
     def __init__(self):
         super().__init__()
-        self.curtailment_id = self.id_mercado_map.get("Curtailment")
         self.curtailment_demanda_id = self.id_mercado_map.get("Curtailment demanda")
-        self.market_ids: List[str] = [id for id in [self.curtailment_id, self.curtailment_demanda_id] if id]
+        self.market_ids: List[str] = [id for id in [self.curtailment_demanda_id] if id]
         self.volumenes_sheets = self.get_sheets_of_interest()
-        self.redespacho_filter = ['UPLPVPV', 'UPLPVPCBN', 'UPOPVPB']
+        self.redespacho_filter = ['UPOPVPB']
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
         if market_id in self.market_ids:

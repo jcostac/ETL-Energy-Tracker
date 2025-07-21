@@ -19,7 +19,7 @@ from transform._procesador_i3 import I3Processor
 from configs.i3_config import (
     I3Config,
     DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, IntraConfig,
-    CurtailmentConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
+    CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
 )
 
 class TransformadorI3:
@@ -38,7 +38,7 @@ class TransformadorI3:
             'secundaria': SecundariaConfig,
             'terciaria': TerciariaConfig,
             'rr': RRConfig,
-            'curtailment': CurtailmentConfig,
+            'curtailment_demanda': CurtailmentDemandaConfig,
             'p48': P48Config,
             'indisponibilidades': IndisponibilidadesConfig,
             'restricciones': RestriccionesConfig,
@@ -47,12 +47,14 @@ class TransformadorI3:
         self.i3_volumenes_markets = self._compute_volumenes_markets()
 
     def _compute_volumenes_markets(self):
-        markets = []
+        mercados = []
         for config_cls in I3Config.__subclasses__():
             if config_cls.has_volumenes_sheets():
-                market_name = config_cls.__name__.replace('Config', '').lower()
-                markets.append(market_name)
-        return markets
+                mercado = config_cls.__name__.replace('Config', '').lower()
+                if mercado == 'curtailmentdemanda': #special case for curtailment_demanda
+                    mercado = 'curtailment_demanda'
+                mercados.append(mercado)
+        return mercados
 
     def get_config_for_market(self, mercado: str, fecha: Optional[datetime] = None) -> I3Config:
         config_class = self.market_config_map.get(mercado)

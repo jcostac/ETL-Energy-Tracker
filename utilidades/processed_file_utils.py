@@ -53,7 +53,7 @@ class ProcessedFileUtils(StorageFileUtils):
             elif dataset_type == 'volumenes_i3':
                 df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "tecnologia", "id_mercado"], keep='last')
             elif dataset_type == 'precios_i90':
-                df = df.drop_duplicates(subset=['datetime_utc', 'precio', "up", "id_mercado"], keep='last')
+                df = df.drop_duplicates(subset=['datetime_utc', 'precio', "id_mercado"], keep='last')
             elif dataset_type == 'precios_esios':
                 df = df.drop_duplicates(subset=['datetime_utc', 'precio', "id_mercado"], keep='last')
             elif dataset_type == 'volumenes_omie':
@@ -471,9 +471,21 @@ class ProcessedFileUtils(StorageFileUtils):
         partition_path_str = os.path.join(*path_segments) #kwargs, join path segments ie> processed/mercado="Intra"/id_mercado="2"/year=2024/month=01
         os.makedirs(partition_path_str, exist_ok=True) #create directory if it doesn't exist
 
-        if dataset_type == "precios_i90" or dataset_type == "precios_esios":
-            print(" Naming file as precios.parquet to homogenize processed data naming convention for precios parquet files")
+        if dataset_type == "precios_i90": 
+            print(" Naming precios_i90 file as precios.parquet to homogenize processed data naming convention for precios parquet files")
             dataset_type = "precios"
+            
+        elif dataset_type == "precios_esios":
+            print(" Naming precios_esios file as precios.parquet to homogenize processed data naming convention for precios parquet files")
+            dataset_type = "precios"
+
+        if dataset_type == "curtailments_i90":
+            print(" Naming curtailments_i90 file as volumenes_i90.parquet to homogenize processed data naming convention for curtailments parquet files")
+            dataset_type = "volumenes_i90"
+
+        if dataset_type == "curtailments_i3":
+            print(" Naming curtailments_i3 file as volumenes_i3.parquet to homogenize processed data naming convention for curtailments parquet files")
+            dataset_type = "volumenes_i3"
         
         return os.path.join(partition_path_str, f"{dataset_type}.parquet")
 
