@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 from extract.omie_extractor import OMIEExtractor
 from transform.omie_transform import TransformadorOMIE
-from load.local_data_lake_loader import LocalDataLakeLoader
+from load.data_lake_loader import DataLakeLoader
 
 class TestOMIEPipeline(unittest.TestCase):
     TEST_DATES = [
@@ -49,7 +49,7 @@ class TestOMIEPipeline(unittest.TestCase):
                 self.assertTrue(status['success'], f"OMIE transformation failed for {test_date}")
 
             with self.subTest(phase="Loading", test_date=test_date):
-                loader = LocalDataLakeLoader()
+                loader = DataLakeLoader()
                 load_result = loader.load_transformed_data_volumenes_omie(transform_result)
                 self.assertIsInstance(load_result, dict)
                 self.assertIn("success", load_result)

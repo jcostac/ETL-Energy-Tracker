@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from extract.i3_extractor import I3VolumenesExtractor
 from transform.i3_transform import TransformadorI3
 from transform.curtailment_transform import TransformadorCurtailment
-from load.local_data_lake_loader import LocalDataLakeLoader
+from load.data_lake_loader import DataLakeLoader
 
 class TestI3Pipeline(unittest.TestCase):
     TEST_DATES = [
@@ -52,7 +52,7 @@ class TestI3Pipeline(unittest.TestCase):
                 self.assertTrue(status['success'], f"I3 volumenes transformation failed for {test_date}")
 
             with self.subTest(phase="Load Volumenes", test_date=test_date):
-                loader = LocalDataLakeLoader()
+                loader = DataLakeLoader()
                 load_result_volumenes = loader.load_transformed_data_volumenes_i3(transform_result_volumenes)
                 self.assertIsInstance(load_result_volumenes, dict)
                 self.assertIn("success", load_result_volumenes)

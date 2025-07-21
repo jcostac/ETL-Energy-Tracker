@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 from extract.i3_extractor import I3VolumenesExtractor
 from transform.curtailment_transform import TransformadorCurtailment
-from load.local_data_lake_loader import LocalDataLakeLoader
+from load.data_lake_loader import DataLakeLoader
 from transform.i3_transform import TransformadorI3
 
 class TestI3CurtailmentPipeline(unittest.TestCase):
@@ -45,14 +45,14 @@ class TestI3CurtailmentPipeline(unittest.TestCase):
                 self.assertIn("status", transform_result_volumenes)
 
             with self.subTest(phase="Load Curtailment Demanda", test_date=test_date):
-                loader = LocalDataLakeLoader()
+                loader = DataLakeLoader()
                 load_result_volumenes = loader.load_transformed_data_volumenes_i3(transform_result_volumenes)
                 self.assertIsInstance(load_result_volumenes, dict)
                 self.assertIn("success", load_result_volumenes)
                 self.assertTrue(load_result_volumenes['success'], f"I3 volumenes load failed for {test_date}")
 
             with self.subTest(phase="Load Curtailment Generacion", test_date=test_date):
-                loader = LocalDataLakeLoader()
+                loader = DataLakeLoader()
                 load_result_curtailment = loader.load_transformed_data_curtailments_i3(transform_result_curtailment)
                 self.assertIsInstance(load_result_curtailment, dict)
                 self.assertIn("success", load_result_curtailment)

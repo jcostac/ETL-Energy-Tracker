@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from extract.i90_extractor import I90PreciosExtractor, I90VolumenesExtractor
 from transform.i90_transform import TransformadorI90
 from transform.curtailment_transform import TransformadorCurtailment
-from load.local_data_lake_loader import LocalDataLakeLoader
+from load.data_lake_loader import DataLakeLoader
 
 class TestI90Pipeline(unittest.TestCase):
     TEST_DATES = [
@@ -54,7 +54,7 @@ class TestI90Pipeline(unittest.TestCase):
 
 
             with self.subTest(phase="Load Precios", test_date=test_date):
-                loader = LocalDataLakeLoader()
+                loader = DataLakeLoader()
                 # Load precios
                 load_result_precios = loader.load_transformed_data_precios_i90(transform_result_precios)
                 self.assertIsInstance(load_result_precios, dict)

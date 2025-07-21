@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 from extract.esios_extractor import ESIOSPreciosExtractor
 from transform.esios_transform import TransformadorESIOS
-from load.local_data_lake_loader import LocalDataLakeLoader
+from load.data_lake_loader import DataLakeLoader
 
 class TestEsiosPipeline(unittest.TestCase):
     TEST_DATES = [
@@ -54,7 +54,7 @@ class TestEsiosPipeline(unittest.TestCase):
                         self.assertTrue(expected_columns.issubset(df.columns), f"Missing columns in {market} DF: {expected_columns - set(df.columns)}")
 
             with self.subTest(phase="Load Data", test_date=test_date):
-                loader = LocalDataLakeLoader()
+                loader = DataLakeLoader()
                 load_result = loader.load_transformed_data_esios(transform_result)
                 self.assertIsInstance(load_result, dict)
                 self.assertIn("success", load_result)

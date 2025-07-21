@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from extract.esios_extractor import ESIOSPreciosExtractor
 from transform.esios_transform import TransformadorESIOS
-from load.local_data_lake_loader import LocalDataLakeLoader
+from load.data_lake_loader import DataLakeLoader
 from helpers.email_triggers import dag_failure_email, dag_success_email, task_failure_email, task_success_email
 from helpers.pipeline_status_helpers import update_pipeline_stage_status
 
@@ -88,7 +88,7 @@ def load_esios_prices_func(transformed_data_dict):
     Returns:
         dict: Result of the load operation, typically including status and metadata.
     """
-    loader = LocalDataLakeLoader()
+    loader = DataLakeLoader()
     return loader.load_transformed_data_esios(
         transformed_data_dict=transformed_data_dict
     )

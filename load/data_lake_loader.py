@@ -1,8 +1,8 @@
 """
-LocalDataLakeLoader implementation for storing data in the local filesystem.
+DataLakeLoader implementation for storing data in the local filesystem.
 """
 
-__all__ = ['LocalDataLakeLoader']
+__all__ = ['DataLakeLoader']
 
 from typing import Optional, Union
 from pathlib import Path
@@ -20,7 +20,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 from utilidades.processed_file_utils import ProcessedFileUtils
 
 
-class LocalDataLakeLoader():
+class DataLakeLoader():
     """
     Implementation of DataLakeLoader for storing data in the local filesystem
     using ProcessedFileUtils.
@@ -31,7 +31,7 @@ class LocalDataLakeLoader():
 
     def __init__(self):
         """
-        Initialize a LocalDataLakeLoader instance for saving processed data to the local filesystem.
+        Initialize a DataLakeLoader instance for saving processed data to the local filesystem.
         
         Loads environment variables and prepares file utilities for managing processed data storage.
         """
@@ -39,7 +39,7 @@ class LocalDataLakeLoader():
         # ProcessedFileUtils constructor handles setting the correct base path (raw/processed)
         self.file_utils = ProcessedFileUtils()
 
-        print(f"LocalDataLakeLoader initialized. Processed data path: {self.file_utils.processed_path}")
+        print(f"DataLakeLoader initialized. Processed data path: {self.file_utils.processed_path}")
 
 
     def _save_processed_data(self, processed_df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str) -> None:
@@ -263,26 +263,4 @@ class LocalDataLakeLoader():
             value_cols= ['volumenes'],
             **kwargs
         )
-
-
-def example_usage():
-    """
-    Demonstrates how to use the LocalDataLakeLoader to load transformed data for the 'esios' dataset type with sample empty DataFrames.
-    """
-    loader = LocalDataLakeLoader()
-    transformed_data_dict = {
-        'data': {
-            'diario': pd.DataFrame(),
-            'secundaria': pd.DataFrame()
-        },
-        'status': {
-            'diario': "Success",
-            'secundaria': "Success"
-        }
-    }
-    loader.load_transformed_data_esios(transformed_data_dict)
-
-if __name__ == "__main__":
-    example_usage()
-
 

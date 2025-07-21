@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 # Import necessary modules
 from extract.i90_extractor import I90PreciosExtractor
 from transform.i90_transform import TransformadorI90
-from load.local_data_lake_loader import LocalDataLakeLoader
+from load.data_lake_loader import DataLakeLoader
 from helpers.email_triggers import dag_failure_email, task_failure_email
 from helpers.pipeline_status_helpers import update_pipeline_stage_status
 
@@ -87,7 +87,7 @@ def load_i90_prices_func(transformed_data_dict):
     Returns:
         Any: The result of the data loading operation, as returned by the loader.
     """
-    loader = LocalDataLakeLoader()
+    loader = DataLakeLoader()
     return loader.load_transformed_data_precios_i90(
         transformed_data_dict=transformed_data_dict
     )
