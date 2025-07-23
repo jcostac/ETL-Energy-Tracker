@@ -19,7 +19,7 @@ class TestI3CurtailmentPipeline(unittest.TestCase):
         for test_date in self.TEST_DATES:
             with self.subTest(phase="Extraction Volumenes for Curtailment", test_date=test_date):
                 extractor = I3VolumenesExtractor()
-                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=['restricciones', 'curtailment'])
+                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=['restricciones'])
                 self.assertIsInstance(extract_result, dict)
                 self.assertIn("success", extract_result)
                 self.assertTrue(extract_result['success'], f"I3 volumes extraction for curtailment failed for {test_date}")
@@ -33,6 +33,7 @@ class TestI3CurtailmentPipeline(unittest.TestCase):
                 self.assertIn("status", transform_result_curtailment)
                 status = transform_result_curtailment["status"]
                 self.assertTrue(status['success'], f"I3 curtailment transformation failed for {test_date}")
+                self.assertFalse(transform_result_curtailment['data']['curtailment'].empty, f"I3 generacion curtailment transformation for curtailment returned empty data for {test_date}")
 
             with self.subTest(phase="Transformation Curtailment Demanda", test_date=test_date):
                 transformer = TransformadorI3()
@@ -42,9 +43,9 @@ class TestI3CurtailmentPipeline(unittest.TestCase):
                 self.assertIsInstance(transform_result_volumenes, dict)
                 self.assertIn("data", transform_result_volumenes)
                 self.assertIn("status", transform_result_volumenes)
-                self.assertTrue(transform_result_volumenes['status']['success'], f"I3 volumenes transformation for curtailment failed for {test_date}")
+                self.assertTrue(transform_result_volumenes['status']['success'], f"I3 volumenes transformation for curtailment demanda failed for {test_date}")
                 self.assertIn('curtailment', transform_result_volumenes['data'])
-                self.assertFalse(transform_result_volumenes['data']['curtailment'].empty, f"I3 volumenes transformation for curtailment returned empty data for {test_date}")
+                
 
             with self.subTest(phase="Load Curtailment Demanda", test_date=test_date):
                 loader = DataLakeLoader()

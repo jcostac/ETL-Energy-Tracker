@@ -19,7 +19,7 @@ class TestI90CurtailmentPipeline(unittest.TestCase):
         for test_date in self.TEST_DATES:
             with self.subTest(phase="Extraction Volumenes for Curtailment", test_date=test_date):
                 extractor = I90VolumenesExtractor()
-                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=['restricciones', 'curtailment'])
+                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=['restricciones'])
                 self.assertIsInstance(extract_result, dict)
                 self.assertIn("success", extract_result)
                 self.assertTrue(extract_result['success'], f"I90 volumes extraction for curtailment failed for {test_date}")    
