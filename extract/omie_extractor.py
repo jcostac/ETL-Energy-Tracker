@@ -7,12 +7,14 @@ import numpy as np
 import sys
 import os
 from tqdm import tqdm
+from pathlib import Path
 
-# Add the project root to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from configs.omie_config import OMIEConfig
-from extract._descargador_omie import IntraOMIEDownloader, ContinuoOMIEDownloader, DiarioOMIEDownloader
+from extract.descargadores._descargador_omie import IntraOMIEDownloader, ContinuoOMIEDownloader, DiarioOMIEDownloader
 from utilidades.raw_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils

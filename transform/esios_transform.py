@@ -6,16 +6,14 @@ import pretty_errors
 import sys
 import traceback
 from typing import Optional, Union
-
-# Add necessary imports
 from pathlib import Path
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-# Ensure the project root is added to sys.path if necessary
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.raw_file_utils import RawFileUtils
-from transform._procesador_esios import ESIOSProcessor
+from transform.procesadores._procesador_esios import ESIOSProcessor
 from configs.esios_config import ESIOSConfig
 from utilidades.etl_date_utils import DateUtilsETL
 

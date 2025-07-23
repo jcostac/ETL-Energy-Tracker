@@ -10,11 +10,11 @@ load_dotenv()
 import pytz
 from pathlib import Path
 from deprecated import deprecated
-# Get the absolute path to the project root directory
+
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
-# Use absolute imports
 from utilidades.db_utils import DatabaseUtils
 from configs.esios_config import DiarioConfig, IntraConfig, SecundariaConfig, TerciariaConfig, RRConfig
 from utilidades.proxy_utils import ProxyManager

@@ -9,10 +9,11 @@ from pathlib import Path
 import sys
 from collections import defaultdict
 
-# Get the absolute path to the project root directory
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
-# Use absolute imports
+
+
 from configs.omie_config import DiarioConfig, IntraConfig, IntraContinuoConfig
  
 class OMIEDownloader:

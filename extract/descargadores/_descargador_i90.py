@@ -10,9 +10,11 @@ from typing import Dict, List, Optional, Tuple, Union
 from tqdm import tqdm
 import sys
 import os
+from pathlib import Path
 
-# Add the project root to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.db_utils import DatabaseUtils
 from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentDemandaConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntraConfig
@@ -237,16 +239,24 @@ class I90Downloader:
             # Now read the sheet again, skipping the rows before the header
             df = pd.read_excel(excel_file, sheet_name=sheet_name, skiprows=header_row)
 
-            # Identify the position of the 'Total' column
-            total_col_idx = df.columns.get_loc('Total')
-            #hora col name == column straight after total col
-            hora_col_name = df.columns[total_col_idx + 1]
-            
-            # Split columns into identifier columns (before Total) and hour columns (after Total)
-            id_cols = df.columns[:total_col_idx + 1].tolist()  # Include 'Total'
-            hour_cols = df.columns[total_col_idx + 1:].tolist()  # Everything after 'Total'
+            if 'Total' in df.columns:
+                total_col_idx = df.columns.get_loc('Total')
+                hora_col_name = df.columns[total_col_idx + 1]
+                id_cols = df.columns[:total_col_idx + 1].tolist()
+                hour_cols = df.columns[total_col_idx + 1:].tolist()
+            else:
+                id_cols = []
+                hour_cols = []
+                for col in df.columns:
+                    if isinstance(col, int) or (isinstance(col, str) and col.isdigit()):
+                        hour_cols.append(col)
+                    else:
+                        id_cols.append(col)
+                if not hour_cols:
+                    print(f"Warning: No hour columns identified in sheet {sheet_name}. Skipping sheet.")
+                    continue
+                hora_col_name = hour_cols[0]
 
-            
             # Melt the DataFrame using the dynamic id_cols
             df_melted = df.melt(
                 id_vars=id_cols,

@@ -7,9 +7,11 @@ from datetime import datetime
 from typing import List, Tuple
 import sys
 import os
+from pathlib import Path
 
-# Add the project root to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from configs.i3_config import I3Config, DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig, IntraConfig
 

@@ -3,9 +3,15 @@ from typing import Optional
 from datetime import datetime
 from typing import List
 import traceback
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.raw_file_utils import RawFileUtils
-from transform._procesador_curtailments import CurtailmentProcessor
+from transform.procesadores._procesador_curtailments import CurtailmentProcessor
 
 class TransformadorCurtailment:
     """
