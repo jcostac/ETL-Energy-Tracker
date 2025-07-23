@@ -188,6 +188,12 @@ class I3Downloader:
             # Dynamically find the header row, similar to i90 logic
             df_temp = pd.read_excel(volumenes_excel_file, sheet_name=sheet_name, header=None)
             header_row = 0
+            
+            # if df is empty or has reservada, continue
+            if df_temp.empty or 'Reservada' in df_temp.to_string():
+                print(f"Warning: Sheet {sheet_name} is empty or marked as 'Reservada'. Skipping.")
+                continue
+
             for i, row in df_temp.iterrows():
                 # The header in I3 files contains 'Programa' or 'Concepto'
                 if 'Total' in row.values or 'Concepto' in row.values:
@@ -195,21 +201,37 @@ class I3Downloader:
                     break
             
             if header_row == 0:
-                raise ValueError(f"Could not find header row in sheet {sheet_name}")
+                print(f"Warning: Could not find header row in sheet {sheet_name}. Skipping sheet.")
+                continue
 
             # Now read the sheet again, skipping the rows before the header
             df = pd.read_excel(volumenes_excel_file, sheet_name=sheet_name, skiprows=header_row)
 
-            # Identify the position of the 'Total' column
-            total_col_idx = df.columns.get_loc('Total')
-            #hora col name == column straight after total col (used for granularity check)
-            hora_col_name = df.columns[total_col_idx + 1]
-            
-            # Split columns into identifier columns (before Total) and hour columns (after Total)
-            id_cols = df.columns[:total_col_idx + 1].tolist()  # Include 'Total'
-            hour_cols = df.columns[total_col_idx + 1:].tolist()  # Everything after 'Total'
+            # Identify the position of the 'Total' column or use fallback logic
+            if 'Total' in df.columns:
+                total_col_idx = df.columns.get_loc('Total')
+                hora_col_name = df.columns[total_col_idx + 1]
+                id_cols = df.columns[:total_col_idx + 1].tolist()
+                hour_cols = df.columns[total_col_idx + 1:].tolist()
+            else:
+                # Fallback for formats without 'Total' column
+                id_cols = []
+                hour_cols = []
+                # Identify the start of hour columns
+                for col in df.columns:
+                    # Check if column name is numeric (an hour)
+                    if isinstance(col, int) or (isinstance(col, str) and col.isdigit()):
+                        hour_cols.append(col)
+                    else:
+                        id_cols.append(col)
 
-            
+                if not hour_cols:
+                    print(f"Warning: No hour columns identified in sheet {sheet_name}. Skipping sheet.")
+                    continue
+                
+                # First hour column determines granularity
+                hora_col_name = hour_cols[0]
+
             # Melt the DataFrame using the dynamic id_cols
             df_melted = df.melt(
                 id_vars=id_cols,

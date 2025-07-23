@@ -197,11 +197,8 @@ class SecundariaConfig(I3Config):
         self.secundaria_bajar_id = self.id_mercado_map.get("Secundaria a bajar")
         self.market_ids: List[str] = [id for id in [self.secundaria_subir_id, self.secundaria_bajar_id] if id]
         self.volumenes_sheets = self.get_sheets_of_interest()
-        self.redespacho_filter = ['RR']
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
-        if market_id in self.market_ids:
-            return self.redespacho_filter
         return super().get_redespacho_filter(market_id)
 
 class TerciariaConfig(I3Config):

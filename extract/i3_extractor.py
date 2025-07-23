@@ -369,13 +369,16 @@ class I3VolumenesExtractor(I3Extractor):
         self._extract_and_save_volumenes(day, 'terciaria', self.terciaria_downloader)
 
     def extract_volumenes_secundaria(self, day: datetime) -> None:
+        if day >= self.i3_downloader.config.dia_inicio_SRS:
+            print(f"Skipping secundaria extraction for {day.date()}: market no longer exists after SRS change.")
+            return
         self._extract_and_save_volumenes(day, 'secundaria', self.secundaria_downloader)
 
     def extract_volumenes_rr(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'rr', self.rr_downloader)
 
     def extract_volumenes_curtailment(self, day: datetime) -> None:
-        self._extract_and_save_volumenes(day, 'curtailment_demanda', self.curtailment_downloader)
+        self._extract_and_save_volumenes(day, 'curtailment', self.curtailment_downloader)
 
     def extract_volumenes_p48(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'p48', self.p48_downloader)
@@ -409,7 +412,7 @@ class I3VolumenesExtractor(I3Extractor):
             ("terciaria", self.extract_volumenes_terciaria),
             ("secundaria", self.extract_volumenes_secundaria),
             ("rr", self.extract_volumenes_rr),
-            ("curtailment_demanda", self.extract_volumenes_curtailment),
+            ("curtailment", self.extract_volumenes_curtailment),
             ("p48", self.extract_volumenes_p48),
             ("indisponibilidades", self.extract_volumenes_indisponibilidades),
             ("restricciones", self.extract_volumenes_restricciones)

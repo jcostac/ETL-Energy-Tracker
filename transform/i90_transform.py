@@ -48,7 +48,7 @@ class TransformadorI90:
             'secundaria': SecundariaConfig,
             'terciaria': TerciariaConfig,
             'rr': RRConfig,
-            'curtailment_demanda': CurtailmentDemandaConfig,
+            'curtailment': CurtailmentDemandaConfig,
             'p48': P48Config,
             'indisponibilidades': IndisponibilidadesConfig,
             'restricciones': RestriccionesConfig,
@@ -66,8 +66,8 @@ class TransformadorI90:
         for config_cls in I90Config.__subclasses__():
             if config_cls.has_volumenes_sheets(): # Check if the market has volumenes_sheets ie True
                 mercado = config_cls.__name__.replace('Config', '').lower() # parse the market name
-                if mercado == 'curtailmentdemanda': #special case for curtailment_demanda
-                    mercado = 'curtailment_demanda'
+                if mercado == 'curtailmentdemanda': #special case for curtailment
+                    mercado = 'curtailment'
                 mercados.append(mercado) # Add the market name to the list
         return mercados
 

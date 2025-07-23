@@ -482,14 +482,17 @@ class CurtailmentDemandaConfig(I90Config):
         # Define Redespacho filter for volumenes sheet ('03') associated with the main Curtailment ID
         self.redespacho_filter_curtailment: List[str] = ['UPOPVPB']
 
-    def get_redespacho_filter(self) -> Optional[List[str]]:
+    def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
         """
         Return the redespacho filter list for the specified Curtailment market ID.
         
         Returns:
             List[str]: The filter list for the Curtailment market.
         """
-        return self.redespacho_filter_curtailment
+        if market_id == self.curtailment_demanda_id:
+            return self.redespacho_filter_curtailment
+        else:
+            return super().get_redespacho_filter(market_id)
 
 class P48Config(I90Config):
     def __init__(self):

@@ -14,7 +14,7 @@ class TransformadorCurtailment:
     """
 
     def __init__(self):
-        self.mercado = "curtailment_generacion" #this is the market name that will be used to process the data
+        self.mercado = "curtailment" #this is the market name that will be used to process the data
         self.raw_utils = RawFileUtils()
         self.processor = CurtailmentProcessor()
 

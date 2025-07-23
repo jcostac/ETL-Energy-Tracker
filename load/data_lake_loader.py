@@ -122,7 +122,7 @@ class DataLakeLoader():
                         market_success[mercado] = False  # Explicitly set to False on error
                 else:
                     results.append(f"ℹ️ No {dataset_type} data to load for market {mercado}")
-                    market_success[mercado] = False  # Set to False for empty data
+                    market_success[mercado] = True #empty data but no error is a success
 
         except ValueError as ve:
             results.append(str(ve))

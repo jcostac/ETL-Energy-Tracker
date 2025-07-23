@@ -38,7 +38,7 @@ class TransformadorI3:
             'secundaria': SecundariaConfig,
             'terciaria': TerciariaConfig,
             'rr': RRConfig,
-            'curtailment_demanda': CurtailmentDemandaConfig,
+            'curtailment': CurtailmentDemandaConfig,
             'p48': P48Config,
             'indisponibilidades': IndisponibilidadesConfig,
             'restricciones': RestriccionesConfig,
@@ -51,8 +51,8 @@ class TransformadorI3:
         for config_cls in I3Config.__subclasses__():
             if config_cls.has_volumenes_sheets():
                 mercado = config_cls.__name__.replace('Config', '').lower()
-                if mercado == 'curtailmentdemanda': #special case for curtailment_demanda
-                    mercado = 'curtailment_demanda'
+                if mercado == 'curtailmentdemanda': #special case for curtailment
+                    mercado = 'curtailment'
                 mercados.append(mercado)
         return mercados
 
@@ -75,137 +75,7 @@ class TransformadorI3:
         except Exception as e:
             print(f"Error instantiating config class {config_class.__name__} for market {mercado}: {e}")
             raise
-
-    def transform_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
-                                       mercados_lst: Optional[List[str]] = None) -> dict:
-        """
-        Transforms I3 market data for specified markets over a given date range or mode.
-        
-        Automatically determines the transformation mode based on the provided date parameters:
-        - If no dates are given, processes the latest available data ('latest' mode).
-        - If only `fecha_inicio` is provided or both dates are equal, processes a single day ('single' mode).
-        - If both dates are provided and different, processes the full date range ('multiple' mode).
-
-        Parameters:
-            fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format, or the single date to process.
-            fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. If omitted or equal to `fecha_inicio`, processes a single day.
-            mercados_lst (List[str], optional): List of market names to process. If omitted, processes all markets relevant to the dataset type.
-            dataset_type (str): The dataset type to process ('volumenes_i3' or 'precios_i90').
-            
-        Returns:
-            dict: A dictionary with:
-                - 'data': Mapping of market names to processed DataFrames (or lists of DataFrames if multiple days are processed).
-                - 'status': Dictionary containing:
-                    - 'success': Boolean indicating overall success.
-                    - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.
-        """
-    
-        if fecha_inicio is None and fecha_fin is None:
-            transform_type = 'latest'
-        elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
-            transform_type = 'single'
-        elif fecha_inicio is not None and fecha_fin is not None and fecha_inicio != fecha_fin:
-            transform_type = 'multiple'
-
-        status_details = {
-            "markets_processed": [],
-            "markets_failed": [],
-            "mode": transform_type,
-            "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
-        }
-
-        overall_success = True
-        results = {}
-        dataset_type = 'volumenes_i3'
-
-        try:
-            print(f"\n===== STARTING TRANSFORMATION RUN (Mode: {transform_type.upper()}) =====")
-            print(f"Dataset type: {dataset_type}")
-            if fecha_inicio: print(f"Start Date: {fecha_inicio}")
-            if fecha_fin: print(f"End Date: {fecha_fin}")
-            print("="*60)
-
-            if mercados_lst is None:
-                relevant_markets = self.i3_volumenes_markets
-            else:
-                invalid_markets = [m for m in mercados_lst if m not in self.i3_volumenes_markets]
-                if invalid_markets:
-                    print(f"Warning: Invalid markets for {dataset_type}: {', '.join(invalid_markets)}")
-                relevant_markets = [m for m in mercados_lst if m in self.i3_volumenes_markets]
-
-            if not relevant_markets:
-                return {"data": results, "status": {"success": False, "details": f"No relevant markets for {dataset_type}."}}
-
-            for mercado in relevant_markets:
-                print(f"\n-- Market: {mercado} --")
-                try:
-                    if transform_type == 'single':
-                        market_result = self._process_single_day(mercado, dataset_type, fecha_inicio)
-                    elif transform_type == 'latest':
-                        market_result = self._process_latest_day(mercado, dataset_type)
-                    elif transform_type == 'multiple':
-                        market_result = self._process_date_range(mercado, dataset_type, fecha_inicio, fecha_fin)
-
-                    if market_result is not None:
-                        if isinstance(market_result, pd.DataFrame):
-                            if not market_result.empty:
-                                status_details["markets_processed"].append(mercado)
-                                results[mercado] = market_result
-                            else:
-                                print(f"⚠️ Empty DataFrame for {mercado}. Continuing.")
-                                results[mercado] = market_result
-                        elif isinstance(market_result, list):
-                            success_count = sum(1 for df in market_result if isinstance(df, pd.DataFrame) and not df.empty)
-                            if success_count > 0:
-                                status_details["markets_processed"].append(mercado)
-                                results[mercado] = market_result
-                            else:
-                                print(f"⚠️ All empty DataFrames for {mercado}. Continuing.")
-                                results[mercado] = market_result
-                        else:
-                            status_details["markets_failed"].append({
-                                "market": mercado,
-                                "error": "No valid data produced"
-                            })
-                            overall_success = False
-                            results[mercado] = None
-                            continue
-
-                except Exception as e:
-                    status_details["markets_failed"].append({
-                        "market": mercado,
-                        "error": str(e)
-                    })
-                    overall_success = False
-                    results[mercado] = None
-                    print(f"❌ Failed to transform {dataset_type} for {mercado} ({transform_type}): {e}")
-                    print(traceback.format_exc())
-
-            print(f"\n===== TRANSFORMATION RUN FINISHED (Mode: {transform_type.upper()}) =====")
-            print("Summary:")
-            for market, result in results.items():
-                status = "Failed/No Data"
-                if isinstance(result, pd.DataFrame):
-                    status = f"Success ({len(result)} records)" if not result.empty else "Success (Empty DF)"
-                elif isinstance(result, list):
-                    success_count = sum(1 for df in result if isinstance(df, pd.DataFrame) and not df.empty)
-                    total_items = len(result)
-                    status = f"Batch Success ({success_count}/{total_items} periods processed)"
-                print(f"- {market}: {status}")
-            print("="*60)
-
-        except Exception as e:
-            overall_success = False
-            status_details["error"] = str(e)
-
-        return {
-            "data": results,
-            "status": {
-                "success": overall_success,
-                "details": status_details
-            }
-        }
-
+ 
     def _transform_data(self, raw_df: pd.DataFrame, mercado: str, dataset_type: str, fecha: Optional[datetime] = None) -> pd.DataFrame:
         if raw_df.empty:
             print(f"Skipping transformation for {mercado} - {dataset_type}: Input DataFrame is empty.")
@@ -277,6 +147,12 @@ class TransformadorI3:
         print(f"Starting SINGLE transformation for {mercado} - {dataset_type} on {date}")
         try:
             target_date = pd.to_datetime(date)
+
+            market_config = self.get_config_for_market(mercado, fecha=target_date)
+            if mercado == 'secundaria' and target_date >= market_config.dia_inicio_SRS:
+                print(f"Skipping secundaria transformation for {date}: market no longer available after SRS change date.")
+                return pd.DataFrame()
+
             target_year = target_date.year
             target_month = target_date.month
 
@@ -340,6 +216,11 @@ class TransformadorI3:
                         else:
                             fecha_for_config = None
 
+                        market_config = self.get_config_for_market(mercado, fecha=fecha_for_config)
+                        if mercado == 'secundaria' and fecha_for_config and fecha_for_config >= market_config.dia_inicio_SRS:
+                            print(f"Skipping secundaria transformation for latest day {fecha_for_config.date()}: market no longer available after SRS change date.")
+                            return pd.DataFrame()
+
                         processed_df = self._transform_data(filtered_df, mercado, dataset_type, fecha=fecha_for_config)
                         found = True
                         return processed_df
@@ -355,6 +236,16 @@ class TransformadorI3:
         try:
             start_dt = pd.to_datetime(fecha_inicio)
             end_dt = pd.to_datetime(fecha_fin)
+
+            market_config = self.get_config_for_market(mercado, fecha=start_dt)
+            if mercado == 'secundaria':
+                if start_dt >= market_config.dia_inicio_SRS:
+                    print(f"Skipping secundaria transformation for date range starting {fecha_inicio}: entire range is after SRS change date.")
+                    return pd.DataFrame()
+                if end_dt >= market_config.dia_inicio_SRS:
+                    print(f"Adjusting end date for secundaria from {fecha_fin} to {(market_config.dia_inicio_SRS - pd.Timedelta(days=1)).strftime('%Y-%m-%d')} due to SRS change.")
+                    end_dt = market_config.dia_inicio_SRS - pd.Timedelta(days=1)
+                    fecha_fin = end_dt.strftime('%Y-%m-%d')
 
             if start_dt > end_dt: raise ValueError("Start date cannot be after end date.")
 
@@ -405,4 +296,132 @@ class TransformadorI3:
             print(f"An unexpected error occurred during multiple transform: {e}")
             print(traceback.format_exc())
 
-   
+    def transform_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
+                                        mercados_lst: Optional[List[str]] = None) -> dict:
+            """
+            Transforms I3 market data for specified markets over a given date range or mode.
+            
+            Automatically determines the transformation mode based on the provided date parameters:
+            - If no dates are given, processes the latest available data ('latest' mode).
+            - If only `fecha_inicio` is provided or both dates are equal, processes a single day ('single' mode).
+            - If both dates are provided and different, processes the full date range ('multiple' mode).
+
+            Parameters:
+                fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format, or the single date to process.
+                fecha_fin (str, optional): End date in 'YYYY-MM-DD' format. If omitted or equal to `fecha_inicio`, processes a single day.
+                mercados_lst (List[str], optional): List of market names to process. If omitted, processes all markets relevant to the dataset type.
+                dataset_type (str): The dataset type to process ('volumenes_i3' or 'precios_i90').
+                
+            Returns:
+                dict: A dictionary with:
+                    - 'data': Mapping of market names to processed DataFrames (or lists of DataFrames if multiple days are processed).
+                    - 'status': Dictionary containing:
+                        - 'success': Boolean indicating overall success.
+                        - 'details': Dictionary with lists of processed and failed markets, the mode used, and the date range.
+            """
+        
+            if fecha_inicio is None and fecha_fin is None:
+                transform_type = 'latest'
+            elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
+                transform_type = 'single'
+            elif fecha_inicio is not None and fecha_fin is not None and fecha_inicio != fecha_fin:
+                transform_type = 'multiple'
+
+            status_details = {
+                "markets_processed": [],
+                "markets_failed": [],
+                "mode": transform_type,
+                "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
+            }
+
+            overall_success = True
+            results = {}
+            dataset_type = 'volumenes_i3'
+
+            try:
+                print(f"\n===== STARTING TRANSFORMATION RUN (Mode: {transform_type.upper()}) =====")
+                print(f"Dataset type: {dataset_type}")
+                if fecha_inicio: print(f"Start Date: {fecha_inicio}")
+                if fecha_fin: print(f"End Date: {fecha_fin}")
+                print("="*60)
+
+                if mercados_lst is None:
+                    relevant_markets = self.i3_volumenes_markets
+                else:
+                    invalid_markets = [m for m in mercados_lst if m not in self.i3_volumenes_markets]
+                    if invalid_markets:
+                        print(f"Warning: Invalid markets for {dataset_type}: {', '.join(invalid_markets)}")
+                    relevant_markets = [m for m in mercados_lst if m in self.i3_volumenes_markets]
+
+                if not relevant_markets:
+                    return {"data": results, "status": {"success": False, "details": f"No relevant markets for {dataset_type}."}}
+
+                for mercado in relevant_markets:
+                    print(f"\n-- Market: {mercado} --")
+                    try:
+                        if transform_type == 'single':
+                            market_result = self._process_single_day(mercado, dataset_type, fecha_inicio)
+                        elif transform_type == 'latest':
+                            market_result = self._process_latest_day(mercado, dataset_type)
+                        elif transform_type == 'multiple':
+                            market_result = self._process_date_range(mercado, dataset_type, fecha_inicio, fecha_fin)
+
+                        if market_result is not None:
+                            if isinstance(market_result, pd.DataFrame):
+                                if not market_result.empty:
+                                    status_details["markets_processed"].append(mercado)
+                                    results[mercado] = market_result
+                                else:
+                                    print(f"⚠️ Empty DataFrame for {mercado}. Continuing.")
+                                    results[mercado] = market_result
+                            elif isinstance(market_result, list):
+                                success_count = sum(1 for df in market_result if isinstance(df, pd.DataFrame) and not df.empty)
+                                if success_count > 0:
+                                    status_details["markets_processed"].append(mercado)
+                                    results[mercado] = market_result
+                                else:
+                                    print(f"⚠️ All empty DataFrames for {mercado}. Continuing.")
+                                    results[mercado] = market_result
+                            else:
+                                status_details["markets_failed"].append({
+                                    "market": mercado,
+                                    "error": "No valid data produced"
+                                })
+                                overall_success = False
+                                results[mercado] = None
+                                continue
+
+                    except Exception as e:
+                        status_details["markets_failed"].append({
+                            "market": mercado,
+                            "error": str(e)
+                        })
+                        overall_success = False
+                        results[mercado] = None
+                        print(f"❌ Failed to transform {dataset_type} for {mercado} ({transform_type}): {e}")
+                        print(traceback.format_exc())
+
+                print(f"\n===== TRANSFORMATION RUN FINISHED (Mode: {transform_type.upper()}) =====")
+                print("Summary:")
+                for market, result in results.items():
+                    status = "Failed/No Data"
+                    if isinstance(result, pd.DataFrame):
+                        status = f"Success ({len(result)} records)" if not result.empty else "Success (Empty DF)"
+                    elif isinstance(result, list):
+                        success_count = sum(1 for df in result if isinstance(df, pd.DataFrame) and not df.empty)
+                        total_items = len(result)
+                        status = f"Batch Success ({success_count}/{total_items} periods processed)"
+                    print(f"- {market}: {status}")
+                print("="*60)
+
+            except Exception as e:
+                overall_success = False
+                status_details["error"] = str(e)
+
+            return {
+                "data": results,
+                "status": {
+                    "success": overall_success,
+                    "details": status_details
+                }
+            }

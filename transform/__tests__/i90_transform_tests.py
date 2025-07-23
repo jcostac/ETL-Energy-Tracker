@@ -105,7 +105,7 @@ class TestI90Transform(unittest.TestCase):
         """
         for test_date in self.TEST_DATES:
             transformer = TransformadorI90()
-            result = transformer.transform_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, dataset_type="volumenes_i90", mercados_lst=["terciaria", "rr", "curtailment_demanda", "p48", "indisponibilidades", "restricciones"])
+            result = transformer.transform_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, dataset_type="volumenes_i90", mercados_lst=["terciaria", "rr", "curtailment", "p48", "indisponibilidades", "restricciones"])
             result_status = result["status"]
             self.assertTrue(result_status["success"], f"Multiple markets volumenes transformation failed. Details: {result_status.get('details', {})}")
 

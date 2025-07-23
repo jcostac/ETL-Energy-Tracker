@@ -609,9 +609,9 @@ class I90Processor:
                 print(f"   Columns: {df_processed.shape[1]}")
 
                 if df_processed.empty and step_func != self._validate_final_data:
-                    print("\n❌ PIPELINE HALTED")
-                    print(f"DataFrame became empty after step: {step_func.__name__}")
-                    raise ValueError(f"DataFrame empty after: {step_func.__name__}")
+                    print(f"\n⚠️  DataFrame became empty after step: {step_func.__name__}")
+                    # Instead of raising an error, return an empty DataFrame with the correct schema
+                    return self._empty_output_df(dataset_type)
 
             print("\n✅ TRANSFORMATION COMPLETE")
             print(f"Final shape: {df_processed.shape}")

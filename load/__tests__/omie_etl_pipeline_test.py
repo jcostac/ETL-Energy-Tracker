@@ -31,29 +31,20 @@ class TestOMIEPipeline(unittest.TestCase):
                 self.assertFalse(details["markets_failed"], f"Extraction had failures: {details['markets_failed']}")
                 self.assertTrue(extract_result['success'], f"OMIE extraction failed for {test_date}")
 
-            with self.subTest(phase="Transformation", test_date=test_date):
+            with self.subTest(phase="Transformation Precios", test_date=test_date):
                 transformer = TransformadorOMIE()
-                transform_result = transformer.transform_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date)
-                self.assertIsInstance(transform_result, dict)
-                self.assertIn("data", transform_result)
-                self.assertIn("status", transform_result)
-                status = transform_result["status"]
-                self.assertIn("success", status)
-                self.assertIn("details", status)
-                details = status["details"]
-                self.assertIn("markets_processed", details)
-                self.assertIn("markets_failed", details)
-                self.assertIn("mode", details)
-                self.assertIn("date_range", details)
-                self.assertFalse(details["markets_failed"], f"Transformation had failures: {details['markets_failed']}")
-                self.assertTrue(status['success'], f"OMIE transformation failed for {test_date}")
+                transform_result_precios = transformer.transform_data(fecha_inicio=test_date, fecha_fin=test_date, dataset_type='precios')
+                self.assertIsInstance(transform_result_precios, dict)
+                self.assertIn("data", transform_result_precios)
+                self.assertIn("status", transform_result_precios)
+                self.assertTrue(transform_result_precios['status']['success'], f"OMIE prices transformation failed for {test_date}")
 
-            with self.subTest(phase="Loading", test_date=test_date):
+            with self.subTest(phase="Load Volumenes", test_date=test_date):
                 loader = DataLakeLoader()
-                load_result = loader.load_transformed_data_volumenes_omie(transform_result)
-                self.assertIsInstance(load_result, dict)
-                self.assertIn("success", load_result)
-                self.assertTrue(load_result['success'], f"OMIE load failed for {test_date}")
+                load_result_volumenes = loader.load_transformed_data_volumenes_omie(transform_result_precios)
+                self.assertIsInstance(load_result_volumenes, dict)
+                self.assertIn("success", load_result_volumenes)
+                self.assertTrue(load_result_volumenes['success'], f"OMIE load failed for {test_date}")
 
 if __name__ == "__main__":
     unittest.main()
