@@ -88,52 +88,6 @@ class ProcessedFileUtils(StorageFileUtils):
 
         return df
         
-    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str) -> None:
-        """
-        Writes a DataFrame as partitioned Parquet files using Hive-style directory structure.
-        
-        The DataFrame is partitioned by 'mercado', 'id_mercado', 'year', and 'month'. For each unique partition, the method combines new and existing data, removes duplicates, and writes the result as a Parquet file with the specified value columns. Raises an exception if the input DataFrame is empty or if required partition columns are missing.
-        """
-        if df.empty:
-            raise ValueError(f"Input DataFrame for {mercado} is empty. Cannot proceed with write operation.")
-        
-        try:
-            # Prepare the input DataFrame
-            df = self._prepare_input_dataframe(df, mercado)
-
-            # Get unique partitions from the input DataFrame
-            partition_cols = ['mercado', 'id_mercado', 'year', 'month']
-            if not self._validate_partition_columns(df, partition_cols):
-                raise ValueError(f"Missing required partition columns in DataFrame")
-
-            # Process partitions
-            unique_partitions_df = df[partition_cols].drop_duplicates()
-            
-            for _, partition in unique_partitions_df.iterrows():
-                try:
-                    output_file_path = self._build_partition_path(partition, partition_cols, dataset_type)
-                    
-                    # Handle existing file
-                    existing_data_df = self._read_existing_partition_file(output_file_path, partition)
-                    
-                    # Filter new data
-                    new_data_partition_df = self._filter_df_for_partition(df, partition, partition_cols)
-                    
-                    # Combine and write
-                    self._combine_and_write_partition(
-                        new_data_df=new_data_partition_df,
-                        existing_data_df=existing_data_df,
-                        partition_cols=partition_cols,
-                        output_file_path=output_file_path,
-                        value_cols=value_cols,
-                        dataset_type=dataset_type
-                    )
-                except Exception as e:
-                    raise Exception(f"Failed to process partition {partition.to_dict()}: {str(e)}")
-
-        except Exception as e:
-            raise Exception(f"Failed to write processed parquet: {str(e)}")
-
     def _prepare_input_dataframe(self, df: pd.DataFrame, mercado: str) -> pd.DataFrame:
         """
         Prepare a DataFrame for partitioned storage by adding partition columns and converting the `datetime_utc` column to timezone-naive.
@@ -528,3 +482,116 @@ class ProcessedFileUtils(StorageFileUtils):
         
         print("--------------------------------")
         return dict_cols
+    
+    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str) -> None:
+            """
+            Writes a DataFrame as partitioned Parquet files using Hive-style directory structure.
+            
+            The DataFrame is partitioned by 'mercado', 'id_mercado', 'year', and 'month'. For each unique partition, the method combines new and existing data, removes duplicates, and writes the result as a Parquet file with the specified value columns. Raises an exception if the input DataFrame is empty or if required partition columns are missing.
+            """
+            if df.empty:
+                raise ValueError(f"Input DataFrame for {mercado} is empty. Cannot proceed with write operation.")
+            
+            try:
+                # Prepare the input DataFrame
+                df = self._prepare_input_dataframe(df, mercado)
+
+                # Get unique partitions from the input DataFrame
+                partition_cols = ['mercado', 'id_mercado', 'year', 'month']
+                if not self._validate_partition_columns(df, partition_cols):
+                    raise ValueError(f"Missing required partition columns in DataFrame")
+
+                # Process partitions
+                unique_partitions_df = df[partition_cols].drop_duplicates()
+                
+                for _, partition in unique_partitions_df.iterrows():
+                    try:
+                        output_file_path = self._build_partition_path(partition, partition_cols, dataset_type)
+                        
+                        # Handle existing file
+                        existing_data_df = self._read_existing_partition_file(output_file_path, partition)
+                        
+                        # Filter new data
+                        new_data_partition_df = self._filter_df_for_partition(df, partition, partition_cols)
+                        
+                        # Combine and write
+                        self._combine_and_write_partition(
+                            new_data_df=new_data_partition_df,
+                            existing_data_df=existing_data_df,
+                            partition_cols=partition_cols,
+                            output_file_path=output_file_path,
+                            value_cols=value_cols,
+                            dataset_type=dataset_type
+                        )
+                    except Exception as e:
+                        raise Exception(f"Failed to process partition {partition.to_dict()}: {str(e)}")
+
+            except Exception as e:
+                raise Exception(f"Failed to write processed parquet: {str(e)}")
+
+    def read_latest_processed_file(self, mercado: str, dataset_type: str) -> Optional[pd.DataFrame]:
+            """
+            Reads the latest available processed file for a given market and dataset type.
+
+            It searches for all matching processed files and identifies the one in the
+            most recent 'year' and 'month' directory.
+
+            Args:
+                mercado (str): The market name (e.g., 'i3', 'i90').
+                dataset_type (str): The type of dataset (e.g., 'p48_tecnologias_generacion').
+
+            Returns:
+                Optional[pd.DataFrame]: A DataFrame with the contents of the latest processed file,
+                                        or None if no file is found.
+            """
+            try:
+                print(f"🔍 Searching for the latest processed file for market '{mercado}' and dataset '{dataset_type}'...")
+
+                # Some dataset types have different filenames in processed storage
+                if dataset_type in ["precios_i90", "precios_esios"]:
+                    filename = "precios.parquet"
+                elif dataset_type == "curtailments_i90":
+                    filename = "volumenes_i90.parquet"
+                elif dataset_type == "curtailments_i3":
+                    filename = "volumenes_i3.parquet"
+                else:
+                    filename = f"{dataset_type}.parquet"
+                
+                # Glob pattern to find all possible files
+                search_pattern = f"mercado={mercado}/**/year=*/month=*/{filename}"
+                all_files = list(self.processed_path.glob(search_pattern))
+
+                if not all_files:
+                    print(f"⚠️ No processed file found for dataset '{dataset_type}' in market '{mercado}'.")
+                    return None
+
+                # Find the latest file by parsing year and month from the path
+                latest_file = None
+                latest_year = -1
+                latest_month = -1
+
+                for f in all_files:
+                    try:
+                        parts = f.parts
+                        # Find year and month from path parts
+                        year = int([p for p in parts if p.startswith('year=')][0].split('=')[1])
+                        month = int([p for p in parts if p.startswith('month=')][0].split('=')[1])
+
+                        if year > latest_year or (year == latest_year and month > latest_month):
+                            latest_year = year
+                            latest_month = month
+                            latest_file = f
+                    except (ValueError, IndexError):
+                        # Ignore paths that don't have the expected year/month format
+                        continue
+
+                if latest_file:
+                    print(f"  📄 Found latest processed file: {latest_file}")
+                    return pd.read_parquet(latest_file)
+                else:
+                    print(f"⚠️ No valid processed file found for dataset '{dataset_type}' in market '{mercado}'.")
+                    return None
+
+            except Exception as e:
+                print(f"❌ Error reading the latest processed file: {e}")
+                raise

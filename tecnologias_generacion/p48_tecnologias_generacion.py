@@ -7,12 +7,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from utilidades.raw_file_utils import RawFileUtils
+from utilidades.processed_file_utils import ProcessedFileUtils
 from utilidades.db_utils import DatabaseUtils
 
 class P48TecnologiasGeneracion:
     def __init__(self):
-        self.raw_file_utils = RawFileUtils()
+        self.processed_file_utils = ProcessedFileUtils()
         self.mercado = "p48"
         self.dataset_type = "volumenes_i3"
         self.table_name = "tecnologias_generacion"
@@ -22,7 +22,7 @@ class P48TecnologiasGeneracion:
         """
         Reads the latest available P48 file from the I3 source and returns the DataFrame.
         """
-        return self.raw_file_utils.read_latest_raw_file(self.mercado, self.dataset_type)
+        return self.processed_file_utils.read_latest_processed_file(self.mercado, self.dataset_type)
 
     def get_unique_p48_conceptos(self) -> set:
         """
