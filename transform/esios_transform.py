@@ -25,7 +25,7 @@ class TransformadorESIOS:
 
         # Initialize the processor
         """
-        Initializes the TransformadorESIOS instance with processor, file utilities, and configuration for supported transformation types.
+        Initialize the TransformadorESIOS instance with market data processor, file utilities, date utilities, and configuration for supported transformation modes.
         """
         self.processor = ESIOSProcessor()
 
@@ -39,18 +39,18 @@ class TransformadorESIOS:
     
     def _filter_data_by_mode(self, raw_df: pd.DataFrame, mode: str, fecha_inicio: str = None, fecha_fin: str = None) -> pd.DataFrame:
         """
-        Filter the input DataFrame according to the specified transformation mode and date parameters.
+        Filters the input DataFrame based on the specified transformation mode and date parameters.
         
-        Depending on the mode, this method selects rows for the latest day, a single day, a date range, or returns the entire DataFrame. For 'single' and 'multiple' modes, the relevant date parameters must be provided. Returns an empty DataFrame if the input is empty.
+        Depending on the mode, returns rows for the latest day, a single day, a date range, or the entire DataFrame. For 'single' and 'multiple' modes, the relevant date parameters must be provided. Returns an empty DataFrame if the input is empty.
         
         Parameters:
-            raw_df (pd.DataFrame): Input DataFrame containing a 'datetime_utc' column.
+            raw_df (pd.DataFrame): DataFrame containing a 'datetime_utc' column to filter.
             mode (str): Transformation mode; one of 'latest', 'batch', 'single', or 'multiple'.
             fecha_inicio (str, optional): Start date in 'YYYY-MM-DD' format, required for 'single' and 'multiple' modes.
             fecha_fin (str, optional): End date in 'YYYY-MM-DD' format, required for 'multiple' mode.
         
         Returns:
-            pd.DataFrame: Filtered DataFrame according to the selected mode and date(s).
+            pd.DataFrame: DataFrame filtered according to the selected mode and date(s).
         """
 
         # First ensure datetime_utc is properly converted

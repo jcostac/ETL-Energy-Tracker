@@ -18,7 +18,7 @@ class I3Processor:
     """
     def __init__(self):
         """
-        Initializes the I3Processor with utilities for date handling, data validation, and file operations.
+        Initialize the I3Processor with utility classes for date handling, data validation, file operations, and database access.
         """
         self.date_utils = DateUtilsETL()
         self.data_validation_utils = DataValidationUtils()
@@ -29,7 +29,10 @@ class I3Processor:
     # === FILTERING ===
     def _filter_by_technology(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Filters the DataFrame by the 'Concepto' column, keeping only rows where the value is in the allowed technologies from the database table 'tecnologias_generacion'.
+        Filter rows to include only those with allowed technologies as defined in the 'tecnologias_generacion' database table.
+        
+        Returns:
+            pd.DataFrame: DataFrame containing only rows where the 'Concepto' column matches an allowed technology. If the column is missing or an error occurs, returns the original DataFrame.
         """
         if df.empty or 'Concepto' not in df.columns:
             return df
@@ -55,8 +58,9 @@ class I3Processor:
         
     def _apply_market_filters_and_id(self, df: pd.DataFrame, market_config: I3Config) -> pd.DataFrame:
         """
-        Filter the input DataFrame according to the market configuration and assign the market ID.
-        """
+        Filters the input DataFrame according to the specified market configuration and assigns the appropriate market ID to each row.
+        
+        For intra-day market configurations, maps session identifiers to market names and IDs, filters relevant sessions, and removes intermediate columns. For other market types, applies technology, direction ('Sentido'), and redispatch ('Redespacho') filters as defined in the configuration, assigning the corresponding market ID to each filtered subset. Returns a DataFrame containing only rows matching the market configuration, or an empty DataFrame if no data matches or required columns/configuration attributes are missing.
         if df.empty:
             return pd.DataFrame()
         
@@ -156,9 +160,10 @@ class I3Processor:
     # === STANDARDIZATION ===
     def _standardize_datetime(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Standardizes and converts input datetimes to a UTC column with 15-minute granularity, handling DST transitions and multiple input formats.
+        Standardizes datetimes in the input DataFrame to UTC with 15-minute intervals, handling daylight saving time transitions and various input formats.
         
-        Splits the input DataFrame by granularity and DST transition days, applies appropriate datetime parsing and conversion methods for each subset, and combines the results into a single DataFrame with a standardized `datetime_utc` column. Drops intermediate columns and invalid datetimes before returning the processed DataFrame.
+        Returns:
+            pd.DataFrame: DataFrame with a standardized `datetime_utc` column and invalid datetimes removed.
         """
         return self.date_utils.standardize_datetime(df, dataset_type)
 
@@ -166,70 +171,83 @@ class I3Processor:
     @with_progress(message="Processing hourly data...", interval=2)
     def _process_hourly_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Processes hourly market data with possible DST suffixes, generating UTC datetimes at 15-minute intervals.
-        
-        Converts "HH-HH+1" formatted time strings (including 'a'/'b' suffixes for DST fall-back) into timezone-aware local datetimes, then to UTC. Expands each hourly entry into four 15-minute intervals for downstream analysis.
+        Process hourly market data by converting time strings (including DST suffixes) to UTC datetimes and expanding each hour into four 15-minute intervals.
         
         Returns:
-            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute granularity, or an empty DataFrame on error.
+            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute intervals, or an empty DataFrame if processing fails.
         """
         return self.date_utils.process_hourly_data(df, dataset_type)
     
     @with_progress(message="Processing 15-minute data...", interval=2)
     def _process_15min_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Process 15-minute data (numeric index "1" to "96/92/100").
-        Creates timezone-aware datetime_local series and converts to UTC.
+        Processes 15-minute interval data by generating timezone-aware local datetimes and converting them to UTC.
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized UTC datetime columns for 15-minute intervals.
         """
         return self.date_utils.process_15min_data(df)
 
     @with_progress(message="Processing hourly data (vectorized)...", interval=2)
     def _process_hourly_data_vectorized(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Vectorized processing of hourly data with possible DST suffixes, converting to UTC and expanding to 15-minute intervals.
+        Processes hourly data in a vectorized manner, converting local time strings (including DST suffixes) to UTC and expanding each hour into four 15-minute intervals.
         
-        This method parses hourly time strings (e.g., "02-03a", "02-03b"), handles daylight saving time transitions using suffixes, localizes datetimes to Europe/Madrid, converts them to UTC, and expands each hour to four 15-minute intervals. Returns a DataFrame with standardized UTC datetimes and 15-minute granularity.
+        Returns:
+            pd.DataFrame: DataFrame with standardized UTC datetimes at 15-minute granularity.
         """
         return self.date_utils.process_hourly_data_vectorized(df, dataset_type)
 
     @with_progress(message="Processing 15-minute data (vectorized)...", interval=2)
     def _process_15min_data_vectorized(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Processes 15-minute data using vectorized operations."""
+        """
+        Processes 15-minute interval data using vectorized operations for efficient datetime conversion and standardization.
+        
+        Returns:
+            pd.DataFrame: DataFrame with standardized 15-minute interval datetimes and processed columns.
+        """
         return self.date_utils.process_15min_data_vectorized(df)
 
     def _parse_hourly_datetime_local(self, fecha, hora_str) -> pd.Timestamp:
         """
-        Parse hourly format data (e.g., "00-01", "02-03a", "02-03b") into a timezone-aware
-        datetime in Europe/Madrid timezone.
+        Convert an hourly time string (with possible DST suffixes) and a date into a timezone-aware datetime in the Europe/Madrid timezone.
         
-        Args:
-            fecha: Date object or datetime object
-            hora_str: Hour string in format "HH-HH+1" potentially with 'a' or 'b' suffix
+        Parameters:
+            fecha: The date corresponding to the time interval, as a date or datetime object.
+            hora_str: Hourly interval string in the format "HH-HH+1", optionally suffixed with 'a' or 'b' for DST transitions.
         
         Returns:
-            Timezone-aware pd.Timestamp in Europe/Madrid timezone
+            pd.Timestamp: A timezone-aware timestamp in the Europe/Madrid timezone representing the start of the interval.
         """
         return self.date_utils.parse_hourly_datetime_local(fecha, hora_str)
 
     def _parse_15min_datetime_local(self, fecha, hora_index_str) -> pd.Timestamp:
         """
-        Parse a 15-minute interval index for a given date into a timezone-aware datetime in Europe/Madrid, correctly handling daylight saving time transitions.
+        Convert a 1-based 15-minute interval index and date into a timezone-aware Europe/Madrid datetime, accounting for daylight saving time transitions.
         
         Parameters:
             fecha: The date of the interval, as a string, pandas Timestamp, or date object.
-            hora_index_str: The 1-based index (as string or integer) of the 15-minute interval within the day.
+            hora_index_str: The 1-based index (string or integer) of the 15-minute interval within the day.
         
         Returns:
-            pd.Timestamp: The corresponding timezone-aware datetime in Europe/Madrid.
+            pd.Timestamp: Timezone-aware datetime in Europe/Madrid corresponding to the specified interval.
         
         Raises:
-            ValueError: If the interval index is less than 1 or exceeds the number of intervals for the given date.
+            ValueError: If the interval index is less than 1 or exceeds the valid number of intervals for the date.
         """
         return self.date_utils.parse_15min_datetime_local(fecha, hora_index_str)
 
     # === COLUMN FINALIZATION ===
     def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """ Selects and renames columns to the final required format. """
+        """
+        Rename the 'Concepto' column to 'tecnologia' and select the required columns for the final processed DataFrame.
+        
+        Raises:
+            ValueError: If the 'Concepto' column is missing from the input DataFrame.
+        
+        Returns:
+            pd.DataFrame: DataFrame containing only the required columns in the standardized format.
+        """
         
         if "Concepto" in df.columns:
             df = df.rename(columns={"Concepto": "tecnologia"})
@@ -242,7 +260,11 @@ class I3Processor:
 
     # === DATA VALIDATION ===
     def _validate_raw_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """Validate raw data structure."""
+        """
+        Validates the structure of raw input data against the expected schema for the specified dataset type.
+        
+        If the DataFrame is empty, validation is skipped. If the schema is missing or an error occurs during validation, an error message is printed and the exception is raised. Returns the original DataFrame.
+        """
         if not df.empty:
             try:
                 self.data_validation_utils.validate_raw_data(df, dataset_type)
@@ -257,7 +279,14 @@ class I3Processor:
         return df
     
     def _validate_final_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """Validates the final processed data."""
+        """
+        Validate the final processed DataFrame against the expected schema for the specified dataset type.
+        
+        If the DataFrame is empty, validation is skipped. If the schema is missing or another error occurs during validation, an error message is printed and the exception is re-raised.
+        
+        Returns:
+            pd.DataFrame: The input DataFrame, unchanged.
+        """
         if not df.empty:
             try:
                 self.data_validation_utils.validate_processed_data(df, dataset_type)
@@ -274,8 +303,16 @@ class I3Processor:
     # === INTRA DATA PROCESSING ===
     def _process_cumulative_volumenes_intra(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """
-        Calculates net intra-day volumes by computing differences between cumulative sessions,
-        using 'tecnologia' as the grouping key.
+        Compute net intra-day volumes by differencing cumulative session data for each technology.
+        
+        For each intra-day session, calculates the net volume by subtracting the previous session's cumulative values (starting from the daily baseline). Returns a DataFrame with net session volumes for all intra-day sessions on the target date.
+        
+        Parameters:
+            df (pd.DataFrame): DataFrame containing cumulative intra-day session data.
+            dataset_type (str): The dataset type identifier used for loading baseline data.
+        
+        Returns:
+            pd.DataFrame: DataFrame with net intra-day session volumes per technology.
         """
         if df.empty:
             return df
@@ -310,7 +347,21 @@ class I3Processor:
         return pd.concat(processed_sessions, ignore_index=True)
 
     def _load_diario_data_for_intra(self, year: int, month: int, target_date, dataset_type: str) -> pd.DataFrame:
-        """Loads and processes diario market data to serve as a baseline."""
+        """
+        Load and process diario market data for a specific date to provide a baseline for intra-day calculations.
+        
+        Parameters:
+        	year (int): The year of the diario data to load.
+        	month (int): The month of the diario data to load.
+        	target_date: The target date (as a date object) for which to extract diario data.
+        	dataset_type (str): The dataset type identifier.
+        
+        Returns:
+        	pd.DataFrame: Processed diario data for the specified date, or an empty DataFrame if no data is found.
+        
+        Raises:
+        	ValueError: If an error occurs during loading or processing of diario data.
+        """
         try:
             diario_raw = self.raw_file_utils.read_raw_file(year, month, dataset_type, 'diario')
             if diario_raw.empty:
@@ -330,7 +381,17 @@ class I3Processor:
             raise ValueError(f"Error loading diario data for intra baseline: {e}")
 
     def _prepare_diario_baseline(self, diario_df: pd.DataFrame) -> pd.DataFrame:
-        """Prepares diario data for use as a baseline in cumulative calculations."""
+        """
+        Aggregate and prepare diario market data as a baseline for cumulative intra-day volume calculations.
+        
+        Fills missing values with zero, groups by UTC datetime and technology, sums volumes, and assigns the diario market ID. Raises an error if required columns are missing.
+        
+        Parameters:
+        	diario_df (pd.DataFrame): Diario market data to be used as the baseline.
+        
+        Returns:
+        	pd.DataFrame: Aggregated diario baseline data with columns ['datetime_utc', 'tecnologia', 'volumenes', 'id_mercado'].
+        """
         if diario_df.empty:
             return pd.DataFrame()
         
@@ -348,7 +409,20 @@ class I3Processor:
         return baseline_df
 
     def _calculate_session_differences(self, current_session: pd.DataFrame, previous_session: pd.DataFrame, session_id: int) -> pd.DataFrame:
-        """Calculates the difference in volumes between two consecutive sessions."""
+        """
+        Compute net volume changes for each technology and timestamp by differencing the current session's volumes with those from the previous session.
+        
+        Parameters:
+        	current_session (pd.DataFrame): DataFrame containing 'datetime_utc', 'tecnologia', and 'volumenes' columns for the current session.
+        	previous_session (pd.DataFrame): DataFrame containing 'datetime_utc', 'tecnologia', and 'volumenes' columns for the previous session.
+        	session_id (int): Identifier for the current session's market.
+        
+        Returns:
+        	pd.DataFrame: DataFrame with net volume changes per technology and timestamp, including the assigned market ID.
+        
+        Raises:
+        	ValueError: If an error occurs during the calculation process.
+        """
         try:
             merged = pd.merge(
                 current_session[['datetime_utc', 'tecnologia', 'volumenes']],
@@ -369,7 +443,14 @@ class I3Processor:
 
     # === VALIDATION ===
     def _validate_raw_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
-        """Validate raw data structure."""
+        """
+        Validates the structure of raw input data for the specified dataset type.
+        
+        If the DataFrame is not empty, checks its structure using the data validation utility and raises an exception on validation failure. Skips validation for empty DataFrames.
+        
+        Returns:
+            pd.DataFrame: The original DataFrame, regardless of validation outcome.
+        """
         if not df.empty:
             try:
                 self.data_validation_utils.validate_raw_data(df, dataset_type)
@@ -384,10 +465,10 @@ class I3Processor:
     # === UTILITY ===
     def _empty_output_df(self, dataset_type: str) -> pd.DataFrame:
         """
-        Create an empty DataFrame with the appropriate columns for volumenes_i3.
+        Create and return an empty DataFrame with columns matching the processed volumenes_i3 schema.
         
         Returns:
-            pd.DataFrame: An empty DataFrame with columns matching the expected schema.
+            pd.DataFrame: An empty DataFrame with the required columns and index named 'id'.
         """
         cols = self.data_validation_utils.processed_volumenes_i3_required_cols
         df = pd.DataFrame(columns=cols)
@@ -396,6 +477,17 @@ class I3Processor:
 
     # === MAIN PIPELINE ===
     def transform_raw_i3_data(self, df: pd.DataFrame, market_config: I3Config, dataset_type: str) -> pd.DataFrame:
+        """
+        Transforms raw I3 market volume data through a configurable processing pipeline, including validation, filtering, datetime standardization, column selection, and optional intra-day cumulative volume calculation.
+        
+        Parameters:
+            df (pd.DataFrame): Raw input DataFrame containing I3 market volume data.
+            market_config (I3Config): Market configuration object specifying filtering and processing rules.
+            dataset_type (str): Identifier for the dataset type (e.g., 'diario', 'intra').
+        
+        Returns:
+            pd.DataFrame: Fully processed DataFrame ready for downstream use, or an empty DataFrame if input is empty or processing fails.
+        """
         print("\n" + "="*80)
         print(f"🔄 STARTING {dataset_type.upper()} TRANSFORMATION")
         print("="*80)

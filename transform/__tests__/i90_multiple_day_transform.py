@@ -10,9 +10,9 @@ from datetime import datetime, timedelta
 
 def test_multiple_day_precios():
     """
-    Test the transformation of "precios_i90" data for multiple days and a specific market.
-
-    Asserts that the transformation for a recent 2-day range, 93 days in the past for the "restricciones" market completes successfully.
+    Test that transforming "precios_i90" data for a multi-day range and the "restricciones" market completes successfully.
+    
+    Asserts that the transformation process for the specified date range returns a successful status.
     """
     # Use a recent 3-day window ending yesterday
     end_date = datetime.now() - timedelta(days=93)
@@ -33,9 +33,9 @@ def test_multiple_day_precios():
 
 def test_multiple_day_volumenes():
     """
-    Test the transformation of "volumenes_i90" data across multiple days for all markets.
-
-    Asserts that the transformation is successful for a recent 2-day range, 93 days in the past.
+    Test the transformation of "volumenes_i90" data over a 95-day period ending 93 days ago for all markets.
+    
+    Asserts that the transformation completes successfully by checking the returned status.
     """
     end_date = datetime.now() - timedelta(days=93)
     start_date = end_date - timedelta(days=95)
