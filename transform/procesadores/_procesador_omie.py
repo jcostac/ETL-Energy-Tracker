@@ -159,6 +159,12 @@ class OMIEProcessor:
                 df['Cantidad'] = clean_numeric_column(df['Cantidad'])
                 df = df.rename(columns={'Cantidad': 'volumenes'})
                 print(f"   Processed 'Cantidad' column for continuo market")
+
+            if "Precio" in df.columns:
+                df['Precio'] = clean_numeric_column(df['Precio'])
+                df = df.rename(columns={'Precio': 'precio'})
+                print(f"   Processed 'Precio' column for continuo market")
+
             else:
                 raise ValueError("'Cantidad' column not found for continuo market")
         
@@ -257,8 +263,9 @@ class OMIEProcessor:
                 df['Fecha'] = pd.to_datetime(df['delivery_date_str'], format="%Y%m%d")
                 
                 # Extract delivery hour (keep 1-based for consistency)
-                df['delivery_hour'] = df['Contrato'].str.strip()[9:11].astype(int)
+                df['delivery_hour'] = df['Contrato'].str.strip().str[9:11].astype(int)
                 df['Hora'] = df['delivery_hour']
+
                 
                 print(f"   Extracted Fecha and Hora from Contrato for continuo market (1-based hour)")
             
@@ -310,10 +317,14 @@ class OMIEProcessor:
         if df.empty: 
             return df
 
-        # Verify required columns exist
-        required_cols = ['Fecha', 'Hora', 'granularity']
+        # Verify required columns exist based on market type
+        if mercado == 'continuo':
+            required_cols = ['Fecha', 'Hora']
+        else:
+            required_cols = ['Fecha', 'Hora', 'granularity']
+
         if not all(col in df.columns for col in required_cols):
-            raise ValueError(f"Required columns: {required_cols} not found in DataFrame.")
+            raise ValueError(f"Required columns for market '{mercado}': {required_cols} not found in DataFrame.")
 
         # Ensure Fecha is datetime
         df['Fecha'] = pd.to_datetime(df['Fecha'])
@@ -332,13 +343,18 @@ class OMIEProcessor:
         df['is_dst_day'] = df['Fecha'].dt.date.apply(lambda x: x in transition_dates)
         
         # Split data by granularity and DST status
-        #hourly data
-        df_hourly_dst = df[(df['granularity'] == 'Hora') & (df['is_dst_day'])].copy()
-        df_hourly_normal = df[(df['granularity'] == 'Hora') & (~df['is_dst_day'])].copy()
-
-        #15min data *TODO: Implement 15min data processing
-        df_15min_dst = df[(df['granularity'] == 'Quince minutos') & (df['is_dst_day'])].copy()
-        df_15min_normal = df[(df['granularity'] == 'Quince minutos') & (~df['is_dst_day'])].copy()
+        if mercado == 'continuo':
+            # Continuo market is always hourly, so treat all data as hourly
+            df_hourly_dst = df[df['is_dst_day']].copy()
+            df_hourly_normal = df[~df['is_dst_day']].copy()
+            df_15min_dst = pd.DataFrame()
+            df_15min_normal = pd.DataFrame()
+        else:
+            # For diario and intra, split based on granularity column
+            df_hourly_dst = df[(df['granularity'] == 'Hora') & (df['is_dst_day'])].copy()
+            df_hourly_normal = df[(df['granularity'] == 'Hora') & (~df['is_dst_day'])].copy()
+            df_15min_dst = df[(df['granularity'] == 'Quince minutos') & (df['is_dst_day'])].copy()
+            df_15min_normal = df[(df['granularity'] == 'Quince minutos') & (~df['is_dst_day'])].copy()
         
         # Process hourly data
         df_hourly_processed_dst = pd.DataFrame()
@@ -371,7 +387,10 @@ class OMIEProcessor:
         ], ignore_index=True)
         
         # Clean up intermediate columns
-        cols_to_drop = ['Fecha', 'Hora', 'granularity', 'is_dst_day', 'datetime_local', 'datetime_naive']
+        cols_to_drop = ['Fecha', 'Hora', 'is_dst_day', 'datetime_local', 'datetime_naive']
+        if 'granularity' in df.columns:
+            cols_to_drop.append('granularity')
+        
         final_df = final_df.drop(columns=[c for c in cols_to_drop if c in final_df.columns], errors='ignore')
         
         # Drop rows with invalid datetimes and sort
@@ -930,29 +949,3 @@ class OMIEProcessor:
             print(f"Error in {market_name} processing: {str(e)}")
             print("="*80 + "\n")
             raise
-
-
-def example_usage():    
-    """
-    Demonstrates how to use the OMIEProcessor class to transform OMIE market data for intra, diario, and continuo markets.
-    
-    This function loads sample CSV files for each market type, applies the corresponding transformation methods, and prints the processed DataFrames. Breakpoints are included for interactive inspection of results.
-    """
-    processor = OMIEProcessor()
-    df_intra = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/intra/2024/03/volumenes_omie.csv")
-    df_diario = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/diario/2024/10/volumenes_omie.csv")
-    df_continuo = pd.read_csv("C:/Users/Usuario/OneDrive - OPTIMIZE ENERGY/Escritorio/Optimize Energy/timescale_v_duckdb_testing/data/raw/continuo/2025/02/volumenes_omie.csv")
-    
-    df_intra = processor.transform_omie_intra(df_intra)
-    print(df_intra)
-    breakpoint()
-
-    df_diario = processor.transform_omie_diario(df_diario)
-    print(df_diario)
-    breakpoint()
-
-    df_continuo = processor.transform_omie_continuo(df_continuo)
-    print(df_continuo)
-
-if __name__ == "__main__":
-    example_usage()

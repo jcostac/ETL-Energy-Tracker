@@ -8,7 +8,7 @@ import pretty_errors
 from pathlib import Path
 import sys
 from collections import defaultdict
-
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
@@ -25,9 +25,8 @@ class OMIEDownloader:
         """
         Initializes the OMIEDownloader base class with a default temporary tracking folder and a placeholder for configuration.
         """
-        self.tracking_folder = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "data_lake", "temporary")
-        )
+        load_dotenv()
+        self.temporary_folder = os.getenv("DATA_LAKE_PATH") + "/temporary"
         self.config = None
            
     def descarga_datos_omie_mensuales(self, month: int = None, year: int = None, months_ago: int = 4) -> pd.DataFrame:
@@ -58,7 +57,7 @@ class OMIEDownloader:
         if response.status_code == 200:
             # Save the zip file to tracking folder
             temp_zip_filename = f"{self.mercado}_{filename}"
-            temp_zip_path = self._save_file(temp_zip_filename, response.content, self.tracking_folder)
+            temp_zip_path = self._save_file(temp_zip_filename, response.content, self.temporary_folder)
  
             # Process the zip file
             try:
@@ -132,7 +131,7 @@ class OMIEDownloader:
         if response.status_code == 200:
             # Save the zip file to tracking folder
             temp_zip_filename = f"{self.mercado}_{filename}"
-            temp_zip_path = self._save_file(temp_zip_filename, response.content, self.tracking_folder)
+            temp_zip_path = self._save_file(temp_zip_filename, response.content, self.temporary_folder)
  
             # Process the zip file
             try:
@@ -250,7 +249,7 @@ class OMIEDownloader:
             if response.status_code == 200:
                 # Save the zip file to tracking folder
                 temp_zip_filename = f"{self.mercado}_{filename}"
-                temp_zip_path = self._save_file(temp_zip_filename, response.content, self.tracking_folder)
+                temp_zip_path = self._save_file(temp_zip_filename, response.content, self.temporary_folder)
                
                 try:
                     with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
