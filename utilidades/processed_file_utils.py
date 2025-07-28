@@ -529,7 +529,7 @@ class ProcessedFileUtils(StorageFileUtils):
             except Exception as e:
                 raise Exception(f"Failed to write processed parquet: {str(e)}")
 
-    def read_latest_processed_file(self, mercado: str, dataset_type: str) -> Optional[pd.DataFrame]:
+    def read_latest_processed_file(self, mercado: str, dataset_type: str) -> pd.DataFrame:
             """
             Reads the latest available processed file for a given market and dataset type.
 
@@ -541,7 +541,7 @@ class ProcessedFileUtils(StorageFileUtils):
                 dataset_type (str): The type of dataset (e.g., 'p48_tecnologias_generacion').
 
             Returns:
-                Optional[pd.DataFrame]: A DataFrame with the contents of the latest processed file,
+                pd.DataFrame: A DataFrame with the contents of the latest processed file,
                                         or None if no file is found.
             """
             try:
