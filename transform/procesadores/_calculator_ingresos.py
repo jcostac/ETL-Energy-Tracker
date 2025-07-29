@@ -6,11 +6,13 @@ from utilidades.processed_file_utils import ProcessedFileUtils
 from utilidades.data_validation_utils import DataValidationUtils
 from configs.ingresos_config import IngresosConfig
 from configs.storage_config import VALID_DATASET_TYPES
+from read._parquet_reader import ParquetReader
 
 class IngresosCalculator:
     def __init__(self):
         self.file_utils = ProcessedFileUtils()
         self.config = IngresosConfig()
+        self.parquet_reader = ParquetReader()
 
     def _find_latest_partition_path(self, mercado, id_mercado, dataset_type):
         base_path = self.file_utils.processed_path / f"mercado={mercado}" / f"id_mercado={id_mercado}"
@@ -56,39 +58,40 @@ class IngresosCalculator:
         return max(common_dates)
 
     def _get_df_for_date_range(self, mercado, id_mercado, dataset_type, fecha_inicio, fecha_fin):
-        start_dt = pd.to_datetime(fecha_inicio).date()
-        end_dt = pd.to_datetime(fecha_fin).date()
+        """
+        Get DataFrame for a specific date range using ParquetReader.
         
-        all_days_in_range = pd.date_range(start_dt, end_dt, freq='D')
-        if all_days_in_range.empty:
-            return pd.DataFrame()
+        Args:
+            mercado (str): Market type (e.g., "intra", "secundaria")
+            id_mercado (int): Market ID
+            dataset_type (str): Type of dataset (e.g., "precios", "volumenes")
+            fecha_inicio (str): Start date in YYYY-MM-DD format
+            fecha_fin (str): End date in YYYY-MM-DD format
             
-        year_months = sorted(list(set([(d.year, d.month) for d in all_days_in_range])))
-        
-        all_dfs = []
-        for year, month in year_months:
-            path = self.file_utils.processed_path / f"mercado={mercado}" / f"id_mercado={id_mercado}" / f"year={year}" / f"month={month}" / f"{dataset_type}.parquet"
-            if path.exists():
-                try:
-                    df = pd.read_parquet(path)
-
-                    print(f"Processed parquet: {path}")
-                    print(df['datetime_utc'].head())
-                    print(f"\n")
-                    
-                    all_dfs.append(df)
-                except Exception as e:
-                    print(f"Warning: Could not read parquet file {path}: {e}")
-
-        if not all_dfs:
-            return pd.DataFrame()
-        
-        combined_df = pd.concat(all_dfs, ignore_index=True)
-        
-        if 'datetime_utc' not in combined_df.columns:
-            return pd.DataFrame()
+        Returns:
+            pd.DataFrame: Filtered DataFrame for the specified date range
+        """
+        try:
+            # Use ParquetReader to get the data (now accepts single values)
+            df = self.parquet_reader.read_parquet_data(
+                fecha_inicio_lectura=fecha_inicio,
+                fecha_fin_lectura=fecha_fin,
+                mercado_lst=mercado,  # Single string value
+                dataset_type=dataset_type,
+                mercado_id_lst=id_mercado  
+            )
             
-        return combined_df[(combined_df['datetime_utc'].dt.date >= start_dt) & (combined_df['datetime_utc'].dt.date <= end_dt)].copy()
+            # Apply additional date filtering if needed (ParquetReader might return broader range)
+            if not df.empty and 'datetime_utc' in df.columns:
+                start_dt = pd.to_datetime(fecha_inicio).date()
+                end_dt = pd.to_datetime(fecha_fin).date()
+                df = df[(df['datetime_utc'].dt.date >= start_dt) & (df['datetime_utc'].dt.date <= end_dt)].copy()
+            
+            return df
+            
+        except Exception as e:
+            print(f"Warning: Could not read data for {mercado} (id: {id_mercado}), {dataset_type}: {e}")
+            return pd.DataFrame()
 
     def _calculate_ingresos(self, volumes_df, prices_df, market_key, id_mercado):
         if volumes_df.empty and prices_df.empty:
@@ -144,6 +147,8 @@ class IngresosCalculator:
         for id_mercado in ids:
             volumes_df = self._get_df_for_date_range(market_key, id_mercado, 'volumenes_i90', fecha, fecha)
             precio_id = self.config.get_precios_from_id_mercado(id_mercado, fecha_dt)
+            print(f"Precio id: {precio_id}")
+            breakpoint()
             
             # Use different price dataset for restricciones
             price_dataset = 'precios_i90' if market_key == 'restricciones' else 'precios_esios'
