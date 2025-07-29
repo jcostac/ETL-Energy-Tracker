@@ -18,6 +18,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 # Corrected import path assuming utilidades is at the project root
 from utilidades.processed_file_utils import ProcessedFileUtils
+from utilidades.data_validation_utils import DataValidationUtils
 
 
 class DataLakeLoader():
@@ -38,6 +39,7 @@ class DataLakeLoader():
         load_dotenv()
         # ProcessedFileUtils constructor handles setting the correct base path (raw/processed)
         self.file_utils = ProcessedFileUtils()
+        self.validator = DataValidationUtils()
 
         print(f"DataLakeLoader initialized. Processed data path: {self.file_utils.processed_path}")
 
@@ -54,6 +56,9 @@ class DataLakeLoader():
             return
 
         try:
+            # 0. Validate processed data before saving
+            processed_df = self.validator.validate_processed_data(processed_df, dataset_type)
+
             # 1. Save Processed Data
             print("\n💾 SAVING DATA")
             print("-"*50)
@@ -263,4 +268,51 @@ class DataLakeLoader():
             value_cols= ['volumenes'],
             **kwargs
         )
+
+    def load_transformed_data_ingresos(self, transformed_data_dict: dict, **kwargs) -> dict:
+        """
+        Loads transformed ingresos data, combines it from all markets, and stores it
+        as a single partitioned Parquet file under the 'ingresos' market.
+        """
+        results = []
+        market_success = {}
+        all_dfs = []
+
+        try:
+            data_dict = transformed_data_dict.get("data", {})
+            for mercado, df in data_dict.items():
+                market_success[mercado] = False
+                if df is not None and not df.empty:
+                    all_dfs.append(df)
+                    results.append(f"✅ Data for market {mercado} collected for loading.")
+                    market_success[mercado] = True
+                else:
+                    results.append(f"ℹ️ No ingresos data to load for market {mercado}")
+                    market_success[mercado] = True
+
+            if all_dfs:
+                combined_df = pd.concat(all_dfs, ignore_index=True)
+                self._save_processed_data(
+                    processed_df=combined_df,
+                    mercado='ingresos',
+                    value_cols=['ingresos'],
+                    dataset_type='ingresos'
+                )
+                results.append("✅ Successfully loaded combined ingresos data.")
+            else:
+                results.append("No dataframes to combine and save.")
+
+        except Exception as e:
+            results.append(f"❌ Failed during ingresos loading: {str(e)}")
+            if 'data_dict' in locals():
+                for mercado in data_dict.keys():
+                    market_success[mercado] = False
+        
+        overall_success = all(market_success.values()) if market_success else False
+
+        return {
+            "success": overall_success,
+            "messages": results,
+            "market_status": market_success
+        }
 

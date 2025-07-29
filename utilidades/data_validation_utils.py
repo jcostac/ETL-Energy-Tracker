@@ -22,6 +22,7 @@ class DataValidationUtils:
         self.processed_volumenes_i3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
         self.processed_curtailments_i90_required_cols = ['datetime_utc', 'up', 'RTx', 'tipo', 'volumenes', "id_mercado"]
         self.processed_curtailments_i3_required_cols = ['datetime_utc', 'tecnologia', 'RTx', 'tipo', 'volumenes', "id_mercado"]
+        self.processed_ingresos_required_cols = ['datetime_utc', 'ingresos', 'id_mercado']
 
         #raw data structure requirements
         self.raw_precios_esios_required_cols = ['datetime_utc', 'value', 'indicador_id']
@@ -139,6 +140,15 @@ class DataValidationUtils:
                     if validation_schema_type == "curtailments_i3" and 'tecnologia' in df.columns:
                         df['tecnologia'] = df['tecnologia'].astype('str')
                 
+                elif validation_schema_type == "ingresos":
+                    df['ingresos'] = df['ingresos'].astype('float32')
+                    df['id_mercado'] = df['id_mercado'].astype('uint8')
+
+                    if 'up' in df.columns:  
+                        df['up'] = df['up'].astype('str')
+                    else: 
+                        df["uof"] = df["uof"].astype('str')
+
                 print(f"{type.capitalize()} {validation_schema_type} data types validated successfully.")
             
             #for raw data
@@ -212,6 +222,8 @@ class DataValidationUtils:
                 required_cols = self.processed_curtailments_i90_required_cols
             elif validation_schema_type == "curtailments_i3":
                 required_cols = self.processed_curtailments_i3_required_cols
+            elif validation_schema_type == "ingresos":
+                required_cols = self.processed_ingresos_required_cols
 
         elif type == "raw":
             if validation_schema_type == "precios_esios":
