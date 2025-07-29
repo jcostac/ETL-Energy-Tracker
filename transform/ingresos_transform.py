@@ -19,8 +19,6 @@ class TransformadorIngresos:
         self.transform_types = ['latest', 'single', 'multiple']
         self.market_calculator_map = {
             'continuo': ContinuoIngresosCalculator,
-            'restricciones': RestriccionesIngresosCalculator,
-            # Add more special cases if needed; others use base IngresosCalculator
         }
         self.all_markets = list(self.config.mercado_name_id_map.keys())
 

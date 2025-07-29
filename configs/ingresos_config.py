@@ -27,7 +27,7 @@ class IngresosConfig:
 
     def get_precios_from_id_mercado(self, id_mercado: str, date: datetime) -> int:
         """
-        Returns the id of the corresponding prices sheet for a given id_mercado.
+        Returns the market id of the corresponding prices dataset for a given id_mercado.
         """
 
         # ==== DIARIO + INTRAS (PHF Y MIC) + RESTRICCIONES MD/TR (subir/bajar) + TERCIARIA DIRECTA (subir/bajar) + RT2 (subir/bajar)====

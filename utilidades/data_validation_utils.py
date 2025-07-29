@@ -14,19 +14,27 @@ class DataValidationUtils:
         """
 
         #processed data structure requirements
+        ##precios 
         self.processed_price_esios_required_cols = ['datetime_utc', "id_mercado", "precio"]
         self.processed_price_i90_required_cols = ['datetime_utc', "id_mercado", "precio", "up"]
+
+        ##volumenes
         self.processed_volumenes_i90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
         self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
         self.processed_volumenes_mic_required_cols = ['datetime_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
         self.processed_volumenes_i3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
         self.processed_curtailments_i90_required_cols = ['datetime_utc', 'up', 'RTx', 'tipo', 'volumenes', "id_mercado"]
         self.processed_curtailments_i3_required_cols = ['datetime_utc', 'tecnologia', 'RTx', 'tipo', 'volumenes', "id_mercado"]
-        self.processed_ingresos_required_cols = ['datetime_utc', 'ingresos', 'id_mercado']
+        
+        ##ingresos
+        self.processed_ingresos_required_cols = ['datetime_utc', 'ingresos', 'id_mercado'] #up uof validation are done in validate dtypess
 
         #raw data structure requirements
+        ##precios
         self.raw_precios_esios_required_cols = ['datetime_utc', 'value', 'indicador_id']
         self.raw_precios_i90_required_cols = ["fecha", "precios", "Redespacho", "Sentido", "Unidad de Programación", "hora", "granularity"]
+
+        ##volumenes
         self.raw_volumenes_i90_required_cols = ["Unidad de Programación", "fecha", "volumenes", "hora", "granularity"]
         self.raw_volumenes_i3_required_cols = ["Concepto", "fecha", "volumenes", "hora", "granularity"]
         self.raw_volumenes_omie_required_cols = ["Fecha", "Unidad", "id_mercado", "Energía Compra/Venta", "Ofertada (O)/Casada (C)"]
