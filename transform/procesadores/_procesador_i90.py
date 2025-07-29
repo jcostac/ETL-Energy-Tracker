@@ -223,7 +223,7 @@ class I90Processor:
         elif dataset_type == 'precios_i90':
             #rename precios to precio
             df = df.rename(columns={'precios': 'precio'})
-            required_cols = self.data_validation_utils.processed_price_required_cols.copy()
+            required_cols = self.data_validation_utils.processed_price_i90_required_cols.copy()
 
         # ADD TIPO TRANSACCIÓN HANDLING - only if column exists
         if "Tipo Transacción" in df.columns:

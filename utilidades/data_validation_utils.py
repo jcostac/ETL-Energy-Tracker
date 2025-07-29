@@ -14,7 +14,8 @@ class DataValidationUtils:
         """
 
         #processed data structure requirements
-        self.processed_price_required_cols = ['datetime_utc', "id_mercado", "precio"]
+        self.processed_price_esios_required_cols = ['datetime_utc', "id_mercado", "precio"]
+        self.processed_price_i90_required_cols = ['datetime_utc', "id_mercado", "precio", "up"]
         self.processed_volumenes_i90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
         self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
         self.processed_volumenes_mic_required_cols = ['datetime_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
@@ -106,6 +107,9 @@ class DataValidationUtils:
                 if validation_schema_type in ["precios_esios", "precios_i90"]:
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
                     df['precio'] = df['precio'].astype('float32')
+
+                    if 'up' in df.columns:
+                        df['up'] = df['up'].astype('str')
                 
                 #for volumenes related datasets
                 elif validation_schema_type in ["volumenes_i90", "volumenes_i3", "volumenes_omie"]:
@@ -192,8 +196,10 @@ class DataValidationUtils:
         required_cols = None
         
         if type == "processed":
-            if validation_schema_type == "precios_esios" or validation_schema_type == "precios_i90":
-                required_cols = self.processed_price_required_cols
+            if validation_schema_type == "precios_esios" :
+                required_cols = self.processed_price_esios_required_cols
+            elif validation_schema_type == "precios_i90":
+                required_cols = self.processed_price_i90_required_cols
             elif validation_schema_type == "volumenes_i90":
                 required_cols = self.processed_volumenes_i90_required_cols
             elif validation_schema_type == "volumenes_i3":

@@ -53,7 +53,7 @@ class ProcessedFileUtils(StorageFileUtils):
             elif dataset_type == 'volumenes_i3':
                 df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "tecnologia", "id_mercado"], keep='last')
             elif dataset_type == 'precios_i90':
-                df = df.drop_duplicates(subset=['datetime_utc', 'precio', "id_mercado"], keep='last')
+                df = df.drop_duplicates(subset=['datetime_utc', 'precio', "id_mercado", "up"], keep='last')
             elif dataset_type == 'precios_esios':
                 df = df.drop_duplicates(subset=['datetime_utc', 'precio', "id_mercado"], keep='last')
             elif dataset_type == 'volumenes_omie':
@@ -402,7 +402,8 @@ class ProcessedFileUtils(StorageFileUtils):
         """
         Constructs the full output file path for a partitioned parquet file using Hive-style key=value directories.
         
-        The resulting path is structured as `<processed_path>/<key1>=<value1>/<key2>=<value2>/.../<dataset_type>.parquet`, with the month value zero-padded. If the dataset type is "precios_i90", the file is named "precios.parquet" for consistency. Creates the partition directory if it does not exist.
+        The resulting path is structured as `<processed_path>/<key1>=<value1>/<key2>=<value2>/.../<dataset_type>.parquet`, with the month value zero-padded.
+        Creates the partition directory if it does not exist.
         
         Parameters:
             partition: Partition values, typically a pandas Series.
@@ -425,10 +426,6 @@ class ProcessedFileUtils(StorageFileUtils):
         partition_path_str = os.path.join(*path_segments) #kwargs, join path segments ie> processed/mercado="Intra"/id_mercado="2"/year=2024/month=01
         os.makedirs(partition_path_str, exist_ok=True) #create directory if it doesn't exist
 
-        if dataset_type == "precios_i90" or dataset_type == "precios_esios": 
-            print(" Naming file as precios.parquet to homogenize processed data naming convention for precios parquet files")
-            dataset_type = "precios"
-        
         if dataset_type == "curtailments_i90":
             print(" Naming curtailments_i90 file as volumenes_i90.parquet to homogenize processed data naming convention for curtailments parquet files")
             dataset_type = "volumenes_i90"
@@ -471,7 +468,7 @@ class ProcessedFileUtils(StorageFileUtils):
         print("--------------------------------")
         print(f" Applying dictionary encoding...")
         dict_cols = []
-        if "up" in schema.names: #for i90 market data
+        if "up" in schema.names: #for i90 market data (volumenes + precios)
             dict_cols.append("up")
         elif "tecnologia" in schema.names: #for i3 market data
             dict_cols.append("tecnologia")
@@ -547,10 +544,8 @@ class ProcessedFileUtils(StorageFileUtils):
             try:
                 print(f"🔍 Searching for the latest processed file for market '{mercado}' and dataset '{dataset_type}'...")
 
-                # Some dataset types have different filenames in processed storage
-                if dataset_type in ["precios_i90", "precios_esios"]:
-                    filename = "precios.parquet"
-                elif dataset_type == "curtailments_i90":
+        
+                if dataset_type == "curtailments_i90":
                     filename = "volumenes_i90.parquet"
                 elif dataset_type == "curtailments_i3":
                     filename = "volumenes_i3.parquet"

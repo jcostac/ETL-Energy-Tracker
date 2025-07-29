@@ -543,16 +543,16 @@ class RestriccionesConfig(I90Config):
         super().__init__()
 
         # get restricciones mercado diario subir y bajar
-        self.restricciones_md_subir_id: str = self.id_mercado_map["Restricciones MD a subir"] # 24
-        self.restricciones_md_bajar_id: str = self.id_mercado_map["Restricciones MD a bajar"] # 25
+        self.restricciones_md_subir_id: str = self.id_mercado_map["Restricciones MD a subir"] # 9
+        self.restricciones_md_bajar_id: str = self.id_mercado_map["Restricciones MD a bajar"] # 10
 
         # get restricciones mercado tiempo real subir y bajar
-        self.restricciones_tr_subir_id: str = self.id_mercado_map["Restricciones TR a subir"] # 26
-        self.restricciones_tr_bajar_id: str = self.id_mercado_map["Restricciones TR a bajar"] # 27
+        self.restricciones_tr_subir_id: str = self.id_mercado_map["Restricciones TR a subir"] # 11
+        self.restricciones_tr_bajar_id: str = self.id_mercado_map["Restricciones TR a bajar"] # 12
 
-        # get restricciones rt subir y bajar (assuming RT2 means RT from context)
-        self.restricciones_rt2_subir_id: str = self.id_mercado_map["RT2 a subir"] # 18
-        self.restricciones_rt2_bajar_id: str = self.id_mercado_map["RT2 a bajar"] # 19
+        # get restricciones rt subir y bajar 
+        self.restricciones_rt2_subir_id: str = self.id_mercado_map["RT2 a subir"] # 24
+        self.restricciones_rt2_bajar_id: str = self.id_mercado_map["RT2 a bajar"] # 25
 
         # total market ids
         self.market_ids: List[str] = [self.restricciones_md_subir_id, self.restricciones_md_bajar_id,
@@ -566,14 +566,13 @@ class RestriccionesConfig(I90Config):
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
         # --- Define Redespacho filters based on market type ---
-        # Filter for MD markets (IDs 24, 25) - applies potentially to sheets '03', '09'
+        # Filter for MD (mercado diario) markets (IDs 9, 10) - applies  to sheets '03', '09'
         self.redespacho_filter_md: List[str] = ['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB']
 
-        # Filter for RT2/RT markets (IDs 18, 19) - applies potentially to sheet '03' (Vol)
-        # Renaming variable for clarity based on market name 'RT'
+        # Filter for RT2 markets (IDs 24/25) - applies to sheet '03' (Vol)
         self.redespacho_filter_rt_vol: List[str] = ['ECOBSO', 'ECOBCBSO']
 
-        # Filter for TR markets (IDs 26, 27) - applies potentially to sheets '08' (Vol), '10' (Pre)
+        # Filter for TR (tiempo real) markets (IDs 11/12) - applies to sheets '08' (Vol), '10' (Pre)
         self.redespacho_filter_tr: List[str] = ["Restricciones Técnicas"]
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
