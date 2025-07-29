@@ -7,6 +7,7 @@ __all__ = ['DataLakeLoader']
 from typing import Optional, Union
 from pathlib import Path
 import pandas as pd
+import pyarrow as pa
 import sys
 from dotenv import load_dotenv
 
@@ -58,6 +59,9 @@ class DataLakeLoader():
         try:
             # 0. Validate processed data before saving
             processed_df = self.validator.validate_processed_data(processed_df, dataset_type)
+            
+            # Get PyArrow schema
+            schema = self.validator.get_pyarrow_schema(dataset_type)
 
             # 1. Save Processed Data
             print("\n💾 SAVING DATA")
@@ -72,7 +76,8 @@ class DataLakeLoader():
                 processed_df, 
                 mercado, 
                 value_cols=value_cols, 
-                dataset_type=dataset_type
+                dataset_type=dataset_type,
+                schema=schema
             )
 
             print(f"✅Data saved successfully in path: {self.file_utils.processed_path}")
@@ -292,6 +297,18 @@ class DataLakeLoader():
 
             if all_dfs:
                 combined_df = pd.concat(all_dfs, ignore_index=True)
+                
+                # Special handling for ingresos schema
+                schema = self.validator.get_pyarrow_schema('ingresos')
+                
+                # Add 'up' or 'uof' to the schema dynamically
+                schema_fields = schema.fields
+                if 'up' in combined_df.columns:
+                    schema_fields.append(pa.field('up', pa.string()))
+                elif 'uof' in combined_df.columns:
+                    schema_fields.append(pa.field('uof', pa.string()))
+                final_schema = pa.schema(schema_fields)
+
                 self._save_processed_data(
                     processed_df=combined_df,
                     mercado='ingresos',

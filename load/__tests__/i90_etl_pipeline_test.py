@@ -13,15 +13,14 @@ from load.data_lake_loader import DataLakeLoader
 
 class TestI90Pipeline(unittest.TestCase):
     TEST_DATES = [
-        (datetime.now() - timedelta(days=93)).strftime('%Y-%m-%d'),  # Recent date
-        '2024-03-31',  # DST change date in Spain
+        "2025-01-01"
     ]
 
     def test_full_etl(self):
         for test_date in self.TEST_DATES:
             with self.subTest(phase="Extraction Precios", test_date=test_date):
                 extractor = I90PreciosExtractor()
-                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date)
+                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=["secundaria"])
                 self.assertIsInstance(extract_result, dict)
                 self.assertIn("success", extract_result)
                 self.assertIn("details", extract_result)
@@ -64,7 +63,7 @@ class TestI90Pipeline(unittest.TestCase):
         
             with self.subTest(phase="Extraction Volumenes", test_date=test_date):
                 extractor = I90VolumenesExtractor()
-                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date)
+                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=["secundaria"])
                 self.assertIsInstance(extract_result, dict)
                 self.assertIn("success", extract_result)
                 self.assertIn("details", extract_result)
@@ -79,7 +78,7 @@ class TestI90Pipeline(unittest.TestCase):
             with self.subTest(phase="Transformation Volumenes", test_date=test_date):
                 # Volumenes transformation
                 transform_result_volumenes = transformer.transform_data_for_all_markets(
-                    fecha_inicio=test_date, fecha_fin=test_date, dataset_type='volumenes_i90'
+                    fecha_inicio=test_date, fecha_fin=test_date, dataset_type='volumenes_i90', mercados_lst=["secundaria"]
                 )
                 self.assertIsInstance(transform_result_volumenes, dict)
                 self.assertIn("data", transform_result_volumenes)

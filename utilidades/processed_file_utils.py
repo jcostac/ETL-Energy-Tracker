@@ -204,8 +204,8 @@ class ProcessedFileUtils(StorageFileUtils):
             raise Exception(f"Failed to read existing partition file {file_path}: {str(e)}")
 
     def _combine_and_write_partition(self, new_data_df: pd.DataFrame, existing_data_df: pd.DataFrame,
-                                    partition_cols: list, output_file_path: str,
-                                    value_cols: list[str], dataset_type: str) -> None:
+                                     partition_cols: list, output_file_path: str,
+                                     value_cols: list[str], dataset_type: str, schema: pa.Schema = None) -> None:
         """
                                     Combine new and existing partition data, remove duplicates, and write the result as a Parquet file.
                                     
@@ -238,7 +238,7 @@ class ProcessedFileUtils(StorageFileUtils):
             if row_group_size == 0:
                 raise ValueError("No rows to write")
 
-            self._write_final_parquet(final_df_sorted, output_file_path, value_cols, row_group_size)
+            self._write_final_parquet(final_df_sorted, output_file_path, value_cols, row_group_size, schema)
 
         except Exception as e:
             raise Exception(f"Failed to combine and write partition: {str(e)}")
@@ -266,7 +266,7 @@ class ProcessedFileUtils(StorageFileUtils):
             print(f"[ERROR] Failed to prepare DataFrame for writing: {e}")
             raise
 
-    def _write_final_parquet(self, df: pd.DataFrame, output_file: str, value_cols: list[str], row_group_size: int) -> None:
+    def _write_final_parquet(self, df: pd.DataFrame, output_file: str, value_cols: list[str], row_group_size: int, schema: pa.Schema = None) -> None:
         """
         Write a pandas DataFrame to a Parquet file with specified row group size, compression, statistics, and dictionary encoding.
         
@@ -287,14 +287,15 @@ class ProcessedFileUtils(StorageFileUtils):
             
             # Convert to PyArrow Table
             print("\n🔄 Converting to PyArrow...")
-            table = self._to_pyarrow_table(df)
+            table = self._to_pyarrow_table(df, schema)
             if table is None:
                 print("❌ Conversion failed")
                 raise Exception("Conversion failed")
 
             # Configure write options
             print("\n⚙️ Configuring write options...")
-            schema = table.schema
+            if schema is None:
+                raise ValueError("Schema is required for writing")
             stats_cols = self._set_stats_cols(value_cols, schema)
             dict_cols = self._set_dict_cols(schema)
 
@@ -329,12 +330,19 @@ class ProcessedFileUtils(StorageFileUtils):
         Returns:
             DataFrame with a timezone-naive 'datetime_utc' column for Parquet compatibility.
         """
-        if pd.api.types.is_datetime64_any_dtype(df['datetime_utc']) and df['datetime_utc'].dt.tz is not None:
-            print(" Converting datetime_utc to UTC naive for Parquet compatibility...")
+        if 'datetime_utc' in df.columns:
+            # This robustly converts the column to a UTC-aware datetime series.
+            # If the original data is timezone-aware, it's converted to UTC.
+            # If it's naive, it's localized to UTC.
+            df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
+            
+            # Now, we make it timezone-naive. This simply strips the timezone information,
+            # leaving the wall time as-is, which is now correctly in UTC.
+            print("Converting datetime_utc to UTC naive for Parquet compatibility...")
             df['datetime_utc'] = df['datetime_utc'].dt.tz_convert(None)
         return df
 
-    def _to_pyarrow_table(self, df: pd.DataFrame) -> Optional[pa.Table]:
+    def _to_pyarrow_table(self, df: pd.DataFrame, schema: pa.Schema = None) -> Optional[pa.Table]:
         """
         Convert a pandas DataFrame to a PyArrow Table.
         
@@ -345,7 +353,7 @@ class ProcessedFileUtils(StorageFileUtils):
             pa.Table: The resulting PyArrow Table.
         """
         try:
-            return pa.Table.from_pandas(df, preserve_index=False)
+            return pa.Table.from_pandas(df, schema=schema, preserve_index=False)
         except Exception as e:
             print(f"[ERROR] Error converting DataFrame to PyArrow Table: {e}")
             print(f"[DEBUG] DataFrame dtypes:\n{df.dtypes}")
@@ -480,7 +488,7 @@ class ProcessedFileUtils(StorageFileUtils):
         print("--------------------------------")
         return dict_cols
     
-    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str) -> None:
+    def write_processed_parquet(self, df: pd.DataFrame, mercado: str, value_cols: list[str], dataset_type: str, schema: pa.Schema = None) -> None:
             """
             Writes a DataFrame as partitioned Parquet files using Hive-style directory structure.
             
@@ -518,7 +526,8 @@ class ProcessedFileUtils(StorageFileUtils):
                             partition_cols=partition_cols,
                             output_file_path=output_file_path,
                             value_cols=value_cols,
-                            dataset_type=dataset_type
+                            dataset_type=dataset_type,
+                            schema=schema
                         )
                     except Exception as e:
                         raise Exception(f"Failed to process partition {partition.to_dict()}: {str(e)}")

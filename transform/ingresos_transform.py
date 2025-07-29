@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utilidades.etl_date_utils import DateUtilsETL
 from configs.ingresos_config import IngresosConfig
-from transform.procesadores._calculator_ingresos import IngresosCalculator, ContinuoIngresosCalculator, RestriccionesIngresosCalculator
+from transform.procesadores._calculator_ingresos import IngresosCalculator, ContinuoIngresosCalculator
 
 class TransformadorIngresos:
     def __init__(self):
@@ -79,6 +79,15 @@ class TransformadorIngresos:
                 print(f"❌ Failed for {market_key}: {e}")
 
         print(f"\n===== INGRESOS CALCULATION FINISHED (Mode: {transform_type.upper()}) =====")
+        for market_key, result in results.items():
+            if result is not None:
+                print(f"✅ Success for {market_key}")
+                print(result.head())
+                print(result.tail())
+                print(f"\n")
+            else:
+                print(f"❌ Failed for {market_key}")
+
         return {
             "data": results,
             "status": {

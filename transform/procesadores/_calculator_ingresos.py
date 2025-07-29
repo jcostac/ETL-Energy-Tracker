@@ -36,7 +36,12 @@ class IngresosCalculator:
     def _get_latest_df(self, mercado, id_mercado, dataset_type):
         path = self._find_latest_partition_path(mercado, id_mercado, dataset_type)
         if path:
-            return pd.read_parquet(path)
+            df = pd.read_parquet(path)
+            print("Processed parquet:")
+            print(df.head())
+            print(df.tail())
+            print(f"\n")
+            return df
         return pd.DataFrame()
 
     def _find_latest_common_date(self, volumes_df, prices_df):
@@ -66,6 +71,11 @@ class IngresosCalculator:
             if path.exists():
                 try:
                     df = pd.read_parquet(path)
+
+                    print(f"Processed parquet: {path}")
+                    print(df['datetime_utc'].head())
+                    print(f"\n")
+                    
                     all_dfs.append(df)
                 except Exception as e:
                     print(f"Warning: Could not read parquet file {path}: {e}")
@@ -102,12 +112,12 @@ class IngresosCalculator:
         result = merged[['datetime_utc', 'up', 'ingresos', 'id_mercado']]
         return result
 
-    def calculate_latest(self, market_key):
+    def calculate_latest(self, market_key, date):
         ids = self.config.mercado_name_id_map.get(market_key, [])
         all_results = []
         for id_mercado in ids:
             volumes_df = self._get_latest_df(market_key, id_mercado, 'volumenes_i90')
-            precio_id = self.config.get_precios_from_id_mercado(id_mercado, datetime.now())
+            precio_id = self.config.get_precios_from_id_mercado(id_mercado)
             
             # Use different price dataset for restricciones
             price_dataset = 'precios_i90' if market_key == 'restricciones' else 'precios_esios'

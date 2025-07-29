@@ -141,7 +141,7 @@ class ParquetReader:
         
         return validated_ids
 
-    def read_parquet_data(self, fecha_inicio_lectura: str, fecha_fin_lectura: str, mercado_lst: list[str], mercado_id_lst: Optional[list[int]] = None) -> pd.DataFrame:
+    def read_parquet_data(self, fecha_inicio_lectura: str, fecha_fin_lectura: str, mercado_lst: list[str], dataset_type: str, mercado_id_lst: Optional[list[int]] = None) -> pd.DataFrame:
         """
         Lee un fichero parquet y lo devuelve como un DataFrame.
         
@@ -149,6 +149,7 @@ class ParquetReader:
             fecha_inicio_lectura (str): Fecha inicial en formato YYYY-MM-DD
             fecha_fin_lectura (str): Fecha final en formato YYYY-MM-DD
             mercado (str): Tipo de mercado (e.g., "intra", "secundaria", etc.)
+            dataset_type (str): The type of data to read (e.g., "precios", "volumenes")
             mercado_id (Optional[list[int]]): Lista específica de IDs de mercado. Si no se proporciona,
                                              se utilizarán todos los IDs válidos para ese mercado.
         """
@@ -159,11 +160,43 @@ class ParquetReader:
 
         # Validate mercado and get appropriate mercado_ids
         self.validate_mercado(mercado_lst)
-        self.validate_mercado_ids_for_market(mercado_lst, mercado_id_lst)
+        validated_mercado_ids = self.validate_mercado_ids_for_market(mercado_lst, mercado_id_lst)
+        print(validated_mercado_ids)
+
+        fecha_inicio_lectura_dt = pd.to_datetime(fecha_inicio_lectura)
+        fecha_fin_lectura_dt = pd.to_datetime(fecha_fin_lectura)
+
+        all_days_in_range = pd.date_range(fecha_inicio_lectura_dt, fecha_fin_lectura_dt, freq='D')
+
+        if all_days_in_range.empty:
+            raise ValueError("No days in range")
+
+        year_months = sorted(list(set([(d.year, d.month) for d in all_days_in_range])))
+
+        all_dfs = []
+        for year, month in year_months:
+            for mercado in mercado_lst:
+                mercado_ids = validated_mercado_ids.get(mercado, [])
+                for id_mercado in mercado_ids:
+                    path = self.processed_path / f"mercado={mercado}" / f"id_mercado={id_mercado}" / f"year={year:04d}" / f"month={month:02d}" / f"{dataset_type}.parquet"
+                    if path.exists():
+                        print(f"Reading parquet file for {mercado} (id_mercado={id_mercado})")
+                        print("--------------------------------")
+                        df = pd.read_parquet(path)
+                        print(f"Read {df.shape[0]} rows")
+                        print(f"Read {df.shape[1]} columns")
+                        print(f"Columns: {df.columns}")
+                        print(f"Dtypes: {df.dtypes}")
+                        print(f"First 10 rows: {df.head(10)}")
+                        print(f"Last 10 rows: {df.tail(10)}")
+                        print(f"--------------------------------")
+                        all_dfs.append(df)
+
+        df_concat = pd.concat(all_dfs)
+        return df_concat
         
-        # Continue with your existing parquet reading logic here...
 
 
 if __name__ == "__main__":
     read_ops = ParquetReader()
-    read_ops.read_parquet_data(fecha_inicio_lectura="2024-01-01", fecha_fin_lectura="2024-01-01", mercado_lst=["secundaria"])
+    read_ops.read_parquet_data(fecha_inicio_lectura="2024-12-31", fecha_fin_lectura="2025-01-01", mercado_lst=["secundaria"], dataset_type="volumenes_i90")

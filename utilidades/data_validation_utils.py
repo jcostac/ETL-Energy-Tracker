@@ -1,4 +1,5 @@
 import pandas as pd 
+import pyarrow as pa
 
 class DataValidationUtils:
     """
@@ -253,3 +254,82 @@ class DataValidationUtils:
         print(f"{type.upper()} {validation_schema_type.upper()} data structure validated successfully.")
         
         return df
+
+    def get_pyarrow_schema(self, dataset_type: str) -> pa.Schema:
+        """
+        Returns a PyArrow schema for the given processed dataset type.
+        
+        Parameters:
+            dataset_type (str): The type of dataset (e.g., 'precios_esios', 'volumenes_i90').
+        
+        Returns:
+            pa.Schema: The PyArrow schema for the dataset.
+            
+        Raises:
+            ValueError: If the dataset_type is unknown.
+        """
+        common_fields = {
+            'datetime_utc': pa.timestamp('ns'),
+            'id_mercado': pa.uint8(),
+            'year': pa.int32(),
+            'month': pa.int32(),
+            'mercado': pa.string()
+        }
+
+        schema_fields = []
+        if dataset_type == 'precios_esios':
+            schema_fields = [
+                pa.field('precio', pa.float32())
+            ]
+        elif dataset_type == 'precios_i90':
+            schema_fields = [
+                pa.field('precio', pa.float32()),
+                pa.field('up', pa.string())
+            ]
+        elif dataset_type == 'volumenes_i90':
+            schema_fields = [
+                pa.field('up', pa.string()),
+                pa.field('volumenes', pa.float32())
+            ]
+        elif dataset_type == 'volumenes_i3':
+            schema_fields = [
+                pa.field('tecnologia', pa.string()),
+                pa.field('volumenes', pa.float32())
+            ]
+        elif dataset_type == 'volumenes_omie':
+            schema_fields = [
+                pa.field('uof', pa.string()),
+                pa.field('volumenes', pa.float32())
+            ]
+        elif dataset_type == 'volumenes_mic':
+            schema_fields = [
+                pa.field('uof', pa.string()),
+                pa.field('volumenes', pa.float32()),
+                pa.field('precio', pa.float32()),
+                pa.field('fecha_fichero', pa.timestamp('ns'))
+            ]
+        elif dataset_type in ['curtailments_i90', 'curtailments_i3']:
+             schema_fields = [
+                pa.field('RTx', pa.string()),
+                pa.field('tipo', pa.string()),
+                pa.field('volumenes', pa.float32())
+            ]
+             if dataset_type == 'curtailments_i90':
+                 schema_fields.append(pa.field('up', pa.string()))
+             else:
+                 schema_fields.append(pa.field('tecnologia', pa.string()))
+        elif dataset_type == 'ingresos':
+            # This one is tricky since 'up' or 'uof' can exist.
+            # We will handle this in the calling function.
+             schema_fields = [
+                pa.field('ingresos', pa.float32())
+                # 'up' or 'uof' will be added dynamically
+            ]
+        else:
+            raise ValueError(f"Unknown dataset type for schema generation: {dataset_type}")
+
+        # Add common fields to the schema
+        for name, dtype in common_fields.items():
+            schema_fields.append(pa.field(name, dtype))
+            
+        return pa.schema(schema_fields)

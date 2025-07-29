@@ -331,13 +331,12 @@ class DateUtilsETL:
                 # Localize, handling DST transitions for this specific day
                 try:
                     local_dt = naive_dt.dt.tz_localize(tz, ambiguous='infer', nonexistent='shift_forward')
-                    group['datetime_utc'] = local_dt.dt.tz_convert('UTC')
+                    utc_dt = local_dt.dt.tz_convert('UTC')
+                    return group.assign(datetime_utc=utc_dt)
                 except Exception as loc_err:
                      # Log error for the specific day/group if needed
                      print(f"Error localizing group for date {group['fecha'].iloc[0].date()}: {loc_err}")
-                     group['datetime_utc'] = pd.NaT # Assign NaT for error cases in this group
-
-                return group
+                     return group.assign(datetime_utc=pd.NaT)
 
             print("Localizing timestamps day by day...")
             # Apply the localization function to each daily group
