@@ -19,8 +19,6 @@ class TestOMIEPipeline(unittest.TestCase):
     def test_full_etl(self):
         for test_date in self.TEST_DATES:
             with self.subTest(phase="Extraction", test_date=test_date):
-                skip_extraction = True
-                if not skip_extraction:
                     extractor = OMIEExtractor()
                     extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date)
                     self.assertIsInstance(extract_result, dict)
