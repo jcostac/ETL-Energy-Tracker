@@ -29,5 +29,13 @@ class DebugTransformTests():
    
 if __name__ == "__main__":
     debugger = DebugTransformTests()
-    debugger.debug_calculate_ingresos_for_all_markets("2025-01-01", "2025-01-01", mercados_lst=["secundaria"])
+    TEST_DATES = [
+        "2024-01-01",
+        "2024-11-01", 
+        "2025-01-01", 
+        "2025-03-31", 
+        "2025-04-01"
+    ]
+    debugger.debug_calculate_ingresos_for_all_markets("2024-11-01", "2024-11-01", mercados_lst=["intra"])
     breakpoint()
+

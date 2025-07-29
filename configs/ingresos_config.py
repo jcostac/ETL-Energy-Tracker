@@ -25,6 +25,22 @@ class IngresosConfig:
             'restricciones': [9,10,11,12, 24, 25],
         }
 
+    def get_market_ids(self, market_key, date):
+        """
+        Returns the appropriate market IDs for a given market key and date.
+        For intra markets, filters based on the intra reduction date.
+        """
+        if market_key == 'intra':
+            if date >= self.intra_reduction_date:
+                # After June 13, 2024: only use Intra 1, 2, and 3
+                return [2, 3, 4]
+            else:
+                # Before June 13, 2024: use all 7 intra markets
+                return [2, 3, 4, 5, 6, 7, 8]
+        else:
+            # For all other markets, return the standard mapping
+            return self.mercado_name_id_map.get(market_key, [])
+
     def get_precios_from_id_mercado(self, id_mercado: str, date: datetime) -> int:
         """
         Returns the market id of the corresponding prices dataset for a given id_mercado.
