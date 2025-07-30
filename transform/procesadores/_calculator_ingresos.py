@@ -222,6 +222,14 @@ class IngresosCalculator:
 
     def _calculate_ingresos(self, volumes_df, prices_df, market_key, id_mercado, plot=False):
         print(f"🧮 Starting ingresos calculation for market '{market_key}' - id: {id_mercado}")
+
+        if market_key == "diario":
+            if "tipo_transaccion" in volumes_df.columns:
+                print(f"🔄 Filtering volumes_df for diari (tipo_transaccion == Mercado)")
+                volumes_df = volumes_df[volumes_df["tipo_transaccion"] == "Mercado"]
+            else:
+                print(f"    ⚠️  No tipo_transaccion column found in volumes_df for diario (expected)")
+                raise ValueError(f"No tipo_transaccion column found in volumes_df for diario (expected)")
         
         if volumes_df.empty and prices_df.empty:
             print(f"    ⚠️  Both volumes and prices dataframes are empty")
@@ -274,7 +282,7 @@ class IngresosCalculator:
         result = merged[['datetime_utc', 'up', 'ingresos', 'id_mercado']]
         
         # Analyze and print top ingresos by UP
-        self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})")
+        self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})", plot)
 
         market_context = f"para {market_key} (id: {id_mercado})"
 
@@ -285,54 +293,6 @@ class IngresosCalculator:
         
         print(f"    ✅ Calculation complete: {len(result):,} ingresos records generated")
         return result
-
-    def calculate_latest(self, market_key, date, plot=False):
-        print(f"\n🚀 STARTING LATEST INGRESOS CALCULATION")
-        print(f"    Market: {market_key}")
-        print(f"    Date: {date}")
-        
-        ids = self.config.get_market_ids(market_key, date)
-        print(f"    Processing {len(ids)} market IDs: {ids}")
-        
-        all_results = []
-        for i, id_mercado in enumerate(ids, 1):
-            print(f"\n📍 Processing market ID {id_mercado} ({i}/{len(ids)})")
-            
-            volumes_df = self._get_latest_df(market_key, id_mercado, 'volumenes_i90')
-            precio_id = self.config.get_precios_from_id_mercado(id_mercado)
-            print(f"    💰 Using precio_id: {precio_id}")
-            
-            # Use different price dataset for restricciones
-            price_dataset = 'precios_i90' if market_key == 'restricciones' else 'precios_esios'
-            print(f"    📊 Using price dataset: {price_dataset}")
-            prices_df = self._get_latest_df(market_key, precio_id, price_dataset)
-            
-            latest_date = self._find_latest_common_date(volumes_df, prices_df)
-            if latest_date is None:
-                print(f"    ⏭️  Skipping market ID {id_mercado} - no common dates")
-                continue
-            
-            volumes_day = volumes_df[volumes_df['datetime_utc'].dt.date == latest_date]
-            prices_day = prices_df[prices_df['datetime_utc'].dt.date == latest_date]
-            print(f"    📅 Filtered to {latest_date}: {len(volumes_day):,} volume rows, {len(prices_day):,} price rows")
-            
-            try:
-                ingresos_df = self._calculate_ingresos(volumes_day, prices_day, market_key, id_mercado, plot)
-                all_results.append(ingresos_df)
-                print(f"    ✅ Market ID {id_mercado} completed successfully")
-
-            except Exception as e:
-                print(f"    ❌ Market ID {id_mercado} failed: {e}")
-                
-        if not all_results:
-            print(f"\n❌ CALCULATION FAILED: No results generated for any market ID")
-            return pd.DataFrame()
-            
-        combined = pd.concat(all_results, ignore_index=True)
-        self._analyze_total_ingresos(combined, plot)
-        
-        print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
-        return combined
 
     def calculate_single(self, market_key, fecha, plot=False):
         print(f"\n🚀 STARTING SINGLE DATE INGRESOS CALCULATION")
@@ -495,48 +455,6 @@ class IngresosCalculator:
         return results
 
 class ContinuoIngresosCalculator(IngresosCalculator):
-    def calculate_latest(self, market_key, plot=False):
-        print(f"\n🚀 STARTING CONTINUO LATEST INGRESOS CALCULATION")
-        print(f"    Market: {market_key}")
-        
-        ids = self.config.mercado_name_id_map.get(market_key, [])
-        print(f"    Processing {len(ids)} market IDs: {ids}")
-        
-        all_results = []
-        for i, id_mercado in enumerate(ids, 1):
-            print(f"\n📍 Processing market ID {id_mercado} ({i}/{len(ids)})")
-            
-            df = self._get_latest_df(market_key, id_mercado, 'volumenes_omie')  # Assuming volumenes_omie for continuo
-            if df.empty:
-                print(f"    ⏭️  Skipping market ID {id_mercado} - no data")
-                continue
-                
-            latest_date = df['datetime_utc'].dt.date.max()
-            print(f"    📅 Using latest date: {latest_date}")
-            day_df = df[df['datetime_utc'].dt.date == latest_date]
-            print(f"    📊 Filtered to {len(day_df):,} rows for {latest_date}")
-            
-            day_df['ingresos'] = day_df['volumenes'] * day_df['precio']
-            
-            result = day_df[['datetime_utc', 'uof', 'ingresos', 'id_mercado']].rename(columns={'uof': 'up'})
-            
-            # Analyze ingresos for this market
-            self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})", plot)
-            
-            all_results.append(result)
-            print(f"    ✅ Market ID {id_mercado} completed: {len(result):,} records")
-            
-        if not all_results:
-            print(f"\n❌ CALCULATION FAILED: No results generated for any market ID")
-            return pd.DataFrame()
-            
-        combined = pd.concat(all_results, ignore_index=True)
-        
-        self._analyze_total_ingresos(combined, plot)
-        
-        print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
-        return combined
-
     def calculate_single(self, market_key, fecha, plot=False):
         print(f"\n🚀 STARTING CONTINUO SINGLE DATE INGRESOS CALCULATION")
         print(f"    Market: {market_key}")
@@ -558,9 +476,9 @@ class ContinuoIngresosCalculator(IngresosCalculator):
             df['ingresos'] = df['volumenes'] * df['precio']
             
             result = df[['datetime_utc', 'uof', 'ingresos', 'id_mercado']].rename(columns={'uof': 'up'})
-            
+
             # Analyze ingresos for this market
-            self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})", plot)
+            self._analyze_total_ingresos(result, plot)
             
             all_results.append(result)
             print(f"    ✅ Market ID {id_mercado} completed: {len(result):,} records")

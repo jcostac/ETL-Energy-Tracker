@@ -27,7 +27,7 @@ class TransformadorIngresos:
         return calculator_class()
 
     def calculate_ingresos_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
-                                           mercados_lst: Optional[List[str]] = None) -> dict:
+                                           mercados_lst: Optional[List[str]] = None, plot: bool = False) -> dict:
         if mercados_lst is None:
             mercados_lst = self.all_markets
         else:
@@ -37,7 +37,7 @@ class TransformadorIngresos:
             mercados_lst = [m for m in mercados_lst if m in self.all_markets]
 
         if fecha_inicio is None and fecha_fin is None:
-            transform_type = 'latest'
+            raise ValueError("Fecha inicio and fecha fin are required")
         elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
             transform_type = 'single'
         elif fecha_inicio is not None and fecha_fin is not None and fecha_inicio != fecha_fin:
@@ -59,12 +59,10 @@ class TransformadorIngresos:
             print(f"\n-- Market: {market_key} --")
             try:
                 calculator = self.get_calculator_for_market(market_key)
-                if transform_type == 'latest':
-                    market_result = calculator.calculate_latest(market_key)
-                elif transform_type == 'single':
-                    market_result = calculator.calculate_single(market_key, fecha_inicio)
+                if transform_type == 'single':
+                    market_result = calculator.calculate_single(market_key, fecha_inicio, plot)
                 elif transform_type == 'multiple':
-                    market_result = calculator.calculate_multiple(market_key, fecha_inicio, fecha_fin)
+                    market_result = calculator.calculate_multiple(market_key, fecha_inicio, fecha_fin, plot)
 
                 if isinstance(market_result, pd.DataFrame) and not market_result.empty:
                     status_details["markets_processed"].append(market_key)

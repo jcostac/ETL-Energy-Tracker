@@ -8,7 +8,7 @@ from transform.ingresos_transform import TransformadorIngresos
 
 class DebugTransformTests():
 
-    def debug_calculate_ingresos_for_all_markets(self, fecha_inicio, fecha_fin, mercados_lst):
+    def debug_calculate_ingresos_for_all_markets(self, fecha_inicio, fecha_fin, mercados_lst, plot=False):
         """
         Test the income calculation for a single day for all markets.
         This test ensures that the transformation completes successfully for specific dates,
@@ -16,7 +16,7 @@ class DebugTransformTests():
         """
         transformer = TransformadorIngresos()
         result = transformer.calculate_ingresos_for_all_markets(
-                    fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, mercados_lst=mercados_lst)
+                    fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, mercados_lst=mercados_lst, plot=plot)
         result_status = result["status"]
         if result_status["success"]:
             print(f"✅ Ingresos calculation for {fecha_inicio} to {fecha_fin} PASSED.")
@@ -29,6 +29,7 @@ class DebugTransformTests():
    
 if __name__ == "__main__":
     debugger = DebugTransformTests()
+
     TEST_DATES = [
         "2024-01-01",
         "2024-11-01", 
@@ -36,6 +37,6 @@ if __name__ == "__main__":
         "2025-03-31", 
         "2025-04-01"
     ]
-    debugger.debug_calculate_ingresos_for_all_markets("2025-03-31", "2025-04-01", mercados_lst=["diario"])
+    debugger.debug_calculate_ingresos_for_all_markets("2025-03-31", "2025-04-01", mercados_lst=["diario"], plot=True)
     breakpoint()
 
