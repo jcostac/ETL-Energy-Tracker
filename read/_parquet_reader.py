@@ -223,4 +223,4 @@ class ParquetReader:
 
 if __name__ == "__main__":
     read_ops = ParquetReader()
-    read_ops.read_parquet_data(fecha_inicio_lectura="2024-12-31", fecha_fin_lectura="2025-01-01", mercado_lst=["secundaria"], mercado_id_lst=[15], dataset_type="volumenes_i90")
+    read_ops.read_parquet_data(fecha_inicio_lectura="2025-03-31", fecha_fin_lectura="2025-04-01", mercado_lst=["diario"], mercado_id_lst=None, dataset_type="volumenes_i90")

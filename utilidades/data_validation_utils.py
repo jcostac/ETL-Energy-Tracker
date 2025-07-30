@@ -1,5 +1,6 @@
 import pandas as pd 
 import pyarrow as pa
+from typing import Optional
 
 class DataValidationUtils:
     """
@@ -255,12 +256,13 @@ class DataValidationUtils:
         
         return df
 
-    def get_pyarrow_schema(self, dataset_type: str) -> pa.Schema:
+    def get_pyarrow_schema(self, dataset_type: str, df: Optional[pd.DataFrame] = None) -> pa.Schema:
         """
         Returns a PyArrow schema for the given processed dataset type.
         
         Parameters:
             dataset_type (str): The type of dataset (e.g., 'precios_esios', 'volumenes_i90').
+            df (pd.DataFrame, optional): DataFrame to check for optional columns like 'tipo_transaccion'.
         
         Returns:
             pa.Schema: The PyArrow schema for the dataset.
@@ -291,6 +293,9 @@ class DataValidationUtils:
                 pa.field('up', pa.string()),
                 pa.field('volumenes', pa.float32())
             ]
+            if df is not None and 'tipo_transaccion' in df.columns:
+                schema_fields.append(pa.field('tipo_transaccion', pa.string()))
+
         elif dataset_type == 'volumenes_i3':
             schema_fields = [
                 pa.field('tecnologia', pa.string()),
@@ -319,17 +324,18 @@ class DataValidationUtils:
              else:
                  schema_fields.append(pa.field('tecnologia', pa.string()))
         elif dataset_type == 'ingresos':
-            # This one is tricky since 'up' or 'uof' can exist.
-            # We will handle this in the calling function.
-             schema_fields = [
+            schema_fields = [
                 pa.field('ingresos', pa.float32())
-                # 'up' or 'uof' will be added dynamically
             ]
+            if df is not None:
+                if 'up' in df.columns:
+                    schema_fields.append(pa.field('up', pa.string()))
+                elif 'uof' in df.columns:
+                    schema_fields.append(pa.field('uof', pa.string()))
         else:
             raise ValueError(f"Unknown dataset type for schema generation: {dataset_type}")
 
         # Add common fields to the schema
-        for name, dtype in common_fields.items():
-            schema_fields.append(pa.field(name, dtype))
-            
-        return pa.schema(schema_fields)
+        all_fields = schema_fields + [pa.field(name, dtype) for name, dtype in common_fields.items() if name not in [f.name for f in schema_fields]]
+        
+        return pa.schema(all_fields)

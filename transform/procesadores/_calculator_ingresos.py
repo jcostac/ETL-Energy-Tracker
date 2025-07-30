@@ -2,11 +2,19 @@ import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
 import os
+import numpy as np
+import matplotlib.pyplot as plt
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 from utilidades.processed_file_utils import ProcessedFileUtils
 from utilidades.data_validation_utils import DataValidationUtils
 from configs.ingresos_config import IngresosConfig
 from configs.storage_config import VALID_DATASET_TYPES
-from read._parquet_reader import ParquetReader
+from read._parquet_reader import PROJECT_ROOT, ParquetReader
 
 class IngresosCalculator:
     def __init__(self):
@@ -110,13 +118,12 @@ class IngresosCalculator:
             print(f"    ❌ Warning: Could not read data for {mercado} (id: {id_mercado}), {dataset_type}: {e}")
             return pd.DataFrame()
 
-    def _analyze_total_ingresos(self, df: pd.DataFrame, context: str = "calculation") -> pd.DataFrame:
+    def _analyze_total_ingresos(self, df: pd.DataFrame, plot=False) -> pd.DataFrame:
         """
         Group ingresos by UP/UOF and display top 3 highest earners.
         
         Args:
             df (pd.DataFrame): DataFrame with 'up' and 'ingresos' columns
-            context (str): Context description for the analysis
             
         Returns:
             pd.DataFrame: Grouped data sorted by ingresos descending
@@ -128,31 +135,93 @@ class IngresosCalculator:
         # Group by UP and sum ingresos
         grouped = df.groupby('up')['ingresos'].agg(['sum', 'count']).reset_index()
         grouped.columns = ['up', 'total_ingresos', 'records_count']
-        grouped = grouped.sort_values('total_ingresos', ascending=False)
+        total_ingresos_abs = grouped['total_ingresos'].abs().sum()
+        grouped["% of volume"] = grouped['total_ingresos'].abs() / total_ingresos_abs * 100
+        grouped['total_ingresos'] = grouped['total_ingresos'].round(2)
+        grouped['% of volume'] = grouped['% of volume'].round(2)
+        grouped = grouped.sort_values('total_ingresos', ascending=False).reset_index(drop=True)
         
         total_ups = len(grouped)
-        total_ingresos = grouped['total_ingresos'].sum()
+
+        if plot == True:
+            self._plot_histogram(grouped['total_ingresos'], title=f"Distribución de Ingresos Totales por UP", xlabel="Ingresos Totales por UP (€)")
         
-        print(f"    📈 INGRESOS ANALYSIS ({context}):")
-        print(f"        💰 Total ingresos: {total_ingresos:,.2f} €")
-        print(f"        🏭 Total UPs: {total_ups}")
-        
-        if total_ups > 0:
-            print(f"    🏆 TOP 3 HIGHEST EARNING UPs:")
-            top_3 = grouped.head(3)
-            for i, (_, row) in enumerate(top_3.iterrows(), 1):
-                percentage = (row['total_ingresos'] / total_ingresos) * 100
-                print(f"        {i}. UP {row['up']}: {row['total_ingresos']:,.2f} € ({percentage:.1f}%) - {row['records_count']:,} records")
-            
-            if total_ups > 3:
-                remaining_ingresos = grouped.iloc[3:]['total_ingresos'].sum()
-                remaining_percentage = (remaining_ingresos / total_ingresos) * 100
-                print(f"        ... {total_ups - 3} other UPs: {remaining_ingresos:,.2f} € ({remaining_percentage:.1f}%)")
-        
+        print(f"📈 TOTAL INGRESOS ANALYSIS:")
+        print(f"💰 Total volume: {total_ingresos_abs:,.2f} €")
+        print(f"🏭 Total UPs: {total_ups}")
+        print(f"Top Earners:")
+        print(grouped.head())
+        print(f"Bottom Earners:")
+        print(grouped.tail())
+         
         return grouped
 
-    def _calculate_ingresos(self, volumes_df, prices_df, market_key, id_mercado):
-        print(f"    🧮 Starting ingresos calculation for market '{market_key}' (id: {id_mercado})")
+    def _plot_histogram(self, data_series: pd.Series, title: str, xlabel: str):
+        """
+        Plots a histogram for a given data series, trimming outliers for better visualization.
+
+        Args:
+            data_series (pd.Series): Series of data to plot.
+            title (str): Title for the plot.
+            xlabel (str): Label for the x-axis.
+        """
+        if data_series.empty:
+            print(f"    ⚠️  Cannot plot histogram for '{title}' - empty data series")
+            return
+
+        data = data_series.dropna()
+        if len(data) < 2:
+            print(f"    ⚠️  Not enough data to plot histogram for '{title}'")
+            return
+
+        # Trim outliers for better visualization
+        lower_percentile = data.quantile(0.01)
+        upper_percentile = data.quantile(0.99)
+        
+        # Only filter if the percentiles are different to avoid removing all data
+        if lower_percentile < upper_percentile:
+            filtered_data = data[(data >= lower_percentile) & (data <= upper_percentile)]
+        else:
+            filtered_data = data # Keep original data if percentiles are the same
+
+        if len(filtered_data) < 2:
+            print(f"    ⚠️  Not enough data to plot histogram for '{title}' after filtering outliers")
+            return
+            
+        # Recalculate bins based on the filtered data
+        q1 = filtered_data.quantile(0.25)
+        q3 = filtered_data.quantile(0.75)
+        iqr = q3 - q1
+        
+        if iqr > 0:
+            bin_width = 2 * iqr / (len(filtered_data)**(1/3))
+            if bin_width > 0:
+                num_bins = int(np.ceil((filtered_data.max() - filtered_data.min()) / bin_width))
+                num_bins = max(10, min(num_bins, 100))  # Cap bins to a reasonable range
+            else:
+                num_bins = 30
+        else:
+            num_bins = 30
+
+        # Calculate stats for legend
+        min_val = filtered_data.min()
+        max_val = filtered_data.max()
+        avg_val = filtered_data.mean()
+        
+        stats_label = f'Min: {min_val:.2f}\nMax: {max_val:.2f}\nAvg: {avg_val:.2f}'
+
+        plt.figure(figsize=(12, 7))
+        plt.hist(filtered_data, bins=num_bins, color='skyblue', edgecolor='black', label=stats_label)
+        plt.title(f"{title}")
+        plt.xlabel(xlabel)
+        plt.ylabel("Frecuencia")
+        plt.grid(axis='y', alpha=0.75)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+    def _calculate_ingresos(self, volumes_df, prices_df, market_key, id_mercado, plot=False):
+        print(f"🧮 Starting ingresos calculation for market '{market_key}' - id: {id_mercado}")
         
         if volumes_df.empty and prices_df.empty:
             print(f"    ⚠️  Both volumes and prices dataframes are empty")
@@ -206,11 +275,18 @@ class IngresosCalculator:
         
         # Analyze and print top ingresos by UP
         self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})")
+
+        market_context = f"para {market_key} (id: {id_mercado})"
+
+        if plot == True:
+            self._plot_histogram(merged['ingresos'], title=f"Distribución de Ingresos Horarios {market_context}", xlabel="Ingresos (€)")
+            self._plot_histogram(merged['volumenes'], title=f"Distribución de Volúmenes Horarios {market_context}", xlabel="Volumen (MWh)")
+            self._plot_histogram(merged['precio'], title=f"Distribución de Precios Horarios {market_context}", xlabel="Precio (€/MWh)")
         
         print(f"    ✅ Calculation complete: {len(result):,} ingresos records generated")
         return result
 
-    def calculate_latest(self, market_key, date):
+    def calculate_latest(self, market_key, date, plot=False):
         print(f"\n🚀 STARTING LATEST INGRESOS CALCULATION")
         print(f"    Market: {market_key}")
         print(f"    Date: {date}")
@@ -241,9 +317,10 @@ class IngresosCalculator:
             print(f"    📅 Filtered to {latest_date}: {len(volumes_day):,} volume rows, {len(prices_day):,} price rows")
             
             try:
-                ingresos_df = self._calculate_ingresos(volumes_day, prices_day, market_key, id_mercado)
+                ingresos_df = self._calculate_ingresos(volumes_day, prices_day, market_key, id_mercado, plot)
                 all_results.append(ingresos_df)
                 print(f"    ✅ Market ID {id_mercado} completed successfully")
+
             except Exception as e:
                 print(f"    ❌ Market ID {id_mercado} failed: {e}")
                 
@@ -252,18 +329,12 @@ class IngresosCalculator:
             return pd.DataFrame()
             
         combined = pd.concat(all_results, ignore_index=True)
-        total_records = len(combined)
-        
-        # Final analysis of all combined results
-        print(f"\n🎯 FINAL COMBINED RESULTS:")
-        print(f"    📊 Total records: {total_records:,}")
-        print(f"    🏢 Markets processed: {len(all_results)}/{len(ids)}")
-        self._analyze_total_ingresos(combined, "FINAL COMBINED")
+        self._analyze_total_ingresos(combined, plot)
         
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
 
-    def calculate_single(self, market_key, fecha):
+    def calculate_single(self, market_key, fecha, plot=False):
         print(f"\n🚀 STARTING SINGLE DATE INGRESOS CALCULATION")
         print(f"    Market: {market_key}")
         print(f"    Date: {fecha}")
@@ -286,7 +357,7 @@ class IngresosCalculator:
             prices_df = self._get_df_for_date_range(market_key, precio_id, price_dataset, fecha, fecha)
             
             try:
-                ingresos_df = self._calculate_ingresos(volumes_df, prices_df, market_key, id_mercado)
+                ingresos_df = self._calculate_ingresos(volumes_df, prices_df, market_key, id_mercado, plot)
                 all_results.append(ingresos_df)
                 print(f"    ✅ Market ID {id_mercado} completed successfully")
             except Exception as e:
@@ -297,18 +368,13 @@ class IngresosCalculator:
             return pd.DataFrame()
             
         combined = pd.concat(all_results, ignore_index=True)
-        total_records = len(combined)
         
-        # Final analysis of all combined results
-        print(f"\n🎯 FINAL COMBINED RESULTS:")
-        print(f"    📊 Total records: {total_records:,}")
-        print(f"    🏢 Markets processed: {len(all_results)}/{len(ids)}")
-        self._analyze_total_ingresos(combined, "FINAL COMBINED")
+        self._analyze_total_ingresos(combined, plot)
         
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
 
-    def calculate_multiple(self, market_key, fecha_inicio, fecha_fin):
+    def calculate_multiple(self, market_key, fecha_inicio, fecha_fin, plot=False):
         print(f"\n🚀 STARTING MULTIPLE DATE INGRESOS CALCULATION")
         print(f"    Market: {market_key}")
         print(f"    Date range: {fecha_inicio} to {fecha_fin}")
@@ -350,20 +416,13 @@ class IngresosCalculator:
         
         # Combine all results
         combined = pd.concat(all_results, ignore_index=True)
-        total_records = len(combined)
-        date_range = f"{combined['datetime_utc'].dt.date.min()} to {combined['datetime_utc'].dt.date.max()}"
-        
-        # Final analysis of all combined results
-        print(f"\n🎯 FINAL COMBINED RESULTS:")
-        print(f"    📊 Total records: {total_records:,}")
-        print(f"    📅 Date range covered: {date_range}")
-        print(f"    🏢 Markets processed: {len(all_results)}/{len(ids)}") # This line needs to be updated based on how ids is determined
-        self._analyze_total_ingresos(combined, "FINAL COMBINED")
+
+        self._analyze_total_ingresos(combined, plot)
         
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
 
-    def _process_market_ids_for_period(self, market_key, ids, fecha_inicio, fecha_fin):
+    def _process_market_ids_for_period(self, market_key, ids, fecha_inicio, fecha_fin, plot=False):
         """Process a specific set of market IDs for a given date range"""
         results = []
         
@@ -427,7 +486,7 @@ class IngresosCalculator:
                 print(f"    ❌ No price data from any segment")
             
             try:
-                ingresos_df = self._calculate_ingresos(volumes_df, prices_df, market_key, id_mercado)
+                ingresos_df = self._calculate_ingresos(volumes_df, prices_df, market_key, id_mercado, plot)
                 results.append(ingresos_df)
                 print(f"    ✅ Market ID {id_mercado} completed successfully")
             except Exception as e:
@@ -436,7 +495,7 @@ class IngresosCalculator:
         return results
 
 class ContinuoIngresosCalculator(IngresosCalculator):
-    def calculate_latest(self, market_key):
+    def calculate_latest(self, market_key, plot=False):
         print(f"\n🚀 STARTING CONTINUO LATEST INGRESOS CALCULATION")
         print(f"    Market: {market_key}")
         
@@ -462,7 +521,7 @@ class ContinuoIngresosCalculator(IngresosCalculator):
             result = day_df[['datetime_utc', 'uof', 'ingresos', 'id_mercado']].rename(columns={'uof': 'up'})
             
             # Analyze ingresos for this market
-            self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})")
+            self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})", plot)
             
             all_results.append(result)
             print(f"    ✅ Market ID {id_mercado} completed: {len(result):,} records")
@@ -472,18 +531,13 @@ class ContinuoIngresosCalculator(IngresosCalculator):
             return pd.DataFrame()
             
         combined = pd.concat(all_results, ignore_index=True)
-        total_records = len(combined)
         
-        # Final analysis of all combined results
-        print(f"\n🎯 FINAL COMBINED RESULTS:")
-        print(f"    📊 Total records: {total_records:,}")
-        print(f"    🏢 Markets processed: {len(all_results)}/{len(ids)}")
-        self._analyze_total_ingresos(combined, "FINAL COMBINED")
+        self._analyze_total_ingresos(combined, plot)
         
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
 
-    def calculate_single(self, market_key, fecha):
+    def calculate_single(self, market_key, fecha, plot=False):
         print(f"\n🚀 STARTING CONTINUO SINGLE DATE INGRESOS CALCULATION")
         print(f"    Market: {market_key}")
         print(f"    Date: {fecha}")
@@ -506,7 +560,7 @@ class ContinuoIngresosCalculator(IngresosCalculator):
             result = df[['datetime_utc', 'uof', 'ingresos', 'id_mercado']].rename(columns={'uof': 'up'})
             
             # Analyze ingresos for this market
-            self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})")
+            self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})", plot)
             
             all_results.append(result)
             print(f"    ✅ Market ID {id_mercado} completed: {len(result):,} records")
@@ -516,13 +570,8 @@ class ContinuoIngresosCalculator(IngresosCalculator):
             return pd.DataFrame()
             
         combined = pd.concat(all_results, ignore_index=True)
-        total_records = len(combined)
         
-        # Final analysis of all combined results
-        print(f"\n🎯 FINAL COMBINED RESULTS:")
-        print(f"    📊 Total records: {total_records:,}")
-        print(f"    🏢 Markets processed: {len(all_results)}/{len(ids)}")
-        self._analyze_total_ingresos(combined, "FINAL COMBINED")
+        self._analyze_total_ingresos(combined, plot)
         
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined

@@ -534,7 +534,7 @@ class TransformadorESIOS:
         return self._transform_market_data(raw_df, 'rr')
     
     def transform_data_for_all_markets(self, fecha_inicio: str = None, fecha_fin: str = None, 
-                                      mercados: list[str] = None):
+                                      mercados_lst: list[str] = None):
         """
         Transform and aggregate market price data for one or more specified markets using the selected processing transform_type.
         
@@ -576,13 +576,13 @@ class TransformadorESIOS:
         try:
                 
             # Get list of all markets to process
-            if mercados is None:
-                mercados = ESIOSConfig().esios_precios_markets
-            elif isinstance(mercados, str): # Allow single market string
-                mercados = [mercados]
+            if mercados_lst is None:
+                mercados_lst = ESIOSConfig().esios_precios_markets
+            elif isinstance(mercados_lst, str): # Allow single market string
+                mercados_lst = [mercados_lst]
                 
             # Process each market and track status
-            for mercado in mercados:
+            for mercado in mercados_lst:
                 market_result = None
                 try:
                     if transform_type == 'single':

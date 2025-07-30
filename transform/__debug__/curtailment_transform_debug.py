@@ -3,10 +3,9 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-import unittest
 from transform.curtailment_transform import TransformadorCurtailment
 
-class TestCurtailmentTransform(unittest.TestCase):
+class TestCurtailmentTransform:
 
     def test_curtailment_i3_transform(self):
         transformer = TransformadorCurtailment()
@@ -21,4 +20,9 @@ class TestCurtailmentTransform(unittest.TestCase):
         breakpoint()
 
 if __name__ == "__main__":
-    unittest.main() 
+    debugger = TestCurtailmentTransform()
+    print("Running Curtailment Transform Debug for i3...")
+    debugger.test_curtailment_i3_transform()
+    print("Running Curtailment Transform Debug for i90...")
+    debugger.test_curtailment_i90_transform()
+    print("Debugging script finished.") 

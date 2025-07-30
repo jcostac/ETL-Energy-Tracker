@@ -49,7 +49,10 @@ class ProcessedFileUtils(StorageFileUtils):
         # Then handle subset-based duplicates
         try:
             if dataset_type == 'volumenes_i90':
-                df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "up", "id_mercado"], keep='last')
+                subset_cols = ['datetime_utc', 'volumenes', "up", "id_mercado"]
+                if "tipo_transaccion" in df.columns: #for mercado diario 
+                    subset_cols.append("tipo_transaccion")
+                df = df.drop_duplicates(subset=subset_cols, keep='last')
             elif dataset_type == 'volumenes_i3':
                 df = df.drop_duplicates(subset=['datetime_utc', 'volumenes', "tecnologia", "id_mercado"], keep='last')
             elif dataset_type == 'precios_i90':

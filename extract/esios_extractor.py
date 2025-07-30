@@ -132,7 +132,7 @@ class ESIOSPreciosExtractor:
             except Exception as e:
                 print(f"  ❌ Error downloading {mercado} prices for {day_str}: {e}")
 
-    def extract_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None):
+    def extract_data_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None, mercados_lst: Optional[List[str]] = None):
         """
         Extracts and saves price data for all ESIOS electricity markets over a specified date range.
         
@@ -157,30 +157,38 @@ class ESIOSPreciosExtractor:
             "date_range": date_range_str
         }
 
-        
+        if mercados_lst is None:
+            mercados_lst = ["diario", "intra", "secundaria", "terciaria", "rr"]
+
         try:
+            overall_success = True
             # Track success for each market
-            print ("\n--------- Diario ---------")
-            success_diario = self._extract_with_status("diario", self.extract_diario, 
+            for mercado in mercados_lst:
+                if mercado == "diario":
+                    extract_function = self.extract_diario
+                elif mercado == "intra":
+                    extract_function = self.extract_intra
+                elif mercado == "secundaria":
+                    extract_function = self.extract_secundaria
+                elif mercado == "terciaria":
+                    extract_function = self.extract_terciaria
+                elif mercado == "rr":
+                    extract_function = self.extract_rr
+                else:
+                    raise ValueError(f"Mercado {mercado} no válido")
+
+                success_mercado = self._extract_with_status(mercado, extract_function, 
                                                      fecha_inicio, fecha_fin, status_details)
-        
-            print ("\n--------- Intra ---------")
-            success_intra = self._extract_with_status("intra", self.extract_intra, 
-                                                    fecha_inicio, fecha_fin, status_details)
-            print ("\n--------- Secundaria ---------")
-            success_secundaria = self._extract_with_status("secundaria", self.extract_secundaria, 
-                                                         fecha_inicio, fecha_fin, status_details)
-            print ("\n--------- Terciaria ---------")
-            success_terciaria = self._extract_with_status("terciaria", self.extract_terciaria, 
-                                                        fecha_inicio, fecha_fin, status_details)
-            print ("\n--------- RR ---------")
-            success_rr = self._extract_with_status("rr", self.extract_rr, 
-                                                 fecha_inicio, fecha_fin, status_details)
+                if success_mercado:
+                    status_details["markets_downloaded"].append(mercado)
+                else:
+                    status_details["markets_failed"].append(mercado)
+
+            
             print ("\n--------------------------------")
             
-            # Overall success only if all markets succeeded
-            overall_success = (success_diario and success_intra and success_secundaria 
-                              and success_terciaria and success_rr)
+            # Overall success only if all markets succeeded ie no markets_failed
+            overall_success = not status_details["markets_failed"]
             
         except Exception as e:
             overall_success = False

@@ -19,9 +19,9 @@ class DebugTransformTests():
                     fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, mercados_lst=mercados_lst)
         result_status = result["status"]
         if result_status["success"]:
-            print(f"✅ Single day calculation for {fecha_inicio} to {fecha_fin} PASSED.")
+            print(f"✅ Ingresos calculation for {fecha_inicio} to {fecha_fin} PASSED.")
         else:
-            print(f"❌ Single day calculation for {fecha_inicio} to {fecha_fin} FAILED. Details: {result_status.get('details', {})}")
+            print(f"❌ Ingresos calculation for {fecha_inicio} to {fecha_fin} FAILED. Details: {result_status.get('details', {})}")
         
         print(result["data"])
         breakpoint()
@@ -36,6 +36,6 @@ if __name__ == "__main__":
         "2025-03-31", 
         "2025-04-01"
     ]
-    debugger.debug_calculate_ingresos_for_all_markets("2024-11-01", "2024-11-01", mercados_lst=["intra"])
+    debugger.debug_calculate_ingresos_for_all_markets("2025-03-31", "2025-04-01", mercados_lst=["diario"])
     breakpoint()
 

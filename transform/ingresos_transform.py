@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 from typing import Optional, List, Dict
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
