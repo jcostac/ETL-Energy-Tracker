@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.db_utils import DatabaseUtils
-from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, CurtailmentDemandaConfig, P48Config, RestriccionesConfig, IndisponibilidadesConfig, IntraConfig
+from configs.i90_config import I90Config, DiarioConfig,TerciariaConfig, SecundariaConfig, RRConfig, P48Config, RestriccionesMDConfig, RestriccionesTRConfig, IndisponibilidadesConfig, IntraConfig, DesviosConfig
 
 class I90Downloader:
     """
@@ -563,7 +563,6 @@ class SecundariaDL(I90Downloader):
         """
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
-
 class TerciariaDL(I90Downloader):
     """
     Specialized class for downloading and processing tertiary regulation volume data from I90 files.
@@ -655,7 +654,7 @@ class RestriccionesTiempoRealDL(I90Downloader):
         """Initialize the restricciones de precios downloader"""
         super().__init__()
 
-        self.config = RestriccionesConfig()
+        self.config = RestriccionesMDConfig()
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
     
@@ -696,7 +695,7 @@ class RestriccionesMercadoDiarioDL(I90Downloader):
         """Initialize the restricciones de precios downloader"""
         super().__init__()
 
-        self.config = RestriccionesConfig()
+        self.config = RestriccionesTRConfig()
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
 
@@ -794,4 +793,52 @@ class IndisponibilidadesDL(I90Downloader):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
+class DesviosDL(I90Downloader):
+    """
+    Specialized class for downloading and processing desvios data from I90 files.
+    """
+    
+    def __init__(self):
+        """Initialize the desvios downloader"""
+        super().__init__()
+        self.config = DesviosConfig()
+        self.volumenes_sheets = self.config.volumenes_sheets
+        self.precios_sheets = self.config.precios_sheets
 
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
+        """
+        Get desvios (imbalances) volume data.
+
+        Args:
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
+
+        Returns:
+            pd.DataFrame: Processed desvios volume data
+        """
+        df_volumenes = super().extract_sheets_of_interest(
+            excel_file_name,
+            pestañas_con_error,
+            volumenes_sheets=self.volumenes_sheets,
+            precios_sheets=None
+        )
+        return df_volumenes
+
+    def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
+        """
+        Get desvios (imbalances) price data.
+
+        Args:
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
+
+        Returns:
+            pd.DataFrame: Processed desvios price data
+        """
+        df_precios = super().extract_sheets_of_interest(
+            excel_file_name,
+            pestañas_con_error,
+            volumenes_sheets=None,
+            precios_sheets=self.precios_sheets
+        )
+        return df_precios

@@ -21,7 +21,8 @@ from transform.procesadores._procesador_i90 import I90Processor # Import the new
 from configs.i90_config import (
         I90Config, # Base class
         DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, IntraConfig,
-        CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
+        P48Config, IndisponibilidadesConfig,
+        DesviosConfig, RestriccionesMDConfig, RestriccionesTRConfig
     )
 
 
@@ -48,10 +49,11 @@ class TransformadorI90:
             'secundaria': SecundariaConfig,
             'terciaria': TerciariaConfig,
             'rr': RRConfig,
-            'curtailment': CurtailmentDemandaConfig,
             'p48': P48Config,
             'indisponibilidades': IndisponibilidadesConfig,
-            'restricciones': RestriccionesConfig,
+            'restricciones_md': RestriccionesMDConfig,
+            'restricciones_tr': RestriccionesTRConfig,
+            'desvios': DesviosConfig,
         }
 
         # Set markets as class attributes
@@ -66,8 +68,10 @@ class TransformadorI90:
         for config_cls in I90Config.__subclasses__():
             if config_cls.has_volumenes_sheets(): # Check if the market has volumenes_sheets ie True
                 mercado = config_cls.__name__.replace('Config', '').lower() # parse the market name
-                if mercado == 'curtailmentdemanda': #special case for curtailment
-                    mercado = 'curtailment'
+                if mercado == 'restriccionestr':
+                    mercado = 'restricciones_tr'
+                elif mercado == 'restriccionesmd':
+                    mercado = 'restricciones_md'
                 mercados.append(mercado) # Add the market name to the list
         return mercados
 
@@ -79,6 +83,10 @@ class TransformadorI90:
         for config_cls in I90Config.__subclasses__():
             if config_cls.has_precios_sheets(): # Check if the market has precios_sheets ie True
                 market_name = config_cls.__name__.replace('Config', '').lower() # parse the market name
+                if market_name == 'restriccionestr':
+                    market_name = 'restricciones_tr'
+                elif market_name == 'restriccionesmd':
+                    market_name = 'restricciones_md'
                 markets.append(market_name) # Add the market name to the list
         return markets
 

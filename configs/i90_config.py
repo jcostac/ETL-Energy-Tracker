@@ -551,16 +551,8 @@ class RestriccionesTRConfig(I90Config):
         Returns:
             Optional[List[str]]: The filter list for the specified market ID, or None if no filter is defined.
         """
-        if market_id in [self.restricciones_md_subir_id, self.restricciones_md_bajar_id]:
-            # Market IDs 24, 25 correspond to MD filters
-            return self.redespacho_filter_md
-        elif market_id in [self.restricciones_tr_subir_id, self.restricciones_tr_bajar_id]:
-            # Market IDs 26, 27 correspond to TR filters
+        if market_id in [self.restricciones_tr_subir_id, self.restricciones_tr_bajar_id]:
             return self.redespacho_filter_tr
-        elif market_id in [self.restricciones_rt2_subir_id, self.restricciones_rt2_bajar_id]:
-            # Market IDs 18, 19 correspond to RT volume filters
-            return self.redespacho_filter_rt_vol
-        # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
 
 class RestriccionesMDConfig(I90Config):
@@ -593,7 +585,9 @@ class DesviosConfig(I90Config):
 
         # get sheets of interest
         self.volumenes_sheets: List[str]
-        self.precios_sheets: List[str]
+        _: List[str] #no sheets asoociated to desvios (only volumenes)
+        self.sheets_of_interest: List[str]
+        self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
 
         self.redespacho_filter_desvios: List[str] = ["Desvíos"]
 

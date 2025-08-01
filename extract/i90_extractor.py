@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from extract.descargadores._descargador_i90 import I90Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, RestriccionesDL, IntradiarioDL
+from extract.descargadores._descargador_i90 import I90Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, P48DL, IndisponibilidadesDL, RestriccionesMercadoDiarioDL, RestriccionesTiempoRealDL, DesviosDL, IntradiarioDL
 from utilidades.raw_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils
@@ -32,9 +32,10 @@ class I90Extractor:
         self.secundaria_downloader = SecundariaDL()
         self.rr_downloader = RRDL()
         self.p48_downloader = P48DL()
-        self.curtailment_downloader = CurtailmentDL()
         self.indisponibilidades_downloader = IndisponibilidadesDL()
-        self.restricciones_downloader = RestriccionesDL()
+        self.restricciones_md_downloader = RestriccionesMercadoDiarioDL()
+        self.restricciones_tr_downloader = RestriccionesTiempoRealDL()
+        self.desvios_downloader = DesviosDL()
 
         #utils 
         self.raw_file_utils = RawFileUtils()
@@ -392,20 +393,20 @@ class I90VolumenesExtractor(I90Extractor):
     def extract_volumenes_rr(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'rr', self.rr_downloader)
 
-    def extract_volumenes_curtailment(self, day: datetime) -> None:
-        self._extract_and_save_volumenes(day, 'curtailment', self.curtailment_downloader)
-
     def extract_volumenes_p48(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'p48', self.p48_downloader)
 
     def extract_volumenes_indisponibilidades(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'indisponibilidades', self.indisponibilidades_downloader)
 
-    def extract_volumenes_restricciones(self, day: datetime) -> None:
-        """
-        Extracts and saves volume data for the 'restricciones' market segment for a given day.
-        """
-        self._extract_and_save_volumenes(day, 'restricciones', self.restricciones_downloader)
+    def extract_volumenes_restricciones_md(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'restricciones_md', self.restricciones_md_downloader)
+
+    def extract_volumenes_restricciones_tr(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'restricciones_tr', self.restricciones_tr_downloader)
+
+    def extract_volumenes_desvios(self, day: datetime) -> None:
+        self._extract_and_save_volumenes(day, 'desvios', self.desvios_downloader)
 
     def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict, mercados_lst: list[str] = None):
         """
@@ -430,10 +431,11 @@ class I90VolumenesExtractor(I90Extractor):
             ("terciaria", self.extract_volumenes_terciaria),
             ("secundaria", self.extract_volumenes_secundaria),
             ("rr", self.extract_volumenes_rr),
-            ("curtailment", self.extract_volumenes_curtailment),
             ("p48", self.extract_volumenes_p48),
             ("indisponibilidades", self.extract_volumenes_indisponibilidades),
-            ("restricciones", self.extract_volumenes_restricciones)
+            ("restricciones_md", self.extract_volumenes_restricciones_md),
+            ("restricciones_tr", self.extract_volumenes_restricciones_tr),
+            ("desvios", self.extract_volumenes_desvios)
         ]
         
         # Process each market and track individual success
@@ -526,11 +528,14 @@ class I90PreciosExtractor(I90Extractor):
         """
         self._extract_and_save_precios(day, 'indisponibilidades', self.indisponibilidades_downloader)
 
-    def extract_precios_restricciones(self, day: datetime) -> None:
-        """
-        Extracts and saves price data for the 'restricciones' market segment for a given day.
-        """
-        self._extract_and_save_precios(day, 'restricciones', self.restricciones_downloader)
+    def extract_precios_restricciones_md(self, day: datetime) -> None:
+        self._extract_and_save_precios(day, 'restricciones_md', self.restricciones_md_downloader)
+
+    def extract_precios_restricciones_tr(self, day: datetime) -> None:
+        self._extract_and_save_precios(day, 'restricciones_tr', self.restricciones_tr_downloader)
+
+    def extract_precios_desvios(self, day: datetime) -> None:
+        self._extract_and_save_precios(day, 'desvios', self.desvios_downloader)
 
     def _extract_data_per_day_all_markets(self, day: datetime, status_details: dict, mercados_lst: list[str] = None):
         """
@@ -553,7 +558,8 @@ class I90PreciosExtractor(I90Extractor):
             # ("terciaria", self.extract_precios_terciaria),
             # ("rr", self.extract_precios_rr),
             # ("indisponibilidades", self.extract_precios_indisponibilidades),
-            ("restricciones", self.extract_precios_restricciones)
+            ("restricciones_md", self.extract_precios_restricciones_md),
+            ("restricciones_tr", self.extract_precios_restricciones_tr),
         ]
         
         # Process each market and track individual success
