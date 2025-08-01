@@ -646,33 +646,7 @@ class RRDL(I90Downloader):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class CurtailmentDL(I90Downloader):
-    """
-    Specialized class for downloading and processing curtailment volume data from I90 files.
-    """
-    
-    def __init__(self):
-        """Initialize the curtailment downloader"""
-        super().__init__()
-        self.config = CurtailmentDemandaConfig()
-        self.precios_sheets = self.config.precios_sheets
-        self.volumenes_sheets = self.config.volumenes_sheets
-
-    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
-        """
-        Get curtailment volume data.
-        
-        Args:
-            excel_file_name (str): Name of the Excel file to process
-            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
-            
-        Returns:
-            pd.DataFrame: Processed curtailment volume data
-        """
-        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
-        return df_volumenes
-
-class RestriccionesDL(I90Downloader):
+class RestriccionesTiempoRealDL(I90Downloader):
     """
     Specialized class for downloading and processing restricciones de precios data from I90 files.
     """
@@ -713,6 +687,47 @@ class RestriccionesDL(I90Downloader):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
+class RestriccionesMercadoDiarioDL(I90Downloader):
+    """
+    Specialized class for downloading and processing restricciones de precios data from I90 files.
+    """
+    
+    def __init__(self):
+        """Initialize the restricciones de precios downloader"""
+        super().__init__()
+
+        self.config = RestriccionesConfig()
+        self.precios_sheets = self.config.precios_sheets
+        self.volumenes_sheets = self.config.volumenes_sheets
+
+    def get_i90_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
+        """
+        Get technical restrictions volume data.
+        
+        Args:
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip
+            
+        Returns:
+            pd.DataFrame: Processed volume data for all types of restrictions
+        """
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets, precios_sheets=None)
+        return df_volumenes
+
+    def get_i90_precios(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
+        """
+        Get technical restrictions price data.
+        
+        Args:
+            excel_file_name (str): Name of the Excel file to process
+            pestañas_con_error (List[str]): List of sheet IDs with errors to skip   
+
+        Returns:
+            pd.DataFrame: Processed price data for all types of restrictions
+        """
+        df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
+        return df_precios
+        
 class P48DL(I90Downloader):
     """
     Specialized class for downloading and processing P48 data from I90 files.

@@ -19,10 +19,10 @@ class IngresosConfig:
             'secundaria': [14,15],
             'terciaria': [18,19,26,27],
             'rr': [16,17],
-            'curtailment': [13,23],
             'p48': [20],
             'indisponibilidades': [22],
-            'restricciones': [9,10,11,12, 24, 25],
+            'restricciones': [9,10,11,12],
+            'desvios': [29,30]
         }
 
     def get_market_ids(self, market_key, date):

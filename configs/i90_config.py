@@ -477,40 +477,6 @@ class RRConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
         
-class CurtailmentDemandaConfig(I90Config):
-    def __init__(self):
-        """
-        Initializes configuration for the Curtailment market, setting up market IDs, relevant sheet numbers, and redespacho filters for Curtailment-specific data processing.
-        """
-        super().__init__()
-        # get individual id
-        self.curtailment_demanda_id: str = self.id_mercado_map["Curtailment demanda"]
-
-        # group id onto a single var (to be used in get_sheets_of_interest)
-        # Include both relevant market IDs if processing logic needs them
-        self.market_ids: List[str] = [self.curtailment_demanda_id]
-
-        # get sheets of interest
-        self.volumenes_sheets: List[str]
-        self.precios_sheets: List[str] # Curtailment typically only has volumes ('03'), demand ('23') might have others
-        self.sheets_of_interest: List[str]
-        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
-
-        # Define Redespacho filter for volumenes sheet ('03') associated with the main Curtailment ID
-        self.redespacho_filter_curtailment: List[str] = ['UPOPVPB']
-
-    def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
-        """
-        Return the redespacho filter list for the specified Curtailment market ID.
-        
-        Returns:
-            List[str]: The filter list for the Curtailment market.
-        """
-        if market_id == self.curtailment_demanda_id:
-            return self.redespacho_filter_curtailment
-        else:
-            return super().get_redespacho_filter(market_id)
-
 class P48Config(I90Config):
     def __init__(self):
         """
@@ -543,14 +509,14 @@ class IndisponibilidadesConfig(I90Config):
 
         # get sheets of interest
         self.volumenes_sheets: List[str]
-        _ : List[str] # Indisponibilidades typically only has volumes ('08')
+        _ : List[str] # Indisponibilidades only has volumes ('08')
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
 
         # Define Redespacho filter for volumenes sheet ('08')
         self.redespacho_filter_volumenes: List[str] = ["Indisponibilidad"]
 
-class RestriccionesConfig(I90Config):
+class RestriccionesTRConfig(I90Config):
     def __init__(self):
         """
         Initializes configuration for Restricciones markets, setting market IDs, relevant sheet numbers, and redespacho filters for each market type.
@@ -559,22 +525,12 @@ class RestriccionesConfig(I90Config):
         """
         super().__init__()
 
-        # get restricciones mercado diario subir y bajar
-        self.restricciones_md_subir_id: str = self.id_mercado_map["Restricciones MD a subir"] # 9
-        self.restricciones_md_bajar_id: str = self.id_mercado_map["Restricciones MD a bajar"] # 10
-
-        # get restricciones mercado tiempo real subir y bajar
+        # get restricciones mercado tiempo real subir y bajar sheet 08
         self.restricciones_tr_subir_id: str = self.id_mercado_map["Restricciones TR a subir"] # 11
         self.restricciones_tr_bajar_id: str = self.id_mercado_map["Restricciones TR a bajar"] # 12
 
-        # get restricciones rt subir y bajar 
-        self.restricciones_rt2_subir_id: str = self.id_mercado_map["RT2 a subir"] # 24
-        self.restricciones_rt2_bajar_id: str = self.id_mercado_map["RT2 a bajar"] # 25
-
         # total market ids
-        self.market_ids: List[str] = [self.restricciones_md_subir_id, self.restricciones_md_bajar_id,
-                                      self.restricciones_tr_subir_id, self.restricciones_tr_bajar_id,
-                                      self.restricciones_rt2_subir_id, self.restricciones_rt2_bajar_id]
+        self.market_ids: List[str] = [self.restricciones_tr_subir_id, self.restricciones_tr_bajar_id]
 
         # get sheets of interest (uses attribute market ids)
         self.volumenes_sheets: List[str]
@@ -582,15 +538,8 @@ class RestriccionesConfig(I90Config):
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
-        # --- Define Redespacho filters based on market type ---
-        # Filter for MD (mercado diario) markets (IDs 9, 10) - applies  to sheets '03', '09'
-        self.redespacho_filter_md: List[str] = ['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB']
-
-        # Filter for RT2 markets (IDs 24/25) - applies to sheet '03' (Vol)
-        self.redespacho_filter_rt_vol: List[str] = ['ECOBSO', 'ECOBCBSO']
-
         # Filter for TR (tiempo real) markets (IDs 11/12) - applies to sheets '08' (Vol), '10' (Pre)
-        self.redespacho_filter_tr: List[str] = ["Restricciones Técnicas"]
+        self.redespacho_filter_tr: List[str] = ["Restricciones Técnicas"] #meter restriccion para solo descargar precios 
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
         """
@@ -613,6 +562,49 @@ class RestriccionesConfig(I90Config):
             return self.redespacho_filter_rt_vol
         # Otherwise, no specific filter defined for this ID in this config
         return super().get_redespacho_filter(market_id)
+
+class RestriccionesMDConfig(I90Config):
+    def __init__(self):
+        super().__init__()
+        # get restricciones mercado diario subir y bajar sheet 03
+        self.restricciones_md_subir_id: str = self.id_mercado_map["Restricciones MD a subir"] # 9
+        self.restricciones_md_bajar_id: str = self.id_mercado_map["Restricciones MD a bajar"] # 10
+
+        # group ids onto a single var (to be used in get_sheets_of_interest)
+        self.market_ids: List[str] = [self.restricciones_md_subir_id, self.restricciones_md_bajar_id]
+
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+        self.sheets_of_interest: List[str]
+        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+        #no redespacho filter defined for this config (for sheets 03 and 09 we take all the data)
+
+class DesviosConfig(I90Config):
+    def __init__(self):
+        super().__init__()
+        # get desvios subir y bajar sheet 08
+        self.desvios_subir_id: str = self.id_mercado_map["Desvios a subir"] # 30
+        self.desvios_bajar_id: str = self.id_mercado_map["Desvios a bajar"] # 31
+
+        # group ids onto a single var (to be used in get_sheets_of_interest)
+        self.market_ids: List[str] = [self.desvios_subir_id, self.desvios_bajar_id]
+
+        # get sheets of interest
+        self.volumenes_sheets: List[str]
+        self.precios_sheets: List[str]
+
+        self.redespacho_filter_desvios: List[str] = ["Desvíos"]
+
+    def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
+        """
+        Return the redespacho filter list for a given market ID in the Desvios configuration.
+        """
+        if market_id in [self.desvios_subir_id, self.desvios_bajar_id]:
+            return self.redespacho_filter_desvios
+        else:
+            return super().get_redespacho_filter(market_id)
 
 def print_config_info():
     # --- Base I90Config Info ---
@@ -689,8 +681,6 @@ def print_config_info():
 
         print(f"Temporary download path: {config_instance.temporary_download_path}")
 
-        has_precios = RestriccionesConfig().has_precios_sheets()
-        print(f"Restricciones has precios: {has_precios}")
             
 if __name__ == "__main__":
     print_config_info()
