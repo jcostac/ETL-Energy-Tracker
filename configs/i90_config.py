@@ -434,15 +434,32 @@ class TerciariaConfig(I90Config):
         # get individual ids for subir and bajar
         self.terciaria_subir_id: str = self.id_mercado_map["Terciaria a subir"]
         self.terciaria_bajar_id: str = self.id_mercado_map["Terciaria a bajar"]
+        
+        self.terciaria_directa_subir_id: str = self.id_mercado_map["Terciaria directa a subir"]
+        self.terciaria_directa_bajar_id: str = self.id_mercado_map["Terciaria directa a bajar"]
 
         # group ids onto a single var (to be used in get_sheets_of_interest)
-        self.market_ids: List[str] = [self.terciaria_subir_id, self.terciaria_bajar_id]
+        self.market_ids: List[str] = [self.terciaria_subir_id, self.terciaria_bajar_id, self.terciaria_directa_subir_id, self.terciaria_directa_bajar_id]
 
         # get sheets of interest
         self.volumenes_sheets: List[str]
         self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
         self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
+
+        self.redespacho_filter_terciaria_dir: List[str] = ['TERDIR', "TERMER"]
+        self.redespacho_filter_terciaria: List[str] = ['!TERDIR', "!TERMER"] #the ! serves as an identifier for the exclude filter
+
+    def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
+        """
+        Return the redespacho filter list for the specified Terciaria market ID.
+        """
+        if market_id in [self.terciaria_subir_id, self.terciaria_bajar_id]: #programada subir y bajar
+            return self.redespacho_filter_terciaria #everything except TERDIR
+        elif market_id in [self.terciaria_directa_subir_id, self.terciaria_directa_bajar_id]: #directa subir y bajar
+            return self.redespacho_filter_terciaria_dir #only TERDIR
+        else:
+            return super().get_redespacho_filter(market_id)
 
 class RRConfig(I90Config):
     def __init__(self):

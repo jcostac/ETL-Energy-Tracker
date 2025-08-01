@@ -42,7 +42,7 @@ class DataValidationUtils:
         self.raw_volumenes_omie_required_cols = ["Fecha", "Unidad", "id_mercado", "Energía Compra/Venta", "Ofertada (O)/Casada (C)"]
         self.raw_volumenes_mic_required_cols = ["Fecha", "Contrato", "Precio", "Cantidad", "id_mercado"]
 
-    def _validate_data_common(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
+    def _validate_data_router(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
         """
         Common validation logic for both raw and processed data.
 
@@ -71,7 +71,7 @@ class DataValidationUtils:
         Returns:
             pd.DataFrame: Validated DataFrame.
         """
-        return self._validate_data_common(df, "processed", validation_schema_type)
+        return self._validate_data_router(df, "processed", validation_schema_type)
 
     def validate_raw_data(self, df: pd.DataFrame, validation_schema_type: str) -> pd.DataFrame:
         """
@@ -84,7 +84,7 @@ class DataValidationUtils:
         Returns:
             pd.DataFrame: Validated DataFrame.
         """
-        return self._validate_data_common(df, "raw", validation_schema_type)
+        return self._validate_data_router(df, "raw", validation_schema_type)
                
     def _validate_dtypes(self, df: pd.DataFrame, type: str, validation_schema_type: str) -> pd.DataFrame:
         """

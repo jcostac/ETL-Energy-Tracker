@@ -118,12 +118,14 @@ class IngresosCalculator:
             print(f"    ❌ Warning: Could not read data for {mercado} (id: {id_mercado}), {dataset_type}: {e}")
             return pd.DataFrame()
 
-    def _analyze_total_ingresos(self, df: pd.DataFrame, plot=False) -> pd.DataFrame:
+    def _analyze_total_ingresos(self, df: pd.DataFrame, title_context: str = "", plot=False) -> pd.DataFrame:
         """
         Group ingresos by UP/UOF and display top 3 highest earners.
         
         Args:
             df (pd.DataFrame): DataFrame with 'up' and 'ingresos' columns
+            title_context (str): Optional context for the plot title.
+            plot (bool): Whether to generate a plot.
             
         Returns:
             pd.DataFrame: Grouped data sorted by ingresos descending
@@ -133,8 +135,8 @@ class IngresosCalculator:
             return pd.DataFrame()
         
         # Group by UP and sum ingresos
-        grouped = df.groupby('up')['ingresos'].agg(['sum', 'count']).reset_index()
-        grouped.columns = ['up', 'total_ingresos', 'records_count']
+        grouped = df.groupby(['up', 'id_mercado'])['ingresos'].agg(['sum', 'count']).reset_index()
+        grouped.columns = ['up', 'id_mercado', 'total_ingresos', 'records_count']
         total_ingresos_abs = grouped['total_ingresos'].abs().sum()
         grouped["% of volume"] = grouped['total_ingresos'].abs() / total_ingresos_abs * 100
         grouped['total_ingresos'] = grouped['total_ingresos'].round(2)
@@ -144,9 +146,24 @@ class IngresosCalculator:
         total_ups = len(grouped)
 
         if plot == True:
-            self._plot_histogram(grouped['total_ingresos'], title=f"Distribución de Ingresos Totales por UP", xlabel="Ingresos Totales por UP (€)")
+            # Plot overall distribution
+            plot_title = f"Distribución de Ingresos Totales por UP"
+            if title_context:
+                plot_title += f" ({title_context})"
+            self._plot_histogram(grouped['total_ingresos'], title=plot_title, xlabel="Ingresos Totales por UP (€)")
+            
+            # Plot per id_mercado
+            for id_mercado in grouped['id_mercado'].unique():
+                mercado_data = grouped[grouped['id_mercado'] == id_mercado]['total_ingresos']
+                if not mercado_data.empty:
+                    plot_title = f"Distribución de Ingresos por UP - Mercado ID {id_mercado}"
+                    if title_context:
+                        plot_title += f" ({title_context})"
+                    self._plot_histogram(mercado_data, title=plot_title, xlabel=f"Ingresos Totales por UP - Mercado {id_mercado} (€)")
         
         print(f"📈 TOTAL INGRESOS ANALYSIS:")
+        if title_context:
+            print(f"   Context: {title_context}")
         print(f"💰 Total volume: {total_ingresos_abs:,.2f} €")
         print(f"🏭 Total UPs: {total_ups}")
         print(f"Top Earners:")
@@ -281,8 +298,6 @@ class IngresosCalculator:
         
         result = merged[['datetime_utc', 'up', 'ingresos', 'id_mercado']]
         
-        # Analyze and print top ingresos by UP
-        self._analyze_total_ingresos(result, f"market {market_key} (id: {id_mercado})", plot)
 
         market_context = f"para {market_key} (id: {id_mercado})"
 
@@ -354,7 +369,7 @@ class IngresosCalculator:
             ids_period1 = [2, 3, 4, 5, 6, 7, 8]
             
             results_period1 = self._process_market_ids_for_period(
-                market_key, ids_period1, start_dt.strftime('%Y-%m-%d'), period1_end.strftime('%Y-%m-%d')
+                market_key, ids_period1, start_dt.strftime('%Y-%m-%d'), period1_end.strftime('%Y-%m-%d'), plot
             )
             all_results.extend(results_period1)
             
@@ -363,7 +378,7 @@ class IngresosCalculator:
             ids_period2 = [2, 3, 4]
             
             results_period2 = self._process_market_ids_for_period(
-                market_key, ids_period2, self.config.intra_reduction_date.strftime('%Y-%m-%d'), end_dt.strftime('%Y-%m-%d')
+                market_key, ids_period2, self.config.intra_reduction_date.strftime('%Y-%m-%d'), end_dt.strftime('%Y-%m-%d'), plot
             )
             all_results.extend(results_period2)
             
@@ -372,12 +387,12 @@ class IngresosCalculator:
             ids = self.config.get_market_ids(market_key, start_dt)
             print(f"    Processing {len(ids)} market IDs: {ids}")
             
-            all_results = self._process_market_ids_for_period(market_key, ids, fecha_inicio, fecha_fin)
+            all_results = self._process_market_ids_for_period(market_key, ids, fecha_inicio, fecha_fin, plot)
         
         # Combine all results
         combined = pd.concat(all_results, ignore_index=True)
 
-        self._analyze_total_ingresos(combined, plot)
+        self._analyze_total_ingresos(combined, title_context=f"Combined for {market_key}", plot=plot)
         
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
@@ -473,12 +488,12 @@ class ContinuoIngresosCalculator(IngresosCalculator):
                 continue
                 
             print(f"    📊 Processing {len(df):,} rows for {fecha}")
-            df['ingresos'] = df['volumenes'] * df['precio']
+            df['ingresos'] = (df['volumenes'] * df['precio']).round(2)
             
             result = df[['datetime_utc', 'uof', 'ingresos', 'id_mercado']].rename(columns={'uof': 'up'})
 
             # Analyze ingresos for this market
-            self._analyze_total_ingresos(result, plot)
+            self._analyze_total_ingresos(result, title_context=f"market {market_key} (id: {id_mercado})", plot=plot)
             
             all_results.append(result)
             print(f"    ✅ Market ID {id_mercado} completed: {len(result):,} records")
@@ -489,7 +504,7 @@ class ContinuoIngresosCalculator(IngresosCalculator):
             
         combined = pd.concat(all_results, ignore_index=True)
         
-        self._analyze_total_ingresos(combined, plot)
+        self._analyze_total_ingresos(combined, title_context=f"Combined for {market_key}", plot=plot)
         
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined

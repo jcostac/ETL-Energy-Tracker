@@ -71,8 +71,7 @@ class I90Processor:
         # Ensure required columns exist
         if not all(col in df.columns for col in required_cols if col in ['Sentido', 'Redespacho']):
              print(f"Warning: Input DataFrame for market transformation might be missing 'Sentido' or 'Redespacho' columns if required by config.")
-             # Decide if this is fatal or if filtering can proceed partially
-
+    
         # Ensure market_config has the necessary attributes
         if not hasattr(market_config, 'market_ids') or not hasattr(market_config, 'sentido_map') or not hasattr(market_config, 'get_redespacho_filter'):
              print(f"Error: Provided market_config object ({type(market_config).__name__}) is missing required attributes/methods (market_ids, sentido_map, get_redespacho_filter).")
@@ -87,7 +86,6 @@ class I90Processor:
 
             # Apply sentido filter
             if sentido and 'Sentido' in filtered_df.columns:
-                 # Ensure consistent comparison (e.g., handle case sensitivity if needed)
                 filtered_df = filtered_df[filtered_df['Sentido'] == sentido]
 
             elif sentido and 'Sentido' not in filtered_df.columns:
@@ -97,11 +95,21 @@ class I90Processor:
 
             # Apply redespacho filter
             if redespacho_filter and 'Redespacho' in filtered_df.columns:
-                filtered_df = filtered_df[filtered_df['Redespacho'].isin(redespacho_filter)]
+                # Separate includes and excludes
+                includes = [f for f in redespacho_filter if not f.startswith('!')]
+                excludes = [f[1:] for f in redespacho_filter if f.startswith('!')]
+
+                # Apply includes if any
+                if includes:
+                    filtered_df = filtered_df[filtered_df['Redespacho'].isin(includes)]
+
+                # Apply excludes if any
+                if excludes:
+                    filtered_df = filtered_df[~filtered_df['Redespacho'].isin(excludes)]
+
             elif redespacho_filter and 'Redespacho' not in filtered_df.columns:
                  print(f"Warning: Config requires filtering by Redespacho='{redespacho_filter}' for market_id {market_id}, but 'Redespacho' column is missing.")
-                 # If redespacho filter is required but column missing, no rows will match
-                 filtered_df = pd.DataFrame() # Clear DF
+                 raise ValueError(f"Redespacho filter is required but 'Redespacho' column is missing for market_id {market_id}")
 
 
             if not filtered_df.empty:
@@ -229,8 +237,11 @@ class I90Processor:
         if "Tipo Transacción" in df.columns:
             df = df.rename(columns={"Tipo Transacción": "tipo_transaccion"})
             required_cols.append('tipo_transaccion')
+
         print(f"Filtering columns: {required_cols}")
-        return df
+        df_filtered = df[required_cols]
+
+        return df_filtered
 
     def _get_value_col(self, dataset_type: str) -> Optional[str]:
         """
@@ -256,14 +267,13 @@ class I90Processor:
             try:
                 self.data_validation_utils.validate_raw_data(df, validation_schema_type)
                 print("Raw data validation successful.")
+                return df
             except Exception as e:
                 print(f"Error during raw data validation: {e}")
-                # Decide if this should return empty df or raise
-                # Raising allows the error to propagate up
                 raise # Reraise validation error
         else:
             print("Skipping validation for empty DataFrame.")
-        return df
+            return df
     
     def _validate_final_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
         """Validate final data structure."""
@@ -275,13 +285,11 @@ class I90Processor:
                  print("Final data validation successful.")
             except KeyError as e:
                  print(f"Validation Error: Schema '{validation_schema_type}' not found in DataValidationUtils. Skipping validation. Error: {e}")
+                 raise 
             except Exception as e:
                  print(f"Error during final data validation: {e}")
-                 # Decide if this should return empty df or raise
-                 # Raising allows the error to propagate up
-                 raise # Reraise validation error
+                 raise
             
-            print("Skipping validation for empty DataFrame.")
         return df
 
     # === UTILITY ===

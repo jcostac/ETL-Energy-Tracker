@@ -37,6 +37,6 @@ if __name__ == "__main__":
         "2025-03-31", 
         "2025-04-01"
     ]
-    debugger.debug_calculate_ingresos_for_all_markets("2025-03-31", "2025-04-01", mercados_lst=["diario"], plot=True)
+    debugger.debug_calculate_ingresos_for_all_markets("2025-03-31", "2025-04-01", mercados_lst=["terciaria"], plot=True)
     breakpoint()
 
