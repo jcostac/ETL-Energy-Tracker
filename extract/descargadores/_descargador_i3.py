@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from configs.i3_config import I3Config, DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig, IntraConfig
+from configs.i3_config import I3Config, DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig, IntraConfig, RestriccionesMDConfig, RestriccionesTRConfig, DesviosConfig
 
 class I3Downloader:
     """
@@ -457,24 +457,6 @@ class CurtailmentDL(I3Downloader):
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
 
-class RestriccionesDL(I3Downloader):
-    """
-    Specialized class for downloading and processing restricciones volume data from I3 files.
-    """
-    
-    def __init__(self):
-        """Initialize the restricciones downloader"""
-        super().__init__()
-        self.config = RestriccionesConfig()
-        self.volumenes_sheets = self.config.volumenes_sheets
-    
-    def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
-        """
-        Get technical restrictions volume data.
-        """
-        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
-        return df_volumenes
-
 class P48DL(I3Downloader):
     """
     Specialized class for downloading and processing P48 data from I3 files.
@@ -532,5 +514,35 @@ class IntradiarioDL(I3Downloader):
         """
         Get intradiario volume data for a specific day.
         """
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
+        return df_volumenes 
+
+class RestriccionesMDDL(I3Downloader):
+    def __init__(self):
+        super().__init__()
+        self.config = RestriccionesMDConfig()
+        self.volumenes_sheets = self.config.volumenes_sheets
+
+    def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
+        return df_volumenes
+
+class RestriccionesTRDL(I3Downloader):
+    def __init__(self):
+        super().__init__()
+        self.config = RestriccionesTRConfig()
+        self.volumenes_sheets = self.config.volumenes_sheets
+
+    def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
+        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
+        return df_volumenes
+
+class DesviosDL(I3Downloader):
+    def __init__(self):
+        super().__init__()
+        self.config = DesviosConfig()
+        self.volumenes_sheets = self.config.volumenes_sheets
+
+    def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes 

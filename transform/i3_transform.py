@@ -19,7 +19,8 @@ from transform.procesadores._procesador_i3 import I3Processor
 from configs.i3_config import (
     I3Config,
     DiarioConfig, SecundariaConfig, TerciariaConfig, RRConfig, IntraConfig,
-    CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig, RestriccionesConfig
+    CurtailmentDemandaConfig, P48Config, IndisponibilidadesConfig,
+    RestriccionesMDConfig, RestriccionesTRConfig, DesviosConfig
 )
 
 class TransformadorI3:
@@ -41,7 +42,9 @@ class TransformadorI3:
             'curtailment': CurtailmentDemandaConfig,
             'p48': P48Config,
             'indisponibilidades': IndisponibilidadesConfig,
-            'restricciones': RestriccionesConfig,
+            'restricciones_md': RestriccionesMDConfig,
+            'restricciones_tr': RestriccionesTRConfig,
+            'desvios': DesviosConfig
         }
 
         self.i3_volumenes_markets = self._compute_volumenes_markets()

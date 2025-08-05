@@ -266,34 +266,43 @@ class IndisponibilidadesConfig(I3Config):
             return self.redespacho_filter
         return super().get_redespacho_filter(market_id)
 
-class RestriccionesConfig(I3Config):
+class RestriccionesMDConfig(I3Config):
     def __init__(self):
         super().__init__()
         self.restricciones_md_subir_id = self.id_mercado_map.get("Restricciones MD a subir")
         self.restricciones_md_bajar_id = self.id_mercado_map.get("Restricciones MD a bajar")
+        self.market_ids: List[str] = [id for id in [self.restricciones_md_subir_id, self.restricciones_md_bajar_id] if id]
+        self.volumenes_sheets = self.get_sheets_of_interest()
+
+        #no redespacho filter we take all data from sheet 03 and 09 
+       
+class RestriccionesTRConfig(I3Config):
+    def __init__(self):
+        super().__init__()
         self.restricciones_tr_subir_id = self.id_mercado_map.get("Restricciones TR a subir")
         self.restricciones_tr_bajar_id = self.id_mercado_map.get("Restricciones TR a bajar")
-        self.restricciones_rt2_subir_id = self.id_mercado_map.get("RT2 a subir")
-        self.restricciones_rt2_bajar_id = self.id_mercado_map.get("RT2 a bajar")
 
-        self.market_ids: List[str] = [
-            self.restricciones_md_subir_id, self.restricciones_md_bajar_id,
-            self.restricciones_tr_subir_id, self.restricciones_tr_bajar_id,
-            self.restricciones_rt2_subir_id, self.restricciones_rt2_bajar_id
-        ]
-        
+        self.market_ids: List[str] = [id for id in [self.restricciones_tr_subir_id, self.restricciones_tr_bajar_id] if id]
         self.volumenes_sheets = self.get_sheets_of_interest()
-        self.redespacho_filter_md = ['ECO', 'ECOCB', 'UPOPVPV', 'UPOPVPVCB']
         self.redespacho_filter_tr = ['Restricciones Técnicas']
-        self.redespacho_filter_rt = ['ECOBSO', 'ECOBCBSO']
 
     def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
-        if market_id in [self.restricciones_md_subir_id, self.restricciones_md_bajar_id]:
-            return self.redespacho_filter_md
-        elif market_id in [self.restricciones_tr_subir_id, self.restricciones_tr_bajar_id]:
+        if market_id in [self.restricciones_tr_subir_id, self.restricciones_tr_bajar_id]:
             return self.redespacho_filter_tr
-        elif market_id in [self.restricciones_rt2_subir_id, self.restricciones_rt2_bajar_id]:
-            return self.redespacho_filter_rt
+        return super().get_redespacho_filter(market_id)
+
+class DesviosConfig(I3Config):
+    def __init__(self):
+        super().__init__()
+        self.desvios_subir_id = self.id_mercado_map.get("Desvios a subir")
+        self.desvios_bajar_id = self.id_mercado_map.get("Desvios a bajar")
+        self.market_ids: List[str] = [id for id in [self.desvios_subir_id, self.desvios_bajar_id] if id]
+        self.volumenes_sheets = self.get_sheets_of_interest()
+        self.redespacho_filter_desvios = ["Desvíos"]
+
+    def get_redespacho_filter(self, market_id: str) -> Optional[List[str]]:
+        if market_id in self.market_ids:
+            return self.redespacho_filter_desvios
         return super().get_redespacho_filter(market_id)
 
 def print_config_info():
