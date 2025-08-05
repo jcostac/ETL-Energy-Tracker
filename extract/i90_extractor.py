@@ -440,7 +440,7 @@ class I90VolumenesExtractor(I90Extractor):
         
         # Process each market and track individual success
         for mercado, extract_func in mercados:
-            print(f"\n--------- {mercado.capitalize()} ---------")
+            print(f"\n--------- {mercado.upper()} ---------")
             # If mercados_lst is None, extract all markets; otherwise only extract if mercado is in the list
             if mercados_lst is None or mercado in mercados_lst:
                 status_details = self._extract_with_status(mercado, extract_func, day, status_details)

@@ -491,9 +491,9 @@ class P48Config(I90Config):
 
         # get sheets of interest
         self.volumenes_sheets: List[str]
-        _ : List[str] # P48 typically only has volumes
+        self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
-        self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
         # No specific Redespacho filters defined for P48 sheets ('12') in the provided snippet
 
 class IndisponibilidadesConfig(I90Config):
@@ -509,9 +509,9 @@ class IndisponibilidadesConfig(I90Config):
 
         # get sheets of interest
         self.volumenes_sheets: List[str]
-        _ : List[str] # Indisponibilidades only has volumes ('08')
+        self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
-        self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
         # Define Redespacho filter for volumenes sheet ('08')
         self.redespacho_filter_volumenes: List[str] = ["Indisponibilidad"]
@@ -585,9 +585,9 @@ class DesviosConfig(I90Config):
 
         # get sheets of interest
         self.volumenes_sheets: List[str]
-        _: List[str] #no sheets asoociated to desvios (only volumenes)
+        self.precios_sheets: List[str]
         self.sheets_of_interest: List[str]
-        self.volumenes_sheets, _, self.sheets_of_interest = self.get_sheets_of_interest()
+        self.volumenes_sheets, self.precios_sheets, self.sheets_of_interest = self.get_sheets_of_interest()
 
         self.redespacho_filter_desvios: List[str] = ["Desvíos"]
 
