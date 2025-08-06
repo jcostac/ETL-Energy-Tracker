@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from extract.descargadores._descargador_i3 import I3Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, IntradiarioDL, RestriccionesMDDL, RestriccionesTRDL, DesviosDL
+from extract.descargadores._descargador_i3 import I3Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, P48DL, IndisponibilidadesDL, IntradiarioDL, RestriccionesMDDL, RestriccionesTRDL, DesviosDL
 from utilidades.raw_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils
@@ -32,7 +32,6 @@ class I3Extractor:
         self.secundaria_downloader = SecundariaDL()
         self.rr_downloader = RRDL()
         self.p48_downloader = P48DL()
-        self.curtailment_downloader = CurtailmentDL()
         self.indisponibilidades_downloader = IndisponibilidadesDL()
         self.restricciones_md_downloader = RestriccionesMDDL()
         self.restricciones_tr_downloader = RestriccionesTRDL()
@@ -381,9 +380,6 @@ class I3VolumenesExtractor(I3Extractor):
     def extract_volumenes_rr(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'rr', self.rr_downloader)
 
-    def extract_volumenes_curtailment(self, day: datetime) -> None:
-        self._extract_and_save_volumenes(day, 'curtailment', self.curtailment_downloader)
-
     def extract_volumenes_p48(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'p48', self.p48_downloader)
 
@@ -422,7 +418,6 @@ class I3VolumenesExtractor(I3Extractor):
             ("terciaria", self.extract_volumenes_terciaria),
             ("secundaria", self.extract_volumenes_secundaria),
             ("rr", self.extract_volumenes_rr),
-            ("curtailment", self.extract_volumenes_curtailment),
             ("p48", self.extract_volumenes_p48),
             ("indisponibilidades", self.extract_volumenes_indisponibilidades),
             ("restricciones_md", self.extract_volumenes_restricciones_md),

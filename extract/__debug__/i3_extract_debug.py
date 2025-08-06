@@ -44,5 +44,5 @@ if __name__ == "__main__":
     debugger = I3ExtractDebug()
     
     # Call specific methods to debug, for example:
-    debugger.download_all_markets(fecha_inicio=None, fecha_fin=None, mercados_lst=["desvios"])
+    debugger.download_all_markets(fecha_inicio=None, fecha_fin=None, mercados_lst=None)
  
