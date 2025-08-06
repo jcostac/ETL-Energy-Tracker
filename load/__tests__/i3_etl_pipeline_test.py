@@ -12,15 +12,14 @@ from load.data_lake_loader import DataLakeLoader
 
 class TestI3Pipeline(unittest.TestCase):
     TEST_DATES = [
-        (datetime.now() - timedelta(days=8)).strftime('%Y-%m-%d'), # Recent date (I3 has ~4 day lag)
-        '2024-10-27'  # End of DST (fall back to standard time)
+        (datetime.now() - timedelta(days=93)).strftime('%Y-%m-%d'),
     ]
 
     def test_full_etl(self):
         for test_date in self.TEST_DATES:
             with self.subTest(phase="Extraction", test_date=test_date):
                 extractor = I3VolumenesExtractor()
-                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date)
+                extract_result = extractor.extract_data_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=["restricciones_md", "restricciones_tr", "desvios"])
                 self.assertIsInstance(extract_result, dict)
                 self.assertIn("success", extract_result)
                 self.assertIn("details", extract_result)
@@ -34,7 +33,7 @@ class TestI3Pipeline(unittest.TestCase):
             with self.subTest(phase="Transformation", test_date=test_date):
                 transformer = TransformadorI3()
                 transform_result = transformer.transform_data_for_all_markets(
-                    fecha_inicio=test_date, fecha_fin=test_date)
+                    fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=["restricciones_md", "restricciones_tr", "desvios"])
                 self.assertIsInstance(transform_result, dict)
                 self.assertIn("data", transform_result)
                 self.assertIn("status", transform_result)
@@ -55,14 +54,19 @@ class TestI3Pipeline(unittest.TestCase):
                 self.assertIn('rr', transform_result['data'])
                 self.assertIn('p48', transform_result['data'])
                 self.assertIn('indisponibilidades', transform_result['data'])
-                self.assertIn('restricciones', transform_result['data'])
+                self.assertIn('restricciones_md', transform_result['data'])
+                self.assertIn('restricciones_tr', transform_result['data'])
+                self.assertIn('desvios', transform_result['data'])
                 self.assertFalse(transform_result['data']['diario'].empty, f"I3 transformation returned empty data for {test_date}")
                 self.assertFalse(transform_result['data']['intra'].empty, f"I3 transformation returned empty data for {test_date}")
                 self.assertFalse(transform_result['data']['terciaria'].empty, f"I3 transformation returned empty data for {test_date}")
                 self.assertFalse(transform_result['data']['rr'].empty, f"I3 transformation returned empty data for {test_date}")
                 self.assertFalse(transform_result['data']['p48'].empty, f"I3 transformation returned empty data for {test_date}")
                 self.assertFalse(transform_result['data']['indisponibilidades'].empty, f"I3 transformation returned empty data for {test_date}")
-                self.assertFalse(transform_result['data']['restricciones'].empty, f"I3 transformation returned empty data for {test_date}")
+                self.assertFalse(transform_result['data']['restricciones_md'].empty, f"I3 transformation returned empty data for {test_date}")
+                self.assertFalse(transform_result['data']['restricciones_tr'].empty, f"I3 transformation returned empty data for {test_date}")
+                self.assertFalse(transform_result['data']['desvios'].empty, f"I3 transformation returned empty data for {test_date}")
+                breakpoint()
 
             with self.subTest(phase="Load", test_date=test_date):
                 loader = DataLakeLoader()

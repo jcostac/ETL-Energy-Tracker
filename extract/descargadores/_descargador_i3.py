@@ -439,24 +439,6 @@ class RRDL(I3Downloader):
         df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
         return df_volumenes
 
-class CurtailmentDL(I3Downloader):
-    """
-    Specialized class for downloading and processing curtailment volume data from I3 files.
-    """
-    
-    def __init__(self):
-        """Initialize the curtailment downloader"""
-        super().__init__()
-        self.config = CurtailmentDemandaConfig()
-        self.volumenes_sheets = self.config.volumenes_sheets
-
-    def get_i3_volumenes(self, excel_file_name: str, pestañas_con_error: List[str]) -> pd.DataFrame:
-        """
-        Get curtailment volume data.
-        """
-        df_volumenes = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=self.volumenes_sheets)
-        return df_volumenes
-
 class P48DL(I3Downloader):
     """
     Specialized class for downloading and processing P48 data from I3 files.

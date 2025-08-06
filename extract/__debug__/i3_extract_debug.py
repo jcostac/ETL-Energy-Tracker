@@ -12,10 +12,10 @@ class I3ExtractDebug:
     This class is intended to be run as a script for debugging purposes.
     """
 
-    def __init__(self):
-        self.TEST_DATES = [
-            (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
-        ]
+
+    TEST_DATES = [
+        (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+    ]
 
     def _run_and_print_result(self, operation_name, result):
         """Prints the result of an operation."""
@@ -44,5 +44,5 @@ if __name__ == "__main__":
     debugger = I3ExtractDebug()
     
     # Call specific methods to debug, for example:
-    debugger.download_all_markets()
-
+    debugger.download_all_markets(fecha_inicio=None, fecha_fin=None, mercados_lst=["desvios"])
+ 

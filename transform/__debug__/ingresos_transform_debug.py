@@ -1,12 +1,14 @@
 import sys
 import os
-
+from datetime import datetime, timedelta
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from transform.ingresos_transform import TransformadorIngresos
 
 class DebugTransformTests():
+
+    TEST_DATES = [(datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")]
 
     def debug_calculate_ingresos_for_all_markets(self, fecha_inicio, fecha_fin, mercados_lst, plot=False):
         """
@@ -15,28 +17,25 @@ class DebugTransformTests():
         including those around daylight saving time changes.
         """
         transformer = TransformadorIngresos()
-        result = transformer.calculate_ingresos_for_all_markets(
-                    fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, mercados_lst=mercados_lst, plot=plot)
+        if fecha_inicio is None and fecha_fin is None:
+            for test_date in self.TEST_DATES:
+                result = transformer.calculate_ingresos_for_all_markets(fecha_inicio=test_date, fecha_fin=test_date, mercados_lst=mercados_lst, plot=plot)
+        else:
+            result = transformer.calculate_ingresos_for_all_markets(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, mercados_lst=mercados_lst, plot=plot)
+
+        result_data = result["data"]
         result_status = result["status"]
         if result_status["success"]:
             print(f"✅ Ingresos calculation for {fecha_inicio} to {fecha_fin} PASSED.")
         else:
             print(f"❌ Ingresos calculation for {fecha_inicio} to {fecha_fin} FAILED. Details: {result_status.get('details', {})}")
         
-        print(result["data"])
+        print(result_data)
         breakpoint()
 
    
 if __name__ == "__main__":
     debugger = DebugTransformTests()
-
-    TEST_DATES = [
-        "2024-01-01",
-        "2024-11-01", 
-        "2025-01-01", 
-        "2025-03-31", 
-        "2025-04-01"
-    ]
-    debugger.debug_calculate_ingresos_for_all_markets("2025-03-31", "2025-04-01", mercados_lst=["terciaria"], plot=True)
+    debugger.debug_calculate_ingresos_for_all_markets(fecha_inicio=None, fecha_fin=None, mercados_lst=["restricciones_md", "restricciones_tr", "desvios"], plot=True)
     breakpoint()
 

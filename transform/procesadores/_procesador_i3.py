@@ -244,7 +244,7 @@ class I3Processor:
             print(f"Columns in the input DataFrame: {df.columns}")
             raise ValueError("'Concepto' column not found in the input DataFrame.")
         
-        required_cols = self.data_validation_utils.processed_volumenes_i3_required_cols
+        required_cols = self.data_validation_utils.processed_volumenes_i3_required_cols.copy() 
         if isinstance(market_config, RestriccionesMDConfig):
             if 'Redespacho' in df.columns:
                 df = df.rename(columns={'Redespacho': 'redespacho'})

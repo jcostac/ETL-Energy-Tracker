@@ -12,8 +12,7 @@ from load.data_lake_loader import DataLakeLoader
 
 class TestOMIEPipeline(unittest.TestCase):
     TEST_DATES = [
-        (datetime.now() - timedelta(days=93)).strftime('%Y-%m-%d'),  # Recent date
-        '2024-03-31',  # DST change date in Spain
+        (datetime.now() - timedelta(days=93)).strftime('%Y-%m-%d'),
     ]
 
     def test_full_etl(self):

@@ -22,18 +22,19 @@ class DebugI3Transform:
         else:
             result = transformer.transform_data_for_all_markets(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, mercados_lst=mercados_lst)
 
+        result_data = result["data"]
         result_status = result["status"]
         if result_status["success"]:
             print("✅ Volumenes_i3 transformation for latest day PASSED.")
         else:
             print(f"❌ Volumenes_i3 transformation for latest day FAILED. Details: {result_status.get('details', {})}")
-        print(result["data"])
+        print(result_data)
         breakpoint()
 
 if __name__ == "__main__":
     debugger = DebugI3Transform()
     print("Running I3 Transform Debug for volumenes...")
-    debugger.debug_transform_volumenes(fecha_inicio=None, fecha_fin=None, mercados_lst=["restricciones_md", "restricciones_tr", "desvios"])
+    debugger.debug_transform_volumenes(fecha_inicio=None, fecha_fin=None, mercados_lst=["desvios", "indisponibilidades"])
     print("Debugging script finished.") 
 
 
