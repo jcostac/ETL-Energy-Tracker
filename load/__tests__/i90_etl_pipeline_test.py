@@ -8,7 +8,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 from extract.i90_extractor import I90PreciosExtractor, I90VolumenesExtractor
 from transform.i90_transform import TransformadorI90
-from transform.curtailment_transform import TransformadorCurtailment
 from load.data_lake_loader import DataLakeLoader
 
 class TestI90Pipeline(unittest.TestCase):

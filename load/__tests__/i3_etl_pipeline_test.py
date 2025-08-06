@@ -8,7 +8,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 
 from extract.i3_extractor import I3VolumenesExtractor
 from transform.i3_transform import TransformadorI3
-from transform.curtailment_transform import TransformadorCurtailment
 from load.data_lake_loader import DataLakeLoader
 
 class TestI3Pipeline(unittest.TestCase):

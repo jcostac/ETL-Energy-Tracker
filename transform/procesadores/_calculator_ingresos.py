@@ -272,10 +272,10 @@ class IngresosCalculator:
             print(f"        Volume IDs: {sorted(vol_ids)}")
             print(f"        Price IDs: {sorted(price_ids)}")
         
-        if market_key == 'restricciones':
+        if market_key == 'restricciones_md' or market_key == 'restricciones_tr':
             # For restricciones, always merge on datetime_utc, id_mercado, up
-            merged = pd.merge(volumes_df, prices_df, on=['datetime_utc', 'id_mercado', 'up'], how='inner')
-            print(f"    🔗 Merged on: datetime_utc, id_mercado, up")
+            merged = pd.merge(volumes_df, prices_df, on=['datetime_utc', 'id_mercado', 'up', 'redespacho'], how='inner')
+            print(f"    🔗 Merged on: datetime_utc, id_mercado, up, redespacho")
         else:
             if ids_match:
                 # Standard merge when IDs match
