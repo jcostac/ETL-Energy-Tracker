@@ -645,7 +645,7 @@ class RRDL(I90Downloader):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class RestriccionesTiempoRealDL(I90Downloader):
+class RestriccionesTRDL(I90Downloader):
     """
     Specialized class for downloading and processing restricciones de precios data from I90 files.
     """
@@ -686,7 +686,7 @@ class RestriccionesTiempoRealDL(I90Downloader):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class RestriccionesMercadoDiariosDL(I90Downloader):
+class RestriccionesMDDL(I90Downloader):
     """
     Specialized class for downloading and processing restricciones de precios data from I90 files.
     """

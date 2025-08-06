@@ -59,7 +59,7 @@ if __name__ == "__main__":
     debugger = I90ExtractDebug()
     
     # Call specific methods to debug, for example:
-    debugger.download_volumenes_single_day(fecha_inicio=None, fecha_fin=None, mercados_lst=["restricciones_md", "restricciones_tr", "desvios"])
+    #debugger.download_volumenes_single_day(fecha_inicio=None, fecha_fin=None, mercados_lst=["restricciones_md", "restricciones_tr", "desvios"])
     debugger.download_precios_single_day(fecha_inicio=None, fecha_fin=None)
 
     # Or run all of them:

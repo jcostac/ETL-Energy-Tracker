@@ -40,6 +40,5 @@ class DebugI90Transform:
 if __name__ == "__main__":
     debugger = DebugI90Transform()
     print("Running I90 Transform Tests for debugging...")
-    debugger.debug_transform_data_for_all_markets(fecha_inicio=None, fecha_fin=None, dataset_type="volumenes_i90", mercados_lst=["restricciones_md", "restricciones_tr", "desvios"])
+    debugger.debug_transform_data_for_all_markets(fecha_inicio=None, fecha_fin=None, dataset_type="precios_i90", mercados_lst=None)
     print("Debugging script finished.") 
-    

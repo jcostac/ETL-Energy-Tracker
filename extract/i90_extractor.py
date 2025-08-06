@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from extract.descargadores._descargador_i90 import I90Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, P48DL, IndisponibilidadesDL, RestriccionesMercadoDiarioDL, RestriccionesTiempoRealDL, DesviosDL, IntradiarioDL
+from extract.descargadores._descargador_i90 import I90Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, P48DL, IndisponibilidadesDL, RestriccionesMDDL, RestriccionesTRDL, DesviosDL, IntradiarioDL
 from utilidades.raw_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils
@@ -33,8 +33,8 @@ class I90Extractor:
         self.rr_downloader = RRDL()
         self.p48_downloader = P48DL()
         self.indisponibilidades_downloader = IndisponibilidadesDL()
-        self.restricciones_md_downloader = RestriccionesMercadoDiarioDL()
-        self.restricciones_tr_downloader = RestriccionesTiempoRealDL()
+        self.restricciones_md_downloader = RestriccionesMDDL()
+        self.restricciones_tr_downloader = RestriccionesTRDL()
         self.desvios_downloader = DesviosDL()
 
         #utils 
