@@ -485,7 +485,9 @@ class ProcessedFileUtils(StorageFileUtils):
             dict_cols.append("tecnologia")
         elif "uof" in schema.names: #for omie market data
             dict_cols.append("uof")
-        else:
+        elif "redespacho" in schema.names: #for restricciones market data
+            dict_cols.append("redespacho")
+        else: 
             print(f" Dictionary encoding not applied for this dataset. Only applied for volumenes data set for uof, up and tecnologia")
         
         print("--------------------------------")

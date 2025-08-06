@@ -11,7 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 # Import actual config classes from configs.i90_config
-from configs.i90_config import I90Config, DiarioConfig, IntraConfig
+from configs.i90_config import I90Config, DiarioConfig, IntraConfig, RestriccionesMDConfig, RestriccionesTRConfig
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
 from utilidades.progress_utils import with_progress
@@ -216,7 +216,7 @@ class I90Processor:
         return self.date_utils.parse_15min_datetime_local(fecha, hora_index_str)
 
     # === COLUMN FINALIZATION ===
-    def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+    def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str, market_config: I90Config = None) -> pd.DataFrame:
         """
         Standardizes and filters DataFrame columns to match the required schema for the specified dataset type.
         
@@ -228,6 +228,7 @@ class I90Processor:
 
         if dataset_type == 'volumenes_i90':
             required_cols = self.data_validation_utils.processed_volumenes_i90_required_cols.copy()
+
         elif dataset_type == 'precios_i90':
             #rename precios to precio
             df = df.rename(columns={'precios': 'precio'})
@@ -237,6 +238,16 @@ class I90Processor:
         if "Tipo Transacción" in df.columns:
             df = df.rename(columns={"Tipo Transacción": "tipo_transaccion"})
             required_cols.append('tipo_transaccion')
+
+        if isinstance(market_config, RestriccionesMDConfig):
+            if 'Redespacho' in df.columns:
+                df = df.rename(columns={'Redespacho': 'redespacho'})
+                required_cols.append('redespacho')
+
+        if isinstance(market_config, RestriccionesTRConfig):
+            if 'Tipo' in df.columns:
+                df = df.rename(columns={'Tipo': 'redespacho'})
+                required_cols.append('redespacho')
 
         print(f"Filtering columns: {required_cols}")
         df_filtered = df[required_cols]
@@ -275,10 +286,12 @@ class I90Processor:
             print("Skipping validation for empty DataFrame.")
             return df
     
-    def _validate_final_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+    def _validate_final_data(self, df: pd.DataFrame, dataset_type: str, market_config: I90Config = None) -> pd.DataFrame:
         """Validate final data structure."""
         if not df.empty:
             validation_schema_type = "volumenes_i90" if dataset_type == 'volumenes_i90' else "precios_i90" # Map to validation schema names more specifically
+            if isinstance(market_config, RestriccionesMDConfig) or isinstance(market_config, RestriccionesTRConfig):
+                validation_schema_type = f"{validation_schema_type}_restricciones"
             try:
                  # Assuming DataValidationUtils.validate_data expects specific schema names
                  self.data_validation_utils.validate_processed_data(df, validation_schema_type)
@@ -592,8 +605,8 @@ class I90Processor:
             (self._validate_raw_data, {"dataset_type": dataset_type}),
             (self._apply_market_filters_and_id, {"market_config": market_config}),
             (self._standardize_datetime, {"dataset_type": dataset_type}),
-            (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
-            (self._validate_final_data, {"dataset_type": dataset_type}),
+            (self._select_and_finalize_columns, {"dataset_type": dataset_type, "market_config": market_config}),
+            (self._validate_final_data, {"dataset_type": dataset_type, "market_config": market_config}),
         ]
 
         #Apply intra data processing if market_config is IntraConfig

@@ -24,6 +24,8 @@ class DebugI90Transform:
         else:
             result = transformer.transform_data_for_all_markets(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, dataset_type=dataset_type, mercados_lst=mercados_lst)
 
+        data = result["data"]
+        breakpoint()
         result_status = result["status"]
         if result_status["success"]:
             print(f"✅ Single day transformation for {fecha_inicio} to {fecha_fin} PASSED.")
@@ -38,5 +40,6 @@ class DebugI90Transform:
 if __name__ == "__main__":
     debugger = DebugI90Transform()
     print("Running I90 Transform Tests for debugging...")
-    debugger.debug_transform_data_for_all_markets(fecha_inicio=None, fecha_fin=None, dataset_type="volumenes_i90", mercados_lst=["terciaria"])
+    debugger.debug_transform_data_for_all_markets(fecha_inicio=None, fecha_fin=None, dataset_type="volumenes_i90", mercados_lst=["restricciones_md", "restricciones_tr", "desvios"])
     print("Debugging script finished.") 
+    

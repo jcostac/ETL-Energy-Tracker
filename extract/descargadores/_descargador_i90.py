@@ -518,8 +518,7 @@ class IntradiarioDL(I90Downloader):
             return pd.DataFrame()
 
         return pd.concat(all_dfs, ignore_index=True)
-    
-    
+       
 class SecundariaDL(I90Downloader):
     """
     Specialized class for downloading and processing secundaria volume data from I90 files.
@@ -563,6 +562,7 @@ class SecundariaDL(I90Downloader):
         """
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
+
 class TerciariaDL(I90Downloader):
     """
     Specialized class for downloading and processing tertiary regulation volume data from I90 files.
@@ -654,7 +654,7 @@ class RestriccionesTiempoRealDL(I90Downloader):
         """Initialize the restricciones de precios downloader"""
         super().__init__()
 
-        self.config = RestriccionesMDConfig()
+        self.config = RestriccionesTRConfig()
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
     
@@ -686,7 +686,7 @@ class RestriccionesTiempoRealDL(I90Downloader):
         df_precios = super().extract_sheets_of_interest(excel_file_name, pestañas_con_error, volumenes_sheets=None, precios_sheets=self.precios_sheets)
         return df_precios
 
-class RestriccionesMercadoDiarioDL(I90Downloader):
+class RestriccionesMercadoDiariosDL(I90Downloader):
     """
     Specialized class for downloading and processing restricciones de precios data from I90 files.
     """
@@ -695,7 +695,7 @@ class RestriccionesMercadoDiarioDL(I90Downloader):
         """Initialize the restricciones de precios downloader"""
         super().__init__()
 
-        self.config = RestriccionesTRConfig()
+        self.config = RestriccionesMDConfig()
         self.precios_sheets = self.config.precios_sheets
         self.volumenes_sheets = self.config.volumenes_sheets
 

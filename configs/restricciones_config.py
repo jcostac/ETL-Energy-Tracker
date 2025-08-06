@@ -22,8 +22,8 @@ class RestriccionesConfig:
         
         #sheet 03
         self.md_redespacho_filter_map = {
-            "Fase1": ["UPL", "UPO"], #have prefixes UPL and UPO
-            "Fase2": ["ECO"] #have prefix ECO
+            "Fase1": ["UPL", "UPO", "VPB"], #have prefixes UPL and UPO
+            "Fase2": ["ECO", "UPA", "VPA"] #have prefix ECO
         }
 
         #sheet 08

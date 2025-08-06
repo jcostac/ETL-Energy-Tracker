@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from extract.descargadores._descargador_i3 import I3Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, RestriccionesDL, IntradiarioDL, RestriccionesMDDL, RestriccionesTRDL, DesviosDL
+from extract.descargadores._descargador_i3 import I3Downloader, DiarioDL, TerciariaDL, SecundariaDL, RRDL, CurtailmentDL, P48DL, IndisponibilidadesDL, IntradiarioDL, RestriccionesMDDL, RestriccionesTRDL, DesviosDL
 from utilidades.raw_file_utils import RawFileUtils
 from utilidades.db_utils import DatabaseUtils
 from utilidades.env_utils import EnvUtils
@@ -34,7 +34,6 @@ class I3Extractor:
         self.p48_downloader = P48DL()
         self.curtailment_downloader = CurtailmentDL()
         self.indisponibilidades_downloader = IndisponibilidadesDL()
-        self.restricciones_downloader = RestriccionesDL()
         self.restricciones_md_downloader = RestriccionesMDDL()
         self.restricciones_tr_downloader = RestriccionesTRDL()
         self.desvios_downloader = DesviosDL()
@@ -390,9 +389,6 @@ class I3VolumenesExtractor(I3Extractor):
 
     def extract_volumenes_indisponibilidades(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'indisponibilidades', self.indisponibilidades_downloader)
-
-    def extract_volumenes_restricciones(self, day: datetime) -> None:
-        self._extract_and_save_volumenes(day, 'restricciones', self.restricciones_downloader)
 
     def extract_volumenes_restricciones_md(self, day: datetime) -> None:
         self._extract_and_save_volumenes(day, 'restricciones_md', self.restricciones_md_downloader)

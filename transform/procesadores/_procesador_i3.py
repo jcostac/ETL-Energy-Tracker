@@ -14,7 +14,7 @@ from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
 from utilidades.raw_file_utils import RawFileUtils
 from utilidades.processed_file_utils import ProcessedFileUtils
-from configs.i3_config import I3Config, DiarioConfig, IntraConfig
+from configs.i3_config import I3Config, DiarioConfig, IntraConfig, RestriccionesMDConfig, RestriccionesTRConfig
 from utilidades.progress_utils import with_progress
 from utilidades.db_utils import DatabaseUtils
 
@@ -235,7 +235,7 @@ class I3Processor:
         return self.date_utils.parse_15min_datetime_local(fecha, hora_index_str)
 
     # === COLUMN FINALIZATION ===
-    def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+    def _select_and_finalize_columns(self, df: pd.DataFrame, dataset_type: str, market_config: I3Config = None) -> pd.DataFrame:
         """ Selects and renames columns to the final required format. """
         
         if "Concepto" in df.columns:
@@ -245,6 +245,16 @@ class I3Processor:
             raise ValueError("'Concepto' column not found in the input DataFrame.")
         
         required_cols = self.data_validation_utils.processed_volumenes_i3_required_cols
+        if isinstance(market_config, RestriccionesMDConfig):
+            if 'Redespacho' in df.columns:
+                df = df.rename(columns={'Redespacho': 'redespacho'})
+                required_cols.append('redespacho')
+
+        if isinstance(market_config, RestriccionesTRConfig):
+            if 'Tipo' in df.columns:
+                df = df.rename(columns={'Tipo': 'redespacho'})
+                required_cols.append('redespacho')
+
         return df[[col for col in required_cols if col in df.columns]]
 
     # === DATA VALIDATION ===
@@ -263,9 +273,11 @@ class I3Processor:
             print("Skipping validation for empty DataFrame.")
         return df
     
-    def _validate_final_data(self, df: pd.DataFrame, dataset_type: str) -> pd.DataFrame:
+    def _validate_final_data(self, df: pd.DataFrame, dataset_type: str, market_config: I3Config = None) -> pd.DataFrame:
         """Validates the final processed data."""
         if not df.empty:
+            if isinstance(market_config, (RestriccionesMDConfig, RestriccionesTRConfig)):
+                dataset_type = f"{dataset_type}_restricciones"
             try:
                 self.data_validation_utils.validate_processed_data(df, dataset_type)
                 print("Final data validation successful.")
@@ -416,8 +428,8 @@ class I3Processor:
             (self._validate_raw_data, {"dataset_type": dataset_type}),
             (self._apply_market_filters_and_id, {"market_config": market_config}),
             (self._standardize_datetime, {"dataset_type": dataset_type}),
-            (self._select_and_finalize_columns, {"dataset_type": dataset_type}),
-            (self._validate_final_data, {"dataset_type": dataset_type}),
+            (self._select_and_finalize_columns, {"dataset_type": dataset_type, "market_config": market_config}),
+            (self._validate_final_data, {"dataset_type": dataset_type, "market_config": market_config}),
         ]
 
         if isinstance(market_config, IntraConfig):

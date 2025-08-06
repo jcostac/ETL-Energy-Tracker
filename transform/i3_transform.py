@@ -12,7 +12,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.etl_date_utils import DateUtilsETL
-from utilidades.db_utils import DatabaseUtils
 from utilidades.raw_file_utils import RawFileUtils
 from utilidades.processed_file_utils import ProcessedFileUtils
 from transform.procesadores._procesador_i3 import I3Processor
@@ -54,8 +53,10 @@ class TransformadorI3:
         for config_cls in I3Config.__subclasses__():
             if config_cls.has_volumenes_sheets():
                 mercado = config_cls.__name__.replace('Config', '').lower()
-                if mercado == 'curtailmentdemanda': #special case for curtailment
-                    mercado = 'curtailment'
+                if mercado == 'restriccionesmd': #special case for restricciones
+                    mercado = 'restricciones_md'
+                elif mercado == 'restriccionestr': #special case for restricciones
+                    mercado = 'restricciones_tr'
                 mercados.append(mercado)
         return mercados
 

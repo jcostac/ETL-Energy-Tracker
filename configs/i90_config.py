@@ -673,8 +673,6 @@ def print_config_info():
             filter_str = ', '.join(filter_list) if filter_list else 'None'
             print(f"{mid:<6} {sentido:<10} {filter_str}")
 
-        print(f"Temporary download path: {config_instance.temporary_download_path}")
-
             
 if __name__ == "__main__":
     print_config_info()

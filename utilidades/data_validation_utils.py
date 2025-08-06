@@ -19,14 +19,17 @@ class DataValidationUtils:
         ##precios 
         self.processed_price_esios_required_cols = ['datetime_utc', "id_mercado", "precio"]
         self.processed_price_i90_required_cols = ['datetime_utc', "id_mercado", "precio", "up"]
-
+        self.processed_price_i90_restricciones_required_cols = ['datetime_utc', "id_mercado", "precio", "up", "redespacho"]
+       
+       
         ##volumenes
         self.processed_volumenes_i90_required_cols = ['datetime_utc', "up", 'volumenes', 'id_mercado']
+        self.processed_volumenes_i90_restricciones_required_cols = ['datetime_utc', "id_mercado", "volumenes", "up", "redespacho"]
         self.processed_volumenes_omie_required_cols = ['datetime_utc', "uof", 'volumenes', 'id_mercado']
         self.processed_volumenes_mic_required_cols = ['datetime_utc', "uof", 'volumenes', "precio", 'id_mercado', "fecha_fichero"]
         self.processed_volumenes_i3_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado']
-        self.processed_curtailments_i90_required_cols = ['datetime_utc', 'up', 'RTx', 'tipo', 'volumenes', "id_mercado"]
-        self.processed_curtailments_i3_required_cols = ['datetime_utc', 'tecnologia', 'RTx', 'tipo', 'volumenes', "id_mercado"]
+        self.processed_volumenes_i3_restricciones_required_cols = ['datetime_utc', "tecnologia", 'volumenes','id_mercado', "redespacho"]
+
         
         ##ingresos
         self.processed_ingresos_required_cols = ['datetime_utc', 'ingresos', 'id_mercado'] #up uof validation are done in validate dtypess
@@ -121,7 +124,10 @@ class DataValidationUtils:
 
                     if 'up' in df.columns:
                         df['up'] = df['up'].astype('str')
-                
+                    
+                    if 'redespacho' in df.columns:
+                        df['redespacho'] = df['redespacho'].astype('str')
+
                 #for volumenes related datasets
                 elif validation_schema_type in ["volumenes_i90", "volumenes_i3", "volumenes_omie"]:
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
@@ -137,19 +143,10 @@ class DataValidationUtils:
                         df['precio'] = df['precio'].astype('float32')
                     if 'tipo_transaccion' in df.columns:
                         df['tipo_transaccion'] = df['tipo_transaccion'].astype('str')
+                    if 'redespacho' in df.columns:
+                        df['redespacho'] = df['redespacho'].astype('str')
 
-                elif validation_schema_type in ["curtailments_i90", "curtailments_i3"]:
-                    df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], utc=True)
-                    df['RTx'] = df['RTx'].astype('str')
-                    df['tipo'] = df['tipo'].astype('str')
-                    df['volumenes'] = df['volumenes'].astype('float32')
-                    df["id_mercado"] = df["id_mercado"].astype('uint8')
-                    
-                    if validation_schema_type == "curtailments_i90" and 'up' in df.columns:
-                        df['up'] = df['up'].astype('str')
-                    if validation_schema_type == "curtailments_i3" and 'tecnologia' in df.columns:
-                        df['tecnologia'] = df['tecnologia'].astype('str')
-                
+            
                 elif validation_schema_type == "ingresos":
                     df['ingresos'] = df['ingresos'].astype('float32')
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
@@ -220,18 +217,20 @@ class DataValidationUtils:
                 required_cols = self.processed_price_esios_required_cols
             elif validation_schema_type == "precios_i90":
                 required_cols = self.processed_price_i90_required_cols
+            elif validation_schema_type == "precios_i90_restricciones":
+                required_cols = self.processed_price_i90_restricciones_required_cols
             elif validation_schema_type == "volumenes_i90":
                 required_cols = self.processed_volumenes_i90_required_cols
+            elif validation_schema_type == "volumenes_i90_restricciones":
+                required_cols = self.processed_volumenes_i90_restricciones_required_cols
             elif validation_schema_type == "volumenes_i3":
                 required_cols = self.processed_volumenes_i3_required_cols
+            elif validation_schema_type == "volumenes_i3_restricciones":
+                required_cols = self.processed_volumenes_i3_restricciones_required_cols
             elif validation_schema_type == "volumenes_omie":
                 required_cols = self.processed_volumenes_omie_required_cols
             elif validation_schema_type == "volumenes_mic":
                 required_cols = self.processed_volumenes_mic_required_cols
-            elif validation_schema_type == "curtailments_i90":
-                required_cols = self.processed_curtailments_i90_required_cols
-            elif validation_schema_type == "curtailments_i3":
-                required_cols = self.processed_curtailments_i3_required_cols
             elif validation_schema_type == "ingresos":
                 required_cols = self.processed_ingresos_required_cols
 
@@ -242,6 +241,8 @@ class DataValidationUtils:
                 required_cols = self.raw_precios_i90_required_cols
             elif validation_schema_type == "volumenes_i90":
                 required_cols = self.raw_volumenes_i90_required_cols
+            elif validation_schema_type == "volumenes_i90_restricciones":
+                required_cols = self.raw_volumenes_i90_restricciones_required_cols
             elif validation_schema_type == "volumenes_i3":
                 required_cols = self.raw_volumenes_i3_required_cols
             elif validation_schema_type == "volumenes_omie":
@@ -256,7 +257,7 @@ class DataValidationUtils:
         
         return df
 
-    def get_pyarrow_schema(self, dataset_type: str, df: Optional[pd.DataFrame] = None) -> pa.Schema:
+    def get_pyarrow_schema(self, dataset_type: str, df: pd.DataFrame) -> pa.Schema:
         """
         Returns a PyArrow schema for the given processed dataset type.
         
@@ -288,19 +289,28 @@ class DataValidationUtils:
                 pa.field('precio', pa.float32()),
                 pa.field('up', pa.string())
             ]
+            if 'redespacho' in df.columns:
+                schema_fields.append(pa.field('redespacho', pa.string()))
+       
         elif dataset_type == 'volumenes_i90':
             schema_fields = [
                 pa.field('up', pa.string()),
                 pa.field('volumenes', pa.float32())
             ]
-            if df is not None and 'tipo_transaccion' in df.columns:
+            if 'tipo_transaccion' in df.columns:
                 schema_fields.append(pa.field('tipo_transaccion', pa.string()))
+
+            if 'redespacho' in df.columns:
+                schema_fields.append(pa.field('redespacho', pa.string()))
 
         elif dataset_type == 'volumenes_i3':
             schema_fields = [
                 pa.field('tecnologia', pa.string()),
                 pa.field('volumenes', pa.float32())
             ]
+            if 'redespacho' in df.columns:
+                schema_fields.append(pa.field('redespacho', pa.string()))
+                
         elif dataset_type == 'volumenes_omie':
             schema_fields = [
                 pa.field('uof', pa.string()),
@@ -313,25 +323,15 @@ class DataValidationUtils:
                 pa.field('precio', pa.float32()),
                 pa.field('fecha_fichero', pa.timestamp('ns'))
             ]
-        elif dataset_type in ['curtailments_i90', 'curtailments_i3']:
-             schema_fields = [
-                pa.field('RTx', pa.string()),
-                pa.field('tipo', pa.string()),
-                pa.field('volumenes', pa.float32())
-            ]
-             if dataset_type == 'curtailments_i90':
-                 schema_fields.append(pa.field('up', pa.string()))
-             else:
-                 schema_fields.append(pa.field('tecnologia', pa.string()))
         elif dataset_type == 'ingresos':
             schema_fields = [
                 pa.field('ingresos', pa.float32())
             ]
-            if df is not None:
-                if 'up' in df.columns:
-                    schema_fields.append(pa.field('up', pa.string()))
-                elif 'uof' in df.columns:
-                    schema_fields.append(pa.field('uof', pa.string()))
+        
+            if 'up' in df.columns:
+                schema_fields.append(pa.field('up', pa.string()))
+            elif 'uof' in df.columns:
+                schema_fields.append(pa.field('uof', pa.string()))
         else:
             raise ValueError(f"Unknown dataset type for schema generation: {dataset_type}")
 
