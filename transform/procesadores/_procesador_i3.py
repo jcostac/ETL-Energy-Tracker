@@ -14,7 +14,7 @@ from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
 from utilidades.raw_file_utils import RawFileUtils
 from utilidades.processed_file_utils import ProcessedFileUtils
-from configs.i3_config import I3Config, DiarioConfig, IntraConfig, RestriccionesMDConfig, RestriccionesTRConfig
+from configs.i3_config import I3Config, DiarioConfig, IntraConfig, RestriccionesMDConfig, RestriccionesTRConfig, DesviosConfig
 from utilidades.progress_utils import with_progress
 from utilidades.db_utils import DatabaseUtils
 
@@ -250,7 +250,7 @@ class I3Processor:
                 df = df.rename(columns={'Redespacho': 'redespacho'})
                 required_cols.append('redespacho')
 
-        if isinstance(market_config, RestriccionesTRConfig):
+        if isinstance(market_config, RestriccionesTRConfig) or isinstance(market_config, DesviosConfig):
             if 'Tipo' in df.columns:
                 df = df.rename(columns={'Tipo': 'redespacho'})
                 required_cols.append('redespacho')
@@ -276,7 +276,7 @@ class I3Processor:
     def _validate_final_data(self, df: pd.DataFrame, dataset_type: str, market_config: I3Config = None) -> pd.DataFrame:
         """Validates the final processed data."""
         if not df.empty:
-            if isinstance(market_config, (RestriccionesMDConfig, RestriccionesTRConfig)):
+            if isinstance(market_config, (RestriccionesMDConfig, RestriccionesTRConfig, DesviosConfig)):
                 dataset_type = f"{dataset_type}_restricciones"
             try:
                 self.data_validation_utils.validate_processed_data(df, dataset_type)

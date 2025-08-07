@@ -12,7 +12,7 @@ from load.data_lake_loader import DataLakeLoader
 
 class TestEsiosPipeline(unittest.TestCase):
     TEST_DATES = [
-        (datetime.now() - timedelta(days=93)).strftime('%Y-%m-%d'),
+        (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d'),
     ]
 
     def test_full_etl(self):

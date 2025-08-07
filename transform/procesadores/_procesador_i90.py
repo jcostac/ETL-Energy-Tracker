@@ -11,7 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 # Import actual config classes from configs.i90_config
-from configs.i90_config import I90Config, DiarioConfig, IntraConfig, RestriccionesMDConfig, RestriccionesTRConfig
+from configs.i90_config import I90Config, DiarioConfig, IntraConfig, RestriccionesMDConfig, RestriccionesTRConfig, DesviosConfig
 from utilidades.etl_date_utils import DateUtilsETL
 from utilidades.data_validation_utils import DataValidationUtils
 from utilidades.progress_utils import with_progress
@@ -244,11 +244,10 @@ class I90Processor:
                 df = df.rename(columns={'Redespacho': 'redespacho'})
                 required_cols.append('redespacho')
 
-        if isinstance(market_config, RestriccionesTRConfig):
+        if isinstance(market_config, RestriccionesTRConfig) or isinstance(market_config, DesviosConfig):
             if 'Tipo' in df.columns:
                 df = df.rename(columns={'Tipo': 'redespacho'})
                 required_cols.append('redespacho')
-
         print(f"Filtering columns: {required_cols}")
         df_filtered = df[required_cols]
 
@@ -290,7 +289,7 @@ class I90Processor:
         """Validate final data structure."""
         if not df.empty:
             validation_schema_type = "volumenes_i90" if dataset_type == 'volumenes_i90' else "precios_i90" # Map to validation schema names more specifically
-            if isinstance(market_config, RestriccionesMDConfig) or isinstance(market_config, RestriccionesTRConfig):
+            if isinstance(market_config, RestriccionesMDConfig) or isinstance(market_config, RestriccionesTRConfig) or isinstance(market_config, DesviosConfig):
                 validation_schema_type = f"{validation_schema_type}_restricciones"
             try:
                  # Assuming DataValidationUtils.validate_data expects specific schema names
