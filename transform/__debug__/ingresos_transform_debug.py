@@ -8,7 +8,7 @@ from transform.ingresos_transform import TransformadorIngresos
 
 class DebugTransformTests():
 
-    TEST_DATES = [(datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")]
+    TEST_DATES = [(datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d")]
 
     def debug_calculate_ingresos_for_all_markets(self, fecha_inicio, fecha_fin, mercados_lst, plot=False):
         """

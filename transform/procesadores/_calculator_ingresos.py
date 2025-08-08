@@ -11,16 +11,17 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.processed_file_utils import ProcessedFileUtils
-from utilidades.data_validation_utils import DataValidationUtils
 from configs.ingresos_config import IngresosConfig
-from configs.storage_config import VALID_DATASET_TYPES
-from read._parquet_reader import PROJECT_ROOT, ParquetReader
+from read._parquet_reader import ParquetReader
 
 class IngresosCalculator:
     def __init__(self):
         self.file_utils = ProcessedFileUtils()
         self.config = IngresosConfig()
         self.parquet_reader = ParquetReader()
+
+        self.mercados_precio_bajar = [14, 15, 18, 19]
+        self.mercados_precio_subir = [2, 3, 4, 5, 6, 7, 8]
 
     def _find_latest_partition_path(self, mercado, id_mercado, dataset_type):
         base_path = self.file_utils.processed_path / f"mercado={mercado}" / f"id_mercado={id_mercado}"
@@ -272,7 +273,7 @@ class IngresosCalculator:
             print(f"        Volume IDs: {sorted(vol_ids)}")
             print(f"        Price IDs: {sorted(price_ids)}")
         
-        if market_key == 'restricciones_md' or market_key == 'restricciones_tr':
+        if market_key == 'restricciones_md' or market_key == 'restricciones_tr' or market_key == 'desvios':
             # For restricciones, always merge on datetime_utc, id_mercado, up
             merged = pd.merge(volumes_df, prices_df, on=['datetime_utc', 'id_mercado', 'up', 'redespacho'], how='inner')
             print(f"    🔗 Merged on: datetime_utc, id_mercado, up, redespacho")
@@ -282,7 +283,7 @@ class IngresosCalculator:
                 merged = pd.merge(volumes_df, prices_df, on=['datetime_utc', 'id_mercado'], how='inner')
                 print(f"    🔗 Merged on: datetime_utc, id_mercado")
             else:
-                # Merge only on datetime_utc when IDs don't match (e.g., secundaria before SRS)
+                # Merge only on datetime_utc when IDs don't match (e.g., secundaria before SRS ie single price for two diff markets)
                 merged = pd.merge(volumes_df, prices_df, on=['datetime_utc'], how='inner')
                 print(f"    🔗 Merged on: datetime_utc only (different id_mercado values)")
                 # Keep the volume data's id_mercado for the result
@@ -309,6 +310,78 @@ class IngresosCalculator:
         print(f"    ✅ Calculation complete: {len(result):,} ingresos records generated")
         return result
 
+    def _process_market_ids_for_period(self, market_key, ids, fecha_inicio, fecha_fin, plot=False):
+        """Process a specific set of market IDs for a given date range"""
+        results = []
+        
+        for i, id_mercado in enumerate(ids, 1):
+            print(f"\n📍 Processing market ID {id_mercado} ({i}/{len(ids)})")
+            
+            volumes_df = self._get_df_for_date_range(market_key, id_mercado, 'volumenes_i90', fecha_inicio, fecha_fin)
+
+            # Handle prices by segmenting the date range if the precio_id can change
+            print(f"    🔄 Setting up price data segments...")
+            prices_dfs = []
+            start_dt = pd.to_datetime(fecha_inicio)
+            end_dt = pd.to_datetime(fecha_fin)
+            srs_date = self.config.dia_inicio_SRS
+
+            # Define segments based on the SRS change date for relevant markets
+            segments = []
+            if id_mercado in [14, 15, 18, 19] and start_dt < srs_date <= end_dt:
+                # Split into two segments around the SRS date
+                print(f"    📅 SRS date ({srs_date}) falls within range - splitting into segments")
+                segments.append((start_dt, srs_date - timedelta(days=1)))
+                segments.append((srs_date, end_dt))
+                print(f"        Segment 1: {segments[0][0].date()} to {segments[0][1].date()}")
+                print(f"        Segment 2: {segments[1][0].date()} to {segments[1][1].date()}")
+            else:
+                # Process as a single segment
+                print(f"    📅 Processing as single segment")
+                segments.append((start_dt, end_dt))
+
+            for j, (seg_start, seg_end) in enumerate(segments, 1):
+                if seg_start > seg_end:
+                    print(f"    ⏭️  Skipping invalid segment {j}: start > end")
+                    continue
+                
+                print(f"    📊 Processing price segment {j}/{len(segments)}: {seg_start.date()} to {seg_end.date()}")
+                
+                # Get the correct precio_id for the start of the current segment
+                precio_id = self.config.get_precios_from_id_mercado(id_mercado, seg_start)
+                price_dataset = 'precios_i90' if market_key in ['restricciones_md', 'restricciones_tr'] else 'precios_esios'
+                print(f"        💰 Using precio_id: {precio_id}, dataset: {price_dataset}")
+                
+                segment_prices_df = self._get_df_for_date_range(
+                    market_key, 
+                    precio_id, 
+                    price_dataset, 
+                    seg_start.strftime('%Y-%m-%d'), 
+                    seg_end.strftime('%Y-%m-%d')
+                )
+                
+                if not segment_prices_df.empty:
+                    prices_dfs.append(segment_prices_df)
+                    print(f"        ✅ Segment {j} added: {len(segment_prices_df):,} price rows")
+                else:
+                    print(f"        ❌ Segment {j} empty")
+
+            if prices_dfs:
+                prices_df = pd.concat(prices_dfs, ignore_index=True)
+                print(f"    🔗 Combined price segments: {len(prices_df):,} total rows")
+            else:
+                prices_df = pd.DataFrame()
+                print(f"    ❌ No price data from any segment")
+            
+            try:
+                ingresos_df = self._calculate_ingresos(volumes_df, prices_df, market_key, id_mercado, plot)
+                results.append(ingresos_df)
+                print(f"    ✅ Market ID {id_mercado} completed successfully")
+            except Exception as e:
+                print(f"    ❌ Market ID {id_mercado} failed: {e}")
+        
+        return results
+
     def calculate_single(self, market_key, fecha, plot=False):
         print(f"\n🚀 STARTING SINGLE DATE INGRESOS CALCULATION")
         print(f"    Market: {market_key}")
@@ -327,7 +400,7 @@ class IngresosCalculator:
             print(f"    💰 Using precio_id: {precio_id}")
             
             # Use different price dataset for restricciones
-            price_dataset = 'precios_i90' if market_key == 'restricciones' else 'precios_esios'
+            price_dataset = 'precios_i90' if market_key in ['restricciones_md', 'restricciones_tr'] else 'precios_esios'
             print(f"    📊 Using price dataset: {price_dataset}")
             prices_df = self._get_df_for_date_range(market_key, precio_id, price_dataset, fecha, fecha)
             
@@ -397,77 +470,7 @@ class IngresosCalculator:
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
 
-    def _process_market_ids_for_period(self, market_key, ids, fecha_inicio, fecha_fin, plot=False):
-        """Process a specific set of market IDs for a given date range"""
-        results = []
-        
-        for i, id_mercado in enumerate(ids, 1):
-            print(f"\n📍 Processing market ID {id_mercado} ({i}/{len(ids)})")
-            
-            volumes_df = self._get_df_for_date_range(market_key, id_mercado, 'volumenes_i90', fecha_inicio, fecha_fin)
-
-            # Handle prices by segmenting the date range if the precio_id can change
-            print(f"    🔄 Setting up price data segments...")
-            prices_dfs = []
-            start_dt = pd.to_datetime(fecha_inicio)
-            end_dt = pd.to_datetime(fecha_fin)
-            srs_date = self.config.dia_inicio_SRS
-
-            # Define segments based on the SRS change date for relevant markets
-            segments = []
-            if id_mercado in [14, 15, 18, 19] and start_dt < srs_date <= end_dt:
-                # Split into two segments around the SRS date
-                print(f"    📅 SRS date ({srs_date}) falls within range - splitting into segments")
-                segments.append((start_dt, srs_date - timedelta(days=1)))
-                segments.append((srs_date, end_dt))
-                print(f"        Segment 1: {segments[0][0].date()} to {segments[0][1].date()}")
-                print(f"        Segment 2: {segments[1][0].date()} to {segments[1][1].date()}")
-            else:
-                # Process as a single segment
-                print(f"    📅 Processing as single segment")
-                segments.append((start_dt, end_dt))
-
-            for j, (seg_start, seg_end) in enumerate(segments, 1):
-                if seg_start > seg_end:
-                    print(f"    ⏭️  Skipping invalid segment {j}: start > end")
-                    continue
-                
-                print(f"    📊 Processing price segment {j}/{len(segments)}: {seg_start.date()} to {seg_end.date()}")
-                
-                # Get the correct precio_id for the start of the current segment
-                precio_id = self.config.get_precios_from_id_mercado(id_mercado, seg_start)
-                price_dataset = 'precios_i90' if market_key == 'restricciones' else 'precios_esios'
-                print(f"        💰 Using precio_id: {precio_id}, dataset: {price_dataset}")
-                
-                segment_prices_df = self._get_df_for_date_range(
-                    market_key, 
-                    precio_id, 
-                    price_dataset, 
-                    seg_start.strftime('%Y-%m-%d'), 
-                    seg_end.strftime('%Y-%m-%d')
-                )
-                
-                if not segment_prices_df.empty:
-                    prices_dfs.append(segment_prices_df)
-                    print(f"        ✅ Segment {j} added: {len(segment_prices_df):,} price rows")
-                else:
-                    print(f"        ❌ Segment {j} empty")
-
-            if prices_dfs:
-                prices_df = pd.concat(prices_dfs, ignore_index=True)
-                print(f"    🔗 Combined price segments: {len(prices_df):,} total rows")
-            else:
-                prices_df = pd.DataFrame()
-                print(f"    ❌ No price data from any segment")
-            
-            try:
-                ingresos_df = self._calculate_ingresos(volumes_df, prices_df, market_key, id_mercado, plot)
-                results.append(ingresos_df)
-                print(f"    ✅ Market ID {id_mercado} completed successfully")
-            except Exception as e:
-                print(f"    ❌ Market ID {id_mercado} failed: {e}")
-        
-        return results
+    
 
 class ContinuoIngresosCalculator(IngresosCalculator):
     def calculate_single(self, market_key, fecha, plot=False):
@@ -509,3 +512,166 @@ class ContinuoIngresosCalculator(IngresosCalculator):
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
 
+class DesviosIngresosCalculator(IngresosCalculator):
+    def _check_energias_balance(self, fecha):
+        """
+        Check all i90 volumes for that particular hour for mercados de balance a subir and bajar
+        to determine if the price is unique or dual.
+        """
+        mercados_subir = self.config.mercado_sentido_map['subir']
+        mercados_bajar = self.config.mercado_sentido_map['bajar']
+        
+        volumenes_subir = 0
+        volumenes_bajar = 0
+        
+        # Get all volumes for 'subir' markets
+        for mercado, ids in mercados_subir.items():
+            for id_mercado in ids:
+                df = self._get_df_for_date_range(mercado, id_mercado, 'volumenes_i90', fecha, fecha)
+                if not df.empty:
+                    volumenes_subir += df['volumenes'].sum()
+                    
+        # Get all volumes for 'bajar' markets
+        for mercado, ids in mercados_bajar.items():
+            for id_mercado in ids:
+                df = self._get_df_for_date_range(mercado, id_mercado, 'volumenes_i90', fecha, fecha)
+                if not df.empty:
+                    volumenes_bajar += df['volumenes'].sum()
+
+        if volumenes_subir == 0 and volumenes_bajar == 0:
+            return None, None  # Desvio nulo (excepcional)
+
+        if volumenes_subir > volumenes_bajar:
+            direction = "subir"
+            if volumenes_bajar < 0.02 * volumenes_subir:
+                return "unico", direction
+            else:
+                return "dual", None
+        else:  # volumenes_bajar >= volumenes_subir
+            direction = "bajar"
+            if volumenes_subir < 0.02 * volumenes_bajar:
+                return "unico", direction
+            else:
+                return "dual", None
+
+    def _calculate_precios_desvios(self, fecha, sentidos: list) -> dict:
+        """Calculate weighted average desvío prices and per-mercado energy fractions for each sentido."""
+
+        precios_desvios = {}
+        fractions_by_sentido = {} # useful for debugging
+
+        for sentido in sentidos:
+            total_volumen = 0.0
+            total_ingresos = 0.0
+
+            mercados = self.config.mercado_sentido_map[sentido]
+            per_market_volume = {mercado: 0.0 for mercado in mercados.keys()}
+
+            for mercado, ids in mercados.items():
+                for id_mercado in ids:
+                    volumes_df = self._get_df_for_date_range(mercado, id_mercado, 'volumenes_i90', fecha, fecha)
+                    if volumes_df.empty:
+                        continue
+
+                    precio_id = self.config.get_precios_from_id_mercado(id_mercado, pd.to_datetime(fecha))
+                    prices_df = self._get_df_for_date_range(mercado, precio_id, 'precios_esios', fecha, fecha)
+                    if prices_df.empty:
+                        continue
+
+                    merged_df = pd.merge(volumes_df, prices_df, on='datetime_utc', how='inner') #replicate price for each up entry
+
+                    if not merged_df.empty:
+                        ingresos = (merged_df['volumenes'] * merged_df['precio']).sum()
+                        volumen = merged_df['volumenes'].sum()
+
+                        total_ingresos += float(ingresos)
+                        total_volumen += float(volumen)
+                        per_market_volume[mercado] += float(volumen)
+
+            if total_volumen > 0:
+                precio_ponderado = total_ingresos / total_volumen
+                precios_desvios[sentido] = precio_ponderado
+                fractions_by_sentido[sentido] = {m: (per_market_volume[m] / total_volumen) for m in per_market_volume}
+            else:
+                precios_desvios[sentido] = 0.0
+                fractions_by_sentido[sentido] = {m: 0.0 for m in per_market_volume}
+
+        # Expose fractions for downstream use or debugging
+        self.last_desvios_fractions = fractions_by_sentido
+
+        # Debug print
+        print("    ⚖️ Fraction of total FRR/RR energy by mercado per sentido:")
+        for sentido, fractions in fractions_by_sentido.items():
+            details = ", ".join([f"{m}: {f*100:.2f}%" for m, f in fractions.items()])
+            print(f"        {sentido}: {details}")
+
+        return precios_desvios
+    
+    def _get_precios_desvios(self, fecha):
+        """Calculate the precios for the desvios"""
+
+
+        #extract net direaction of all rr and frr energias balance
+        price_type, direction = self._check_energias_balance(fecha)
+
+        if price_type is None and direction is None:
+            return None
+        
+        if price_type == "unico":
+            precios = self._calculate_precios_desvios(fecha, [direction])
+            precio_unico = precios[direction]
+            return {"subir": precio_unico, "bajar": precio_unico}
+        else: #dual
+            precios = self._calculate_precios_desvios(fecha, ["subir", "bajar"])
+            precio_subir_desvio = precios['bajar']
+            precio_bajar_desvio = precios['subir']
+            return {"subir": precio_subir_desvio, "bajar": precio_bajar_desvio}
+    
+    def calculate_single(self, market_key, fecha, plot=False):
+        print(f"\n🚀 STARTING DESVIOS SINGLE DATE INGRESOS CALCULATION")
+        print(f"    Market: {market_key}")
+        print(f"    Date: {fecha}")
+        
+        # 1. Get desvios prices
+        precios_desvio = self._get_precios_desvios(fecha)
+        if precios_desvio is None:
+            print(f"    ℹ️ No FRR activated (or negligible) on {fecha} → no desvío price applicable")
+            return pd.DataFrame()
+        print(f"    💸 Precios desvios calculados: Subir={precios_desvio['subir']:.2f} €/MWh, Bajar={precios_desvio['bajar']:.2f} €/MWh")
+
+        # 2. Get desvios volumes
+        ids = self.config.get_market_ids(market_key, pd.to_datetime(fecha))
+        print(f"    Processing {len(ids)} market IDs for desvios: {ids}")
+        
+        all_volumes_df = []
+        for id_mercado in ids:
+            df = self._get_df_for_date_range(market_key, id_mercado, 'volumenes_i90', fecha, fecha)
+            if not df.empty:
+                all_volumes_df.append(df)
+        
+        if not all_volumes_df:
+            print(f"    ❌ No volume data found for desvios on {fecha}")
+            return pd.DataFrame()
+
+        volumes_df = pd.concat(all_volumes_df, ignore_index=True)
+        print(f"    📊 Total desvios volume rows: {len(volumes_df)}")
+        
+        # 3. Calculate ingresos
+        def calculate_row_ingresos(row):
+            volumen = row['volumenes']
+            if volumen > 0: # Desvío a subir
+                return volumen * precios_desvio['subir']
+            elif volumen < 0: # Desvío a bajar
+                return volumen * precios_desvio['bajar']
+            else:
+                return 0
+
+        volumes_df['ingresos'] = volumes_df.apply(calculate_row_ingresos, axis=1).round(2)
+
+        result = volumes_df[['datetime_utc', 'up', 'ingresos', 'id_mercado']]
+
+        self._analyze_total_ingresos(result, title_context=f"Desvios for {fecha}", plot=plot)
+        
+        print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
+        return result
+        

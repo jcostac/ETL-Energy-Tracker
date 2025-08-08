@@ -21,8 +21,24 @@ class IngresosConfig:
             'rr': [16,17],
             'p48': [20],
             'indisponibilidades': [22],
-            'restricciones': [9,10,11,12],
+            'restricciones_md': [9,10],
+            'restricciones_tr': [11,12],
             'desvios': [29,30]
+        }
+
+        self.mercado_sentido_map = {
+            'subir': {
+                'secundaria': [14],
+                'terciaria': [18],
+                "terciaria_directa": [26],
+                'rr': [16]
+            },
+            'bajar': {
+                'secundaria': [15],
+                'terciaria': [19],
+                "terciaria_directa": [27],
+                'rr': [17]
+            }
         }
 
     def get_market_ids(self, market_key, date):
@@ -57,6 +73,10 @@ class IngresosConfig:
         # === RR ====
         elif id_mercado in [16, 17]:
             return 16 #precio unificado RR
+
+        # === DESVIOS ===
+        elif id_mercado in [29, 30]:
+            return None #needs to be calculated
 
         # ==== SECUNDARIA ====
         elif id_mercado in [14, 15]:

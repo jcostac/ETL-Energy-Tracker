@@ -20,7 +20,7 @@ class TransformadorIngresos:
         self.market_calculator_map = {
             'continuo': ContinuoIngresosCalculator,
         }
-        self.all_markets = list(self.config.mercado_name_id_map.keys())
+        self.valid_markets = list(self.config.mercado_name_id_map.keys())
 
     def get_calculator_for_market(self, market_key: str):
         calculator_class = self.market_calculator_map.get(market_key, IngresosCalculator)
@@ -29,12 +29,12 @@ class TransformadorIngresos:
     def calculate_ingresos_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
                                            mercados_lst: Optional[List[str]] = None, plot: bool = False) -> dict:
         if mercados_lst is None:
-            mercados_lst = self.all_markets
+            mercados_lst = self.valid_markets
         else:
-            invalid_markets = [m for m in mercados_lst if m not in self.all_markets]
+            invalid_markets = [m for m in mercados_lst if m not in self.valid_markets]
             if invalid_markets:
                 print(f"Warning: Invalid markets {invalid_markets} skipped.")
-            mercados_lst = [m for m in mercados_lst if m in self.all_markets]
+            mercados_lst = [m for m in mercados_lst if m in self.valid_markets]
 
         if fecha_inicio is None and fecha_fin is None:
             raise ValueError("Fecha inicio and fecha fin are required")
