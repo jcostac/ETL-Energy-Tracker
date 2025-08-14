@@ -8,15 +8,10 @@ from datetime import datetime
 from deprecated import deprecated
 from dotenv import load_dotenv
 
-# Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
-# Use absolute imports
 from configs.esios_config import ESIOSConfig
-# Get the processed folder path
-
-
 
 class ParquetReader:
     """
@@ -27,7 +22,6 @@ class ParquetReader:
         Initializes the ParquetReader by loading environment variables, setting up configuration, and determining valid markets from the processed data directory.
         """
         load_dotenv()
-        self.duckdb_engine = "implementar"
         self.esios_config = ESIOSConfig()
         self.processed_path = Path(os.getenv('DATA_LAKE_PATH')) / "processed"
         self.valid_mercados = self.get_valid_mercados()
@@ -131,7 +125,6 @@ class ParquetReader:
             # If no specific IDs provided, use all valid IDs for this market
             if mercado_id_lst is None:
                 validated_ids[market] = valid_ids
-                print(f"Validated IDs for mercado {market}: all available ({len(valid_ids)} IDs)")
                 continue
             
             # Find intersection of provided IDs and valid IDs for this market
@@ -139,9 +132,8 @@ class ParquetReader:
             
             if market_valid_ids:
                 validated_ids[market] = market_valid_ids
-                print(f"Validated IDs for mercado {market}: {market_valid_ids}")
             else:
-                print(f"Warning: None of the provided IDs {mercado_id_lst} are valid for market {market}. Available IDs: {valid_ids}. Skipping this market.")
+                raise ValueError(f"None of the provided IDs {mercado_id_lst} are valid for market {market}. Available IDs: {valid_ids}. Skipping this market.")
         
         # Only raise an error if NO markets have valid data
         if not validated_ids:
@@ -182,7 +174,6 @@ class ParquetReader:
         # Validate mercado and get appropriate mercado_ids
         self.validate_mercado(mercado_lst)
         validated_mercado_ids = self.validate_mercado_ids_for_market(mercado_lst, mercado_id_lst)
-        print(validated_mercado_ids)
 
         fecha_inicio_lectura_dt = pd.to_datetime(fecha_inicio_lectura)
         fecha_fin_lectura_dt = pd.to_datetime(fecha_fin_lectura)
@@ -201,22 +192,15 @@ class ParquetReader:
                 for id_mercado in mercado_ids:
                     path = self.processed_path / f"mercado={mercado}" / f"id_mercado={id_mercado}" / f"year={year:04d}" / f"month={month:02d}" / f"{dataset_type}.parquet"
                     if path.exists():
-                        print(f"Reading parquet file for {mercado} (id_mercado={id_mercado})")
                         print("--------------------------------")
+                        print(f"Reading parquet file for {mercado} (id_mercado={id_mercado})")
                         df = pd.read_parquet(path)
+                        all_dfs.append(df)
                         print(f"Read {df.shape[0]} rows")
                         print(f"Read {df.shape[1]} columns")
-                        print(f"Columns: {df.columns}")
-                        print(f"Dtypes: {df.dtypes}")
-                        print(f"First 10 rows: {df.head(10)}")
-                        print(f"Last 10 rows: {df.tail(10)}")
-                        print(f"--------------------------------")
-                        all_dfs.append(df)
+                        print("--------------------------------")
 
         df_concat = pd.concat(all_dfs, ignore_index=True)
-        print(df_concat.head())
-        print(df_concat.tail())
-        print(df_concat.shape)
         return df_concat
         
 

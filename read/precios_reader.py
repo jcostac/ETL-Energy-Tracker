@@ -61,7 +61,6 @@ class ConsultasESIOS:
 
         return df
 
-
 class ConsultasDiario(ConsultasESIOS):
 
     def __init__(self):
@@ -85,7 +84,6 @@ class ConsultasDiario(ConsultasESIOS):
             pd.DataFrame: DataFrame con los precios del mercado diario
         """
         return super().consulta_precios(fecha_inicio, fecha_fin, indicator_ids=[self.indicator_id], is_quinceminutal=False)
-
 
 class ConsultasIntra(ConsultasESIOS):
     
@@ -122,7 +120,6 @@ class ConsultasIntra(ConsultasESIOS):
         
         # Query database with granularity consideration
         return super().consulta_precios(fecha_inicio, fecha_fin, indicator_ids=indicator_ids, is_quinceminutal=True)
-
 
 class ConsultasSecundaria(ConsultasESIOS):
     
@@ -169,7 +166,6 @@ class ConsultasSecundaria(ConsultasESIOS):
                 indicator_ids.append(ESIOSConfig().get_indicator_id(self.secundaria_name_map[sec_id]))
 
         return super().consulta_precios(fecha_inicio, fecha_fin, indicator_ids=indicator_ids, is_quinceminutal=True)
-
 
 class ConsultasTerciaria(ConsultasESIOS):
     
@@ -225,7 +221,6 @@ class ConsultasTerciaria(ConsultasESIOS):
                 indicator_ids.append(self.terciaria_config.get_indicator_id("Terciaria programada unico"))
 
         return super().consulta_precios(fecha_inicio, fecha_fin, indicator_ids=indicator_ids, is_quinceminutal=True)
-
 
 class ConsultasRR(ConsultasESIOS):
     

@@ -26,9 +26,9 @@ class DebugTransformTests():
         result_data = result["data"]
         result_status = result["status"]
         if result_status["success"]:
-            print(f"✅ Ingresos calculation for {fecha_inicio} to {fecha_fin} PASSED.")
+            print(f"✅ Ingresos calculation PASSED.")
         else:
-            print(f"❌ Ingresos calculation for {fecha_inicio} to {fecha_fin} FAILED. Details: {result_status.get('details', {})}")
+            print(f"❌ Ingresos calculation FAILED. Details: {result_status.get('details', {})}")
         
         print(result_data)
         breakpoint()
@@ -36,6 +36,6 @@ class DebugTransformTests():
    
 if __name__ == "__main__":
     debugger = DebugTransformTests()
-    debugger.debug_calculate_ingresos_for_all_markets(fecha_inicio=None, fecha_fin=None, mercados_lst=["desvios"], plot=True)
+    debugger.debug_calculate_ingresos_for_all_markets(fecha_inicio=None, fecha_fin=None, mercados_lst=["desvios"], plot=False)
     breakpoint()
 

@@ -84,7 +84,8 @@ class IngresosCalculator:
         Returns:
             pd.DataFrame: Filtered DataFrame for the specified date range
         """
-        print(f"- 📊 Loading {dataset_type} data for mercado={mercado}, id_mercado={id_mercado}")
+        print("================================================")
+        print(f"📊 Loading {dataset_type} data for mercado={mercado}, id_mercado={id_mercado}")
         #print(f"        📅 Date range: {fecha_inicio} to {fecha_fin}")
         
         try:
@@ -104,9 +105,10 @@ class IngresosCalculator:
                 df = df[(df['datetime_utc'].dt.date >= start_dt) & (df['datetime_utc'].dt.date <= end_dt)].copy()
             
             if not df.empty:
-                print(f"    ✅ Successfully loaded {len(df):,} rows of {dataset_type} data")
+                print(f"✅ Successfully loaded {len(df):,} rows of {dataset_type} data")
+                print("================================================")
                 date_range = f"{df['datetime_utc'].dt.date.min()} to {df['datetime_utc'].dt.date.max()}"
-                print(f"        📅 Actual data range: {date_range}")
+                #print(f"📅 Actual data range: {date_range}")
             else:
                 print(f"    ❌ No {dataset_type} data found for specified date range")
             
@@ -159,6 +161,7 @@ class IngresosCalculator:
                         plot_title += f" ({title_context})"
                     self._plot_histogram(mercado_data, title=plot_title, xlabel=f"Ingresos Totales por UP - Mercado {id_mercado} (€)")
         
+        print(f"--------------------------------")
         print(f"📈 TOTAL INGRESOS ANALYSIS:")
         if title_context:
             print(f"   Context: {title_context}")
@@ -168,6 +171,7 @@ class IngresosCalculator:
         print(grouped.head())
         print(f"Bottom Earners:")
         print(grouped.tail())
+        print(f"--------------------------------")
          
         return grouped
 
