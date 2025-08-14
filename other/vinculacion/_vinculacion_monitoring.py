@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.db_utils import DatabaseUtils
-from vinculacion.configs.vinculacion_config import VinculacionConfig
+from configs.vinculacion_config import VinculacionConfig
 from vinculacion._linking_algorithm import UOFUPLinkingAlgorithm
 
 class UPChangeMonitor:

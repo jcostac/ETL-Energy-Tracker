@@ -12,7 +12,7 @@ sys.path.append(str(PROJECT_ROOT))
 from utilidades.db_utils import DatabaseUtils
 from vinculacion._linking_algorithm import UOFUPLinkingAlgorithm
 from vinculacion._vinculacion_monitoring import UPChangeMonitor
-from vinculacion.configs.vinculacion_config import VinculacionConfig
+from configs.vinculacion_config import VinculacionConfig
 
 class VinculacionOrchestrator:
     """Main orchestrator for the vinculacion module"""

@@ -11,7 +11,7 @@ from transform.omie_transform import TransformadorOMIE
 from transform.i90_transform import TransformadorI90
 from extract.omie_extractor import OMIEExtractor
 from extract.i90_extractor import I90VolumenesExtractor
-from vinculacion.configs.vinculacion_config import VinculacionConfig
+from configs.vinculacion_config import VinculacionConfig
 
 class VinculacionDataExtractor:
     """Extracts and transforms data needed for vinculacion process"""

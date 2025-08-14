@@ -15,7 +15,7 @@ sys.path.append(str(PROJECT_ROOT))
 
 from utilidades.db_utils import DatabaseUtils
 from utilidades.raw_file_utils import RawFileUtils
-from vinculacion.configs.vinculacion_config import VinculacionConfig
+from configs.vinculacion_config import VinculacionConfig
 from vinculacion._extract_transform_linking_data import VinculacionDataExtractor
 from utilidades.progress_utils import with_progress  
 
