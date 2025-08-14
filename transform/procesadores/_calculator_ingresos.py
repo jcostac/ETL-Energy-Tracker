@@ -20,9 +20,6 @@ class IngresosCalculator:
         self.config = IngresosConfig()
         self.parquet_reader = ParquetReader()
 
-        self.mercados_precio_bajar = [14, 15, 18, 19]
-        self.mercados_precio_subir = [2, 3, 4, 5, 6, 7, 8]
-
     def _find_latest_partition_path(self, mercado, id_mercado, dataset_type):
         base_path = self.file_utils.processed_path / f"mercado={mercado}" / f"id_mercado={id_mercado}"
         all_files = list(base_path.glob("**/year=*/month=*/{}.parquet".format(dataset_type)))
@@ -45,15 +42,15 @@ class IngresosCalculator:
         return latest_file
 
     def _get_latest_df(self, mercado, id_mercado, dataset_type):
-        print(f"    📂 Loading latest {dataset_type} data for mercado={mercado}, id_mercado={id_mercado}")
+        #print(f"    📂 Loading latest {dataset_type} data for mercado={mercado}, id_mercado={id_mercado}")
         path = self._find_latest_partition_path(mercado, id_mercado, dataset_type)
         if path:
             df = pd.read_parquet(path)
-            print(f"    ✅ Successfully loaded {len(df):,} rows from {path.name}")
-            print("Latest processed parquet:")
-            print(df.head())
-            print(df.tail())
-            print(f"\n")
+            #print(f"    ✅ Successfully loaded {len(df):,} rows from {path.name}")
+            #print("Latest processed parquet:")
+            #print(df.head())
+            #print(df.tail())
+            #print(f"\n")
             return df
         print(f"    ❌ No data found for {dataset_type}")
         return pd.DataFrame()
@@ -65,12 +62,12 @@ class IngresosCalculator:
         volumes_dates = volumes_df['datetime_utc'].dt.date.unique()
         prices_dates = prices_df['datetime_utc'].dt.date.unique()
         common_dates = set(volumes_dates) & set(prices_dates)
-        print(f"    📅 Found {len(common_dates)} common dates: {sorted(common_dates)}")
+        #print(f"    📅 Found {len(common_dates)} common dates: {sorted(common_dates)}")
         if not common_dates:
             print(f"    ⚠️  Warning: No common dates found between volumes and prices.")
             return None
         latest_date = max(common_dates)
-        print(f"    🎯 Using latest common date: {latest_date}")
+        #print(f"    🎯 Using latest common date: {latest_date}")
         return latest_date
 
     def _get_df_for_date_range(self, mercado, id_mercado, dataset_type, fecha_inicio, fecha_fin):
@@ -87,8 +84,8 @@ class IngresosCalculator:
         Returns:
             pd.DataFrame: Filtered DataFrame for the specified date range
         """
-        print(f"    📊 Loading {dataset_type} data for mercado={mercado}, id_mercado={id_mercado}")
-        print(f"        📅 Date range: {fecha_inicio} to {fecha_fin}")
+        print(f"- 📊 Loading {dataset_type} data for mercado={mercado}, id_mercado={id_mercado}")
+        #print(f"        📅 Date range: {fecha_inicio} to {fecha_fin}")
         
         try:
             # Use ParquetReader to get the data (now accepts single values)
@@ -243,10 +240,10 @@ class IngresosCalculator:
 
         if market_key == "diario":
             if "tipo_transaccion" in volumes_df.columns:
-                print(f"🔄 Filtering volumes_df for diari (tipo_transaccion == Mercado)")
+                #print(f"🔄 Filtering volumes_df for diari (tipo_transaccion == Mercado)")
                 volumes_df = volumes_df[volumes_df["tipo_transaccion"] == "Mercado"]
             else:
-                print(f"    ⚠️  No tipo_transaccion column found in volumes_df for diario (expected)")
+                #print(f"    ⚠️  No tipo_transaccion column found in volumes_df for diario (expected)")
                 raise ValueError(f"No tipo_transaccion column found in volumes_df for diario (expected)")
         
         if volumes_df.empty and prices_df.empty:
@@ -261,7 +258,7 @@ class IngresosCalculator:
             print(f"    ❌ No price data available")
             raise ValueError(f"No price data for market '{market_key}' (id: {id_mercado}) for the given period. No ingresos calculated.")
 
-        print(f"    📊 Input data: {len(volumes_df):,} volume rows, {len(prices_df):,} price rows")
+        print(f"📊 Input data: {len(volumes_df):,} volume rows, {len(prices_df):,} price rows")
         
         # 🔧 FIX: Check if volume and price data have different id_mercado values
         vol_ids = set(volumes_df['id_mercado'].unique())
@@ -276,16 +273,16 @@ class IngresosCalculator:
         if market_key == 'restricciones_md' or market_key == 'restricciones_tr' or market_key == 'desvios':
             # For restricciones, always merge on datetime_utc, id_mercado, up
             merged = pd.merge(volumes_df, prices_df, on=['datetime_utc', 'id_mercado', 'up', 'redespacho'], how='inner')
-            print(f"    🔗 Merged on: datetime_utc, id_mercado, up, redespacho")
+            #print(f"    🔗 Merged on: datetime_utc, id_mercado, up, redespacho")
         else:
             if ids_match:
                 # Standard merge when IDs match
                 merged = pd.merge(volumes_df, prices_df, on=['datetime_utc', 'id_mercado'], how='inner')
-                print(f"    🔗 Merged on: datetime_utc, id_mercado")
+                #print(f"    🔗 Merged on: datetime_utc, id_mercado")
             else:
                 # Merge only on datetime_utc when IDs don't match (e.g., secundaria before SRS ie single price for two diff markets)
                 merged = pd.merge(volumes_df, prices_df, on=['datetime_utc'], how='inner')
-                print(f"    🔗 Merged on: datetime_utc only (different id_mercado values)")
+                #print(f"    🔗 Merged on: datetime_utc only (different id_mercado values)")
                 # Keep the volume data's id_mercado for the result
                 merged['id_mercado'] = merged['id_mercado_x']
                 merged = merged.drop(columns=['id_mercado_x', 'id_mercado_y'])
@@ -294,10 +291,11 @@ class IngresosCalculator:
             print(f"    ❌ Merge resulted in empty dataframe (no common timestamps)")
             raise ValueError(f"For market '{market_key}' (id: {id_mercado}), data for volumes and prices could not be merged for the given period (no common timestamps). No ingresos calculated.")
             
-        print(f"    ✅ Merge successful: {len(merged):,} rows")
         merged['ingresos'] = (merged['volumenes'] * merged['precio']).round(2)
         
         result = merged[['datetime_utc', 'up', 'ingresos', 'id_mercado']]
+
+        result_grouped = result.groupby(['datetime_utc', 'id_mercado', "up"]).agg({'ingresos': 'sum'}).reset_index()
         
 
         market_context = f"para {market_key} (id: {id_mercado})"
@@ -307,8 +305,8 @@ class IngresosCalculator:
             self._plot_histogram(merged['volumenes'], title=f"Distribución de Volúmenes Horarios {market_context}", xlabel="Volumen (MWh)")
             self._plot_histogram(merged['precio'], title=f"Distribución de Precios Horarios {market_context}", xlabel="Precio (€/MWh)")
         
-        print(f"    ✅ Calculation complete: {len(result):,} ingresos records generated")
-        return result
+        #print(f"    ✅ Calculation complete: {len(result):,} ingresos records generated")
+        return result_grouped
 
     def _process_market_ids_for_period(self, market_key, ids, fecha_inicio, fecha_fin, plot=False):
         """Process a specific set of market IDs for a given date range"""
@@ -389,15 +387,14 @@ class IngresosCalculator:
         
         fecha_dt = pd.to_datetime(fecha)
         ids = self.config.get_market_ids(market_key, fecha_dt)
-        print(f"    Processing {len(ids)} market IDs: {ids}")
-        
+
         all_results = []
         for i, id_mercado in enumerate(ids, 1):
             print(f"\n📍 Processing market ID {id_mercado} ({i}/{len(ids)})")
             
             volumes_df = self._get_df_for_date_range(market_key, id_mercado, 'volumenes_i90', fecha, fecha)
             precio_id = self.config.get_precios_from_id_mercado(id_mercado, fecha_dt)
-            print(f"    💰 Using precio_id: {precio_id}")
+            print(f"mercado: {market_key} id: {id_mercado} precio_id: {precio_id}")
             
             # Use different price dataset for restricciones
             price_dataset = 'precios_i90' if market_key in ['restricciones_md', 'restricciones_tr'] else 'precios_esios'
@@ -427,6 +424,7 @@ class IngresosCalculator:
         print(f"    Market: {market_key}")
         print(f"    Date range: {fecha_inicio} to {fecha_fin}")
         
+        #convert to datetime for boolean comparison
         start_dt = pd.to_datetime(fecha_inicio)
         end_dt = pd.to_datetime(fecha_fin)
         
@@ -439,19 +437,19 @@ class IngresosCalculator:
             # Period 1: Before intra reduction (use all 7 markets)
             period1_end = self.config.intra_reduction_date - timedelta(days=1)
             print(f"    📊 Period 1: {start_dt.date()} to {period1_end.date()} (7 intra markets)")
-            ids_period1 = [2, 3, 4, 5, 6, 7, 8]
+            ids_period1 = self.config.get_market_ids(market_key, start_dt) #get intra keys beofre reduction
             
             results_period1 = self._process_market_ids_for_period(
-                market_key, ids_period1, start_dt.strftime('%Y-%m-%d'), period1_end.strftime('%Y-%m-%d'), plot
+                market_key, ids_period1,fecha_inicio, period1_end.strftime('%Y-%m-%d'), plot
             )
             all_results.extend(results_period1)
             
             # Period 2: After intra reduction (use only 3 markets)
             print(f"    📊 Period 2: {self.config.intra_reduction_date.date()} to {end_dt.date()} (3 intra markets)")
-            ids_period2 = [2, 3, 4]
+            ids_period2 = self.config.get_market_ids(market_key, self.config.intra_reduction_date) #get intra keys after reduction
             
             results_period2 = self._process_market_ids_for_period(
-                market_key, ids_period2, self.config.intra_reduction_date.strftime('%Y-%m-%d'), end_dt.strftime('%Y-%m-%d'), plot
+                market_key, ids_period2, self.config.intra_reduction_date.strftime('%Y-%m-%d'), fecha_fin, plot
             )
             all_results.extend(results_period2)
             
@@ -470,7 +468,6 @@ class IngresosCalculator:
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
 
-    
 
 class ContinuoIngresosCalculator(IngresosCalculator):
     def calculate_single(self, market_key, fecha, plot=False):
@@ -518,8 +515,8 @@ class DesviosIngresosCalculator(IngresosCalculator):
         Check all i90 volumes for that particular hour for mercados de balance a subir and bajar
         to determine if the price is unique or dual.
         """
-        mercados_subir = self.config.mercado_sentido_map['subir']
-        mercados_bajar = self.config.mercado_sentido_map['bajar']
+        mercados_subir = self.config.mercado_sentido_desvios_map['subir']
+        mercados_bajar = self.config.mercado_sentido_desvios_map['bajar']
         
         volumenes_subir = 0
         volumenes_bajar = 0
@@ -537,6 +534,8 @@ class DesviosIngresosCalculator(IngresosCalculator):
                 df = self._get_df_for_date_range(mercado, id_mercado, 'volumenes_i90', fecha, fecha)
                 if not df.empty:
                     volumenes_bajar += df['volumenes'].sum()
+
+        print(f"Volumenes subir: {volumenes_subir} volumenes bajar: {volumenes_bajar}")
 
         if volumenes_subir == 0 and volumenes_bajar == 0:
             return None, None  # Desvio nulo (excepcional)
@@ -563,12 +562,16 @@ class DesviosIngresosCalculator(IngresosCalculator):
         for sentido in sentidos:
             total_volumen = 0.0
             total_ingresos = 0.0
+            total_volumen_abs = 0.0 # For fraction calculation
 
-            mercados = self.config.mercado_sentido_map[sentido]
+            mercados = self.config.mercado_sentido_desvios_map[sentido]
             per_market_volume = {mercado: 0.0 for mercado in mercados.keys()}
+            per_market_volume_abs = {mercado: 0.0 for mercado in mercados.keys()} # For fraction calculation
 
             for mercado, ids in mercados.items():
                 for id_mercado in ids:
+
+                    #get volumes and prices for the market
                     volumes_df = self._get_df_for_date_range(mercado, id_mercado, 'volumenes_i90', fecha, fecha)
                     if volumes_df.empty:
                         continue
@@ -587,17 +590,22 @@ class DesviosIngresosCalculator(IngresosCalculator):
                         total_ingresos += float(ingresos)
                         total_volumen += float(volumen)
                         per_market_volume[mercado] += float(volumen)
+                        
+                        # Use absolute values for fraction calculation
+                        total_volumen_abs += abs(float(volumen))
+                        per_market_volume_abs[mercado] += abs(float(volumen))
 
-            if total_volumen > 0:
+            if total_volumen != 0:
                 precio_ponderado = total_ingresos / total_volumen
                 precios_desvios[sentido] = precio_ponderado
-                fractions_by_sentido[sentido] = {m: (per_market_volume[m] / total_volumen) for m in per_market_volume}
+
+                if total_volumen_abs > 0:
+                    fractions_by_sentido[sentido] = {m: (per_market_volume_abs[m] / total_volumen_abs) for m in per_market_volume_abs}
+                else:
+                     fractions_by_sentido[sentido] = {m: 0.0 for m in per_market_volume}
             else:
                 precios_desvios[sentido] = 0.0
                 fractions_by_sentido[sentido] = {m: 0.0 for m in per_market_volume}
-
-        # Expose fractions for downstream use or debugging
-        self.last_desvios_fractions = fractions_by_sentido
 
         # Debug print
         print("    ⚖️ Fraction of total FRR/RR energy by mercado per sentido:")
@@ -610,18 +618,19 @@ class DesviosIngresosCalculator(IngresosCalculator):
     def _get_precios_desvios(self, fecha):
         """Calculate the precios for the desvios"""
 
-
-        #extract net direaction of all rr and frr energias balance
+        #extract net direction of all rr and frr energias balance
         price_type, direction = self._check_energias_balance(fecha)
 
         if price_type is None and direction is None:
             return None
         
+        #if the price is unique, we can use the same price for both subir and bajar
         if price_type == "unico":
             precios = self._calculate_precios_desvios(fecha, [direction])
             precio_unico = precios[direction]
             return {"subir": precio_unico, "bajar": precio_unico}
-        else: #dual
+
+        else: #dual, we have to calculate the price for each sentido
             precios = self._calculate_precios_desvios(fecha, ["subir", "bajar"])
             precio_subir_desvio = precios['bajar']
             precio_bajar_desvio = precios['subir']
@@ -632,16 +641,17 @@ class DesviosIngresosCalculator(IngresosCalculator):
         print(f"    Market: {market_key}")
         print(f"    Date: {fecha}")
         
-        # 1. Get desvios prices
+        # 1. Get desvios prices by checking the relative amount of energias de balance subir/bajar for the day
         precios_desvio = self._get_precios_desvios(fecha)
+
         if precios_desvio is None:
             print(f"    ℹ️ No FRR activated (or negligible) on {fecha} → no desvío price applicable")
             return pd.DataFrame()
-        print(f"    💸 Precios desvios calculados: Subir={precios_desvio['subir']:.2f} €/MWh, Bajar={precios_desvio['bajar']:.2f} €/MWh")
+        else:
+            print(f"    💸 Precios desvios calculados: Subir={precios_desvio['subir']:.2f} €/MWh, Bajar={precios_desvio['bajar']:.2f} €/MWh")
 
         # 2. Get desvios volumes
         ids = self.config.get_market_ids(market_key, pd.to_datetime(fecha))
-        print(f"    Processing {len(ids)} market IDs for desvios: {ids}")
         
         all_volumes_df = []
         for id_mercado in ids:
@@ -654,7 +664,6 @@ class DesviosIngresosCalculator(IngresosCalculator):
             return pd.DataFrame()
 
         volumes_df = pd.concat(all_volumes_df, ignore_index=True)
-        print(f"    📊 Total desvios volume rows: {len(volumes_df)}")
         
         # 3. Calculate ingresos
         def calculate_row_ingresos(row):

@@ -10,17 +10,20 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from utilidades.etl_date_utils import DateUtilsETL
 from configs.ingresos_config import IngresosConfig
-from transform.procesadores._calculator_ingresos import IngresosCalculator, ContinuoIngresosCalculator
+from transform.procesadores._calculator_ingresos import IngresosCalculator, ContinuoIngresosCalculator, DesviosIngresosCalculator
 
 class TransformadorIngresos:
     def __init__(self):
         self.date_utils = DateUtilsETL()
         self.config = IngresosConfig()
+
         self.transform_types = ['latest', 'single', 'multiple']
+
         self.market_calculator_map = {
             'continuo': ContinuoIngresosCalculator,
+            'desvios': DesviosIngresosCalculator
         }
-        self.valid_markets = list(self.config.mercado_name_id_map.keys())
+
 
     def get_calculator_for_market(self, market_key: str):
         calculator_class = self.market_calculator_map.get(market_key, IngresosCalculator)
@@ -28,13 +31,17 @@ class TransformadorIngresos:
 
     def calculate_ingresos_for_all_markets(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
                                            mercados_lst: Optional[List[str]] = None, plot: bool = False) -> dict:
+        
+        #get valid markets ie (keys in mercado_name_id_map)
+        valid_markets = list(self.config.mercado_name_id_map.keys())
+
         if mercados_lst is None:
-            mercados_lst = self.valid_markets
+            mercados_lst = valid_markets
         else:
-            invalid_markets = [m for m in mercados_lst if m not in self.valid_markets]
+            invalid_markets = [m for m in mercados_lst if m not in valid_markets]
             if invalid_markets:
                 print(f"Warning: Invalid markets {invalid_markets} skipped.")
-            mercados_lst = [m for m in mercados_lst if m in self.valid_markets]
+            mercados_lst = [m for m in mercados_lst if m in valid_markets]
 
         if fecha_inicio is None and fecha_fin is None:
             raise ValueError("Fecha inicio and fecha fin are required")
@@ -93,3 +100,5 @@ class TransformadorIngresos:
                 "details": status_details
             }
         }
+
+

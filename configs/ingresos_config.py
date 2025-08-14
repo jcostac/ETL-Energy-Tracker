@@ -24,22 +24,20 @@ class IngresosConfig:
             'restricciones_md': [9,10],
             'restricciones_tr': [11,12],
             'desvios': [29,30]
-        }
+        } #mapping names to id mercado for each market so we can pass a market name and calculate the ingresos for the corresponding market ids
 
-        self.mercado_sentido_map = {
+        self.mercado_sentido_desvios_map = {
             'subir': {
                 'secundaria': [14],
-                'terciaria': [18],
-                "terciaria_directa": [26],
+                'terciaria': [18, 26],
                 'rr': [16]
             },
             'bajar': {
                 'secundaria': [15],
-                'terciaria': [19],
-                "terciaria_directa": [27],
+                'terciaria': [19, 27],
                 'rr': [17]
             }
-        }
+        } #this is used to calculate the ingresos for the desvios market, since we have to check the total energias de balance for each sentido
 
     def get_market_ids(self, market_key, date):
         """

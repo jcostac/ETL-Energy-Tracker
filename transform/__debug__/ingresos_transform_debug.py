@@ -36,6 +36,6 @@ class DebugTransformTests():
    
 if __name__ == "__main__":
     debugger = DebugTransformTests()
-    debugger.debug_calculate_ingresos_for_all_markets(fecha_inicio=None, fecha_fin=None, mercados_lst=["restricciones_md", "restricciones_tr", "desvios"], plot=True)
+    debugger.debug_calculate_ingresos_for_all_markets(fecha_inicio=None, fecha_fin=None, mercados_lst=["desvios"], plot=True)
     breakpoint()
 
