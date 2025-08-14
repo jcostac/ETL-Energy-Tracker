@@ -312,6 +312,51 @@ class IngresosCalculator:
         #print(f"    ✅ Calculation complete: {len(result):,} ingresos records generated")
         return result_grouped
 
+    # ============================================================
+    # INGRESOS POR DIFERENCIAS
+    # ============================================================
+    def _calculate_ingresos_diferencias(self, volumes_df, prices_df, spot_df, market_key, id_mercado, plot=False):
+        """Calculate ingresos = volumen * (precio – precio_spot)."""
+        if volumes_df.empty or prices_df.empty or spot_df.empty:
+            print("    ⚠️  Missing data – cannot compute ingresos_diferencias")
+            return pd.DataFrame()
+
+        # Merge volume with price
+        merged = pd.merge(volumes_df, prices_df, on=['datetime_utc'], how='inner', suffixes=('', '_precio'))
+        # Attach spot price
+        spot_df = spot_df[['datetime_utc', 'precio']].rename(columns={'precio': 'precio_spot'})
+        merged = pd.merge(merged, spot_df, on='datetime_utc', how='inner')
+
+        if merged.empty:
+            print("    ⚠️  Merge produced no rows for diferencias")
+            return pd.DataFrame()
+
+        merged['ingresos'] = (merged['volumenes'] * (merged['precio'] - merged['precio_spot'])).round(2)
+
+        id_label = 'up' if 'up' in merged.columns else ('uof' if 'uof' in merged.columns else None)
+        cols = ['datetime_utc', 'id_mercado', 'ingresos'] + ([id_label] if id_label else [])
+        result = merged[cols]
+        return result
+
+    def calculate_diferencias_single(self, market_key, fecha, plot=False):
+        """Public entry: single-day ingresos por diferencias for standard markets."""
+        spot_df = self._get_df_for_date_range('diario', 1, 'precios_esios', fecha, fecha)
+        fecha_dt = pd.to_datetime(fecha)
+        ids = self.config.get_market_ids(market_key, fecha_dt)
+
+        all_results = []
+        for id_mercado in ids:
+            volumes_df = self._get_df_for_date_range(market_key, id_mercado, 'volumenes_i90', fecha, fecha)
+            precio_id = self.config.get_precios_from_id_mercado(id_mercado, fecha_dt)
+            price_dataset = 'precios_i90' if market_key in ['restricciones_md', 'restricciones_tr'] else 'precios_esios'
+            prices_df = self._get_df_for_date_range(market_key, precio_id, price_dataset, fecha, fecha)
+
+            diff_df = self._calculate_ingresos_diferencias(volumes_df, prices_df, spot_df, market_key, id_mercado, plot)
+            if not diff_df.empty:
+                all_results.append(diff_df)
+
+        return pd.concat(all_results, ignore_index=True) if all_results else pd.DataFrame()
+
     def _process_market_ids_for_period(self, market_key, ids, fecha_inicio, fecha_fin, plot=False):
         """Process a specific set of market IDs for a given date range"""
         results = []
@@ -512,6 +557,26 @@ class ContinuoIngresosCalculator(IngresosCalculator):
         
         print(f"\n🎉 CALCULATION COMPLETED SUCCESSFULLY!")
         return combined
+
+    def calculate_diferencias_single(self, market_key, fecha, plot=False):
+        """Calculate ingresos por diferencias for MIC (id_mercado=21)."""
+        spot_df = self._get_df_for_date_range('diario', 1, 'precios_esios', fecha, fecha)
+
+        id_mercado = 21  # MIC market id
+        df = self._get_df_for_date_range(market_key, id_mercado, 'volumenes_omie', fecha, fecha)
+        if df.empty or spot_df.empty:
+            return pd.DataFrame()
+
+        spot_df = spot_df[['datetime_utc', 'precio']].rename(columns={'precio': 'precio_spot'})
+        merged = pd.merge(df, spot_df, on='datetime_utc', how='inner')
+
+        if merged.empty:
+            return pd.DataFrame()
+
+        merged['ingresos'] = (merged['volumenes'] * (merged['precio'] - merged['precio_spot'])).round(2)
+        result = merged[['datetime_utc', 'uof', 'ingresos']].rename(columns={'uof': 'up'})
+        result['id_mercado'] = id_mercado
+        return result
 
 class DesviosIngresosCalculator(IngresosCalculator):
     def _check_energias_balance(self, fecha):

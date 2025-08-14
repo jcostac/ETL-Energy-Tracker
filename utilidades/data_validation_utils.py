@@ -33,6 +33,8 @@ class DataValidationUtils:
         
         ##ingresos
         self.processed_ingresos_required_cols = ['datetime_utc', 'ingresos', 'id_mercado'] #up uof validation are done in validate dtypess
+        # ingresos por diferencias share the same required structure
+        self.processed_ingresos_diferencias_required_cols = self.processed_ingresos_required_cols
 
         #raw data structure requirements
         ##precios
@@ -147,7 +149,7 @@ class DataValidationUtils:
                         df['redespacho'] = df['redespacho'].astype('str')
 
             
-                elif validation_schema_type == "ingresos":
+                elif validation_schema_type in ["ingresos", "ingresos_diferencias"]:
                     df['ingresos'] = df['ingresos'].astype('float32')
                     df['id_mercado'] = df['id_mercado'].astype('uint8')
 
@@ -231,7 +233,7 @@ class DataValidationUtils:
                 required_cols = self.processed_volumenes_omie_required_cols
             elif validation_schema_type == "volumenes_mic":
                 required_cols = self.processed_volumenes_mic_required_cols
-            elif validation_schema_type == "ingresos":
+            elif validation_schema_type in ["ingresos", "ingresos_diferencias"]:
                 required_cols = self.processed_ingresos_required_cols
 
         elif type == "raw":
@@ -323,7 +325,7 @@ class DataValidationUtils:
                 pa.field('precio', pa.float32()),
                 pa.field('fecha_fichero', pa.timestamp('ns'))
             ]
-        elif dataset_type == 'ingresos':
+        elif dataset_type in ['ingresos', 'ingresos_diferencias']:
             schema_fields = [
                 pa.field('ingresos', pa.float32())
             ]

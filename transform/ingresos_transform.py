@@ -101,4 +101,100 @@ class TransformadorIngresos:
             }
         }
 
+    # Cálculo de ingresos por diferencias (mismo formato que calculate_ingresos_for_all_markets)
+    def calculate_ingresos_diferencias(self, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None,
+                                       mercados_lst: Optional[List[str]] = None, plot: bool = False) -> dict:
+        """Calcula ingresos por diferencias (volumen * (precio – spot)) y devuelve la misma estructura
+        que `calculate_ingresos_for_all_markets`.
+
+        Parameters mirror `calculate_ingresos_for_all_markets` so client-code can swap methods easily.
+        """
+
+        # Markets where diferencias do NOT apply
+        excluded_markets = {'diario', 'secundaria', 'p48', 'indisponibilidades', 'desvios'}
+
+        valid_markets = [m for m in self.config.mercado_name_id_map.keys() if m not in excluded_markets]
+
+        if mercados_lst is None:
+            mercados_lst = valid_markets
+        else:
+            invalid_markets = [m for m in mercados_lst if m not in valid_markets]
+            if invalid_markets:
+                print(f"Warning: Invalid markets {invalid_markets} skipped.")
+            mercados_lst = [m for m in mercados_lst if m in valid_markets]
+
+        # Determine transform mode (single / multiple)
+        if fecha_inicio is None and fecha_fin is None:
+            raise ValueError("Fecha inicio and fecha fin are required")
+        elif fecha_inicio is not None and (fecha_fin is None or fecha_inicio == fecha_fin):
+            transform_type = 'single'
+            fecha_fin = fecha_inicio  # unify handling
+        elif fecha_inicio is not None and fecha_fin is not None and fecha_inicio != fecha_fin:
+            transform_type = 'multiple'
+        else:
+            raise ValueError("Invalid date parameters.")
+
+        status_details = {
+            "markets_processed": [],
+            "markets_failed": [],
+            "mode": transform_type,
+            "date_range": f"{fecha_inicio} to {fecha_fin}" if fecha_fin else fecha_inicio
+        }
+
+        overall_success = True
+        results: Dict[str, pd.DataFrame] = {}
+
+        print(f"\n===== STARTING INGRESOS DIFERENCIAS CALCULATION (Mode: {transform_type.upper()}) =====")
+
+        # Helper to run a single-day calc for a given market
+        def _run_single_day(market_key: str, date_str: str):
+            calculator = self.get_calculator_for_market(market_key)
+            return calculator.calculate_diferencias_single(market_key, date_str, plot)
+
+        # Iterate markets
+        for market_key in mercados_lst:
+            print(f"\n-- Market: {market_key} --")
+            try:
+                if transform_type == 'single':
+                    market_result = _run_single_day(market_key, fecha_inicio)
+                else:
+                    # multiple
+                    date_range = pd.date_range(start=fecha_inicio, end=fecha_fin, freq='D').strftime('%Y-%m-%d')
+                    daily_results = []
+                    for day in date_range:
+                        df = _run_single_day(market_key, day)
+                        if not df.empty:
+                            daily_results.append(df)
+                    market_result = pd.concat(daily_results, ignore_index=True) if daily_results else pd.DataFrame()
+
+                if isinstance(market_result, pd.DataFrame) and not market_result.empty:
+                    status_details["markets_processed"].append(market_key)
+                    results[market_key] = market_result
+                else:
+                    status_details["markets_failed"].append({"market": market_key, "error": "No data produced"})
+                    overall_success = False
+            except Exception as e:
+                status_details["markets_failed"].append({"market": market_key, "error": str(e)})
+                overall_success = False
+                results[market_key] = None
+                print(f"❌ Failed for {market_key}: {e}")
+
+        print(f"\n===== INGRESOS DIFERENCIAS CALCULATION FINISHED (Mode: {transform_type.upper()}) =====")
+        for market_key, result in results.items():
+            if result is not None:
+                print(f"✅ Success for {market_key}")
+                print(result.head())
+                print(result.tail())
+                print("\n")
+            else:
+                print(f"❌ Failed for {market_key}")
+
+        return {
+            "data": results,
+            "status": {
+                "success": overall_success,
+                "details": status_details
+            }
+        }
+
 
