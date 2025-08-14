@@ -451,4 +451,7 @@ if __name__ == "__main__":
     sql_english, context_english = query_engine.translate_to_sql(english_query)
     print(f"English query SQL:\n{sql_english}")
     print(f"\nQuery info:\n{context_english}")
+
+
+
     
